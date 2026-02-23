@@ -1,0 +1,10 @@
+{
+  "phase": 2,
+  "paper_md": "Target\\paper\\full.md",
+  "paper_md_out": "output\\paper.md",
+  "repo_dir": "Target\\code",
+  "run_id": "local_try_001",
+  "artifacts_dir": "artifacts",
+  "budget_minutes": 10,
+  "max_self_heal_iters": 2
+}

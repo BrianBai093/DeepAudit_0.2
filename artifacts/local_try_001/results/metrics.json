@@ -1,0 +1,19 @@
+{
+  "records": [
+    {
+      "metric_name": "unknown",
+      "value": null,
+      "unit": null,
+      "source": "run.log",
+      "claim_id": null,
+      "parsed": false,
+      "reason_codes": [
+        "UNPARSED_METRICS"
+      ]
+    }
+  ],
+  "reason_codes": [
+    "MINI_SWE_FAILED_RC_1",
+    "ENTRYPOINT_RC_1"
+  ]
+}

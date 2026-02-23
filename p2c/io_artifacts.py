@@ -1,0 +1,135 @@
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import tempfile
+from pathlib import Path
+from typing import Any
+
+from p2c.schemas import VerdictDoc
+
+REQUIRED_FILES = [
+    "fingerprint/fingerprint.json",
+    "fingerprint/guide_sentences.json",
+    "fingerprint/atomic_criteria.json",
+    "fingerprint/atomic_rejected.json",
+    "fingerprint/filter_clusters.json",
+    "fingerprint/filter_selected.json",
+    "fingerprint/claims_ir.json",
+    "task/task_spec.json",
+    "task/metric_contract.json",
+    "execution/run.log",
+    "execution/commands.jsonl",
+    "execution/patch.diff",
+    "execution/repo_state.json",
+    "execution/system_info.json",
+    "execution/env_lock/pip_freeze.txt",
+    "execution/data_manifest.json",
+    "results/metrics.json",
+    "results/parsed_evidence.json",
+    "results/verdict.json",
+    "results/report.md",
+]
+
+
+class ArtifactManager:
+    def __init__(self, artifacts_dir: str | Path, run_id: str):
+        self.artifacts_dir = Path(artifacts_dir)
+        self.run_id = run_id
+        self.run_root = self.artifacts_dir / run_id
+
+    def ensure_tree(self) -> None:
+        self.run_root.mkdir(parents=True, exist_ok=True)
+        for rel in REQUIRED_FILES:
+            path = self.run_root / rel
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if path.exists():
+                continue
+            if path.suffix == ".json":
+                if rel.endswith("verdict.json"):
+                    payload = VerdictDoc(
+                        status="INCONCLUSIVE",
+                        reason_codes=["INITIALIZED_PLACEHOLDER"],
+                        summary="Pipeline not complete yet.",
+                    ).model_dump()
+                elif rel.endswith("metrics.json"):
+                    payload = {"records": [], "reason_codes": ["INITIALIZED_PLACEHOLDER"]}
+                elif rel.endswith("parsed_evidence.json"):
+                    payload = {"claim_evidence": [], "reason_codes": ["INITIALIZED_PLACEHOLDER"]}
+                elif rel.endswith("task_spec.json"):
+                    payload = {
+                        "goal": [],
+                        "constraints": {},
+                        "entrypoints": [],
+                        "metric_observers": [],
+                        "run_matrix": [],
+                        "reason_codes": ["INITIALIZED_PLACEHOLDER"],
+                    }
+                elif rel.endswith("metric_contract.json"):
+                    payload = {
+                        "required_metrics": [],
+                        "parsers": [],
+                        "normalization": {},
+                        "reason_codes": ["INITIALIZED_PLACEHOLDER"],
+                    }
+                else:
+                    payload = {"reason_codes": ["INITIALIZED_PLACEHOLDER"]}
+                path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+            else:
+                path.write_text("", encoding="utf-8")
+
+    def path(self, relative: str) -> Path:
+        return self.run_root / relative
+
+    def write_json(self, relative: str, payload: Any) -> Path:
+        path = self.path(relative)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        content = json.dumps(payload, ensure_ascii=False, indent=2)
+        self._atomic_write(path, content)
+        return path
+
+    def append_jsonl(self, relative: str, record: dict[str, Any]) -> Path:
+        path = self.path(relative)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        return path
+
+    def write_text(self, relative: str, content: str) -> Path:
+        path = self.path(relative)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self._atomic_write(path, content)
+        return path
+
+    def append_text(self, relative: str, content: str) -> Path:
+        path = self.path(relative)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as f:
+            f.write(content)
+        return path
+
+    def read_json(self, relative: str) -> dict[str, Any]:
+        path = self.path(relative)
+        if not path.exists() or path.stat().st_size == 0:
+            return {}
+        return json.loads(path.read_text(encoding="utf-8"))
+
+    def sha256_file(self, relative: str) -> str:
+        path = self.path(relative)
+        digest = hashlib.sha256()
+        with path.open("rb") as f:
+            while chunk := f.read(8192):
+                digest.update(chunk)
+        return digest.hexdigest()
+
+    @staticmethod
+    def _atomic_write(path: Path, content: str) -> None:
+        fd, tmp_name = tempfile.mkstemp(prefix=".tmp_", dir=str(path.parent))
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(content)
+            os.replace(tmp_name, path)
+        finally:
+            if os.path.exists(tmp_name):
+                os.remove(tmp_name)

@@ -1,0 +1,1188 @@
+{
+  "criteria": [
+    {
+      "criterion": "The study benchmarks centralized machine learning algorithms.",
+      "fact": "<fact>This study benchmarks centralized machine learning algorithms</fact>",
+      "scope": "<scope>the study</scope>",
+      "reason_codes": [
+        "BENCHMARK",
+        "CENTRALIZED_ALGORITHM"
+      ]
+    },
+    {
+      "criterion": "The study benchmarks federated machine learning algorithms.",
+      "fact": "<fact>This study benchmarks federated machine learning algorithms</fact>",
+      "scope": "<scope>the study</scope>",
+      "reason_codes": [
+        "BENCHMARK",
+        "FEDERATED_ALGORITHM"
+      ]
+    },
+    {
+      "criterion": "The benchmarking task is heart disease classification.",
+      "fact": "<fact>Benchmarking is for heart disease classification</fact>",
+      "scope": "<scope>the study</scope>",
+      "reason_codes": [
+        "TASK",
+        "HEART_DISEASE_CLASSIFICATION"
+      ]
+    },
+    {
+      "criterion": "The study uses the UCI dataset.",
+      "fact": "<fact>The study uses the UCI dataset</fact>",
+      "scope": "<scope>the study</scope>",
+      "reason_codes": [
+        "DATASET",
+        "UCI"
+      ]
+    },
+    {
+      "criterion": "The UCI dataset contains 920 patient records.",
+      "fact": "<fact>UCI dataset includes 920 patient records</fact>",
+      "scope": "<scope>UCI dataset</scope>",
+      "reason_codes": [
+        "SAMPLE_SIZE",
+        "RECORD_COUNT"
+      ]
+    },
+    {
+      "criterion": "The 920 patient records originate from four hospitals.",
+      "fact": "<fact>The 920 patient records are from four hospitals</fact>",
+      "scope": "<scope>UCI dataset</scope>",
+      "reason_codes": [
+        "DATA_ORIGIN",
+        "SITES_COUNT"
+      ]
+    },
+    {
+      "criterion": "The hospitals are located in the USA, Hungary, and Switzerland.",
+      "fact": "<fact>The hospitals are located in the USA, Hungary and Switzerland</fact>",
+      "scope": "<scope>hospitals</scope>",
+      "reason_codes": [
+        "SITE_COUNTRIES",
+        "GEOGRAPHY"
+      ]
+    },
+    {
+      "criterion": "The evaluation was performed in a centralized setup.",
+      "fact": "<fact>In the centralized setup, various binary classification algorithms are trained on pooled data, with a support vector machine (SVM) achieving the highest testing accuracy of $8 3 .</fact>",
+      "scope": "<scope>centralized setup</scope>",
+      "reason_codes": [
+        "SCOPE_IDENTIFICATION",
+        "EXACT_QUOTATION"
+      ]
+    },
+    {
+      "criterion": "Multiple binary classification algorithms were trained on pooled data.",
+      "fact": "<fact>In the centralized setup, various binary classification algorithms are trained on pooled data, with a support vector machine (SVM) achieving the highest testing accuracy of $8 3 .</fact>",
+      "scope": "<scope>pooled data</scope>",
+      "reason_codes": [
+        "TRAINING_SETUP",
+        "DATA_POOLING",
+        "EXACT_QUOTATION"
+      ]
+    },
+    {
+      "criterion": "A support vector machine (SVM) achieved the highest testing accuracy among the evaluated algorithms.",
+      "fact": "<fact>In the centralized setup, various binary classification algorithms are trained on pooled data, with a support vector machine (SVM) achieving the highest testing accuracy of $8 3 .</fact>",
+      "scope": "<scope>centralized setup; pooled data</scope>",
+      "reason_codes": [
+        "ALGORITHM_PERFORMANCE",
+        "COMPARISON",
+        "EXACT_QUOTATION"
+      ]
+    },
+    {
+      "criterion": "The reported highest testing accuracy value is written as \"$8 3\" (as provided in the source).",
+      "fact": "<fact>In the centralized setup, various binary classification algorithms are trained on pooled data, with a support vector machine (SVM) achieving the highest testing accuracy of $8 3 .</fact>",
+      "scope": "<scope>centralized setup</scope>",
+      "reason_codes": [
+        "NUMERIC_MALFORMATION",
+        "EXACT_QUOTATION"
+      ]
+    },
+    {
+      "criterion": "The reported measurement numeric value is 3 (raw token: '3 \\%$').",
+      "fact": "<fact>3 \\%$</fact>",
+      "scope": "<scope>reported_measurement</scope>",
+      "reason_codes": [
+        "malformed_numeric",
+        "ambiguous_unit_symbol"
+      ]
+    },
+    {
+      "criterion": "The measurement unit or symbol is a single, unambiguous unit (e.g., percent or currency).",
+      "fact": "<fact>3 \\%$</fact>",
+      "scope": "<scope>reported_measurement_unit</scope>",
+      "reason_codes": [
+        "ambiguous_units",
+        "malformed_characters"
+      ]
+    },
+    {
+      "criterion": "The established benchmark numeric value is 78 (raw token: '$78').",
+      "fact": "<fact>$78</fact>",
+      "scope": "<scope>benchmark_value</scope>",
+      "reason_codes": [
+        "malformed_numeric",
+        "ambiguous_unit_symbol"
+      ]
+    },
+    {
+      "criterion": "The reported measurement surpasses the established benchmark.",
+      "fact": "<fact>3 \\%$ , surpassing the established benchmark of $78</fact>",
+      "scope": "<scope>comparison_report</scope>",
+      "reason_codes": [
+        "logical_inconsistency",
+        "units_mismatch",
+        "ambiguous_relationship"
+      ]
+    },
+    {
+      "criterion": "A numeric value of 7% is reported.",
+      "fact": "7%",
+      "scope": null,
+      "reason_codes": [
+        "NUMERIC_VALUE_REPORTED"
+      ]
+    },
+    {
+      "criterion": "The method used is logistic regression.",
+      "fact": "logistic regression",
+      "scope": null,
+      "reason_codes": [
+        "MODEL_METHOD_SPECIFIED"
+      ]
+    },
+    {
+      "criterion": "The reported 7% value is associated with logistic regression.",
+      "fact": "7 \\%$ with logistic regression.",
+      "scope": null,
+      "reason_codes": [
+        "VALUE_LINKED_TO_METHOD",
+        "AMBIGUOUS_METRIC"
+      ]
+    },
+    {
+      "criterion": "Federated learning algorithms are explored.",
+      "fact": "federated learning algorithms ... are explored",
+      "scope": "study/experimentation",
+      "reason_codes": [
+        "ALGO_EXPLORED"
+      ]
+    },
+    {
+      "criterion": "The federated learning setup uses four clients.",
+      "fact": "with four clients",
+      "scope": "number of clients",
+      "reason_codes": [
+        "CLIENT_COUNT_SPECIFIED"
+      ]
+    },
+    {
+      "criterion": "The clients in the federated setup are hospitals.",
+      "fact": "(hospitals)",
+      "scope": "client organization type",
+      "reason_codes": [
+        "CLIENT_TYPE_HOSPITAL"
+      ]
+    },
+    {
+      "criterion": "The approach leverages the dataset's natural partition.",
+      "fact": "leveraging the dataset’s natural partition",
+      "scope": "dataset partition",
+      "reason_codes": [
+        "DATASET_PARTITION_USED"
+      ]
+    },
+    {
+      "criterion": "Leveraging the dataset's natural partition is intended to enhance privacy.",
+      "fact": "to enhance privacy",
+      "scope": "privacy",
+      "reason_codes": [
+        "GOAL_ENHANCE_PRIVACY"
+      ]
+    },
+    {
+      "criterion": "The approach is claimed to not sacrifice model accuracy.",
+      "fact": "without sacrificing accuracy",
+      "scope": "model accuracy",
+      "reason_codes": [
+        "CLAIM_NO_ACCURACY_LOSS"
+      ]
+    },
+    {
+      "criterion": "Assert that Federated SVM is an uncommon approach in the literature.",
+      "fact": "Federated SVM is an uncommon approach in the literature.",
+      "scope": "literature",
+      "reason_codes": [
+        "subjective_term_uncommon",
+        "assertion_unverifiable_without_source"
+      ]
+    },
+    {
+      "criterion": "Report that Federated SVM achieves a top testing accuracy of 73.",
+      "fact": "Federated SVM achieves a top testing accuracy of 73.",
+      "scope": "testing accuracy",
+      "reason_codes": [
+        "ambiguous_numeric_format",
+        "missing_unit_percent",
+        "assertion_unverifiable_without_source"
+      ]
+    },
+    {
+      "criterion": "Flag that the reported numeric accuracy value in the input is malformed (contains unexpected characters such as '$' and a space) and cannot be reliably parsed as presented.",
+      "fact": null,
+      "scope": null,
+      "reason_codes": [
+        "parsing_error_currency_symbol",
+        "ambiguous_numeric_format"
+      ]
+    },
+    {
+      "criterion": "Flag that the meaning of 'top testing accuracy' is underspecified because dataset, evaluation protocol, and comparators are not provided.",
+      "fact": null,
+      "scope": null,
+      "reason_codes": [
+        "scope_unspecified",
+        "assertion_unverifiable_without_source"
+      ]
+    },
+    {
+      "criterion": "Contains the digit '8'.",
+      "fact": "8 \\%$ .",
+      "scope": null,
+      "reason_codes": [
+        "RC-CONTAINS_DIGIT"
+      ]
+    },
+    {
+      "criterion": "Contains a percent sign '%'.",
+      "fact": "8 \\%$ .",
+      "scope": null,
+      "reason_codes": [
+        "RC-CONTAINS_PERCENT"
+      ]
+    },
+    {
+      "criterion": "Contains a dollar sign '$'.",
+      "fact": "8 \\%$ .",
+      "scope": null,
+      "reason_codes": [
+        "RC-CONTAINS_DOLLAR"
+      ]
+    },
+    {
+      "criterion": "Contains an escape/backslash character '\\'.",
+      "fact": "8 \\%$ .",
+      "scope": null,
+      "reason_codes": [
+        "RC-CONTAINS_BACKSLASH"
+      ]
+    },
+    {
+      "criterion": "Contains a trailing period '.' punctuation.",
+      "fact": "8 \\%$ .",
+      "scope": null,
+      "reason_codes": [
+        "RC-CONTAINS_PERIOD"
+      ]
+    },
+    {
+      "criterion": "Each client trains a local model on its own local data and computes model updates.",
+      "fact": "Instead, clients train local model updates and only these updates are shared and aggregated globally with a coordinating central server in an iterative fashion.",
+      "scope": "client",
+      "reason_codes": [
+        "LOCAL_TRAINING"
+      ]
+    },
+    {
+      "criterion": "Clients share only model updates and do not share raw local training data.",
+      "fact": "Instead, clients train local model updates and only these updates are shared and aggregated globally with a coordinating central server in an iterative fashion.",
+      "scope": "data_sharing",
+      "reason_codes": [
+        "ONLY_UPDATES_SHARED",
+        "NO_RAW_DATA_SHARED"
+      ]
+    },
+    {
+      "criterion": "Shared model updates are transmitted to a coordinating central server.",
+      "fact": "Instead, clients train local model updates and only these updates are shared and aggregated globally with a coordinating central server in an iterative fashion.",
+      "scope": "communication",
+      "reason_codes": [
+        "COORDINATING_SERVER"
+      ]
+    },
+    {
+      "criterion": "The coordinating central server aggregates received model updates into a global model.",
+      "fact": "Instead, clients train local model updates and only these updates are shared and aggregated globally with a coordinating central server in an iterative fashion.",
+      "scope": "server",
+      "reason_codes": [
+        "CENTRALIZED_AGGREGATION"
+      ]
+    },
+    {
+      "criterion": "The cycle of local training, sharing updates, and server aggregation is repeated across multiple iterative rounds.",
+      "fact": "Instead, clients train local model updates and only these updates are shared and aggregated globally with a coordinating central server in an iterative fashion.",
+      "scope": "process",
+      "reason_codes": [
+        "ITERATIVE_PROCESS"
+      ]
+    },
+    {
+      "criterion": "<fact>The UCI heart disease dataset provides a great example of naturally heterogeneous splits of the data across geographically distant hospitals.</fact> <scope>from paper context</scope>",
+      "fact": "The UCI heart disease dataset provides a great example of naturally heterogeneous splits of the data across geographically distant hospitals.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>Contributions  Centralized benchmark: We train various binary classification algorithms, including logistic regression (LR), neural networks (NN), support vector machines (SVM), k-nearest neighbor (KNN), Na¨ıve Bayes (NB), and random forests.</fact> <scope>from paper context</scope>",
+      "fact": "Contributions  Centralized benchmark: We train various binary classification algorithms, including logistic regression (LR), neural networks (NN), support vector machines (SVM), k-nearest neighbor (KNN), Na¨ıve Bayes (NB), and random forests.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>In particular, we use the top three performing models in the centralized setup as local trainers for the federated setting.</fact> <scope>from paper context</scope>",
+      "fact": "In particular, we use the top three performing models in the centralized setup as local trainers for the federated setting.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>We examine various federated aggregation  strategies including FedAvg [9], FedAdam [16], FedYogi [16], and SCAFFOLD [14].</fact> <scope>from paper context</scope>",
+      "fact": "We examine various federated aggregation  strategies including FedAvg [9], FedAdam [16], FedYogi [16], and SCAFFOLD [14].",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>To meet our specific needs, we develop our own version of federated SVM from scratch.</fact> <scope>from paper context</scope>",
+      "fact": "To meet our specific needs, we develop our own version of federated SVM from scratch.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>Dataset details  The dataset consists of 920 patient records spread across four separate hospitals’ databases in Cleveland, Hungary, Switzerland, and the VA Long Beach.</fact> <scope>from paper context</scope>",
+      "fact": "Dataset details  The dataset consists of 920 patient records spread across four separate hospitals’ databases in Cleveland, Hungary, Switzerland, and the VA Long Beach.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>After excluding those with prior infarction, valvular disease and prior catheterization, there were 200 patient data points remaining in the dataset.</fact> <scope>from paper context</scope>",
+      "fact": "After excluding those with prior infarction, valvular disease and prior catheterization, there were 200 patient data points remaining in the dataset.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>Disease prevalence is $7 5 \\%$ .</fact> <scope>from paper context</scope>",
+      "fact": "Disease prevalence is $7 5 \\%$ .",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>Patients with prior heart attacks or valvular diseases were not included, resulting in 425 subjects, and reduced further to 294 after data preprocessing.</fact> <scope>from paper context</scope>",
+      "fact": "Patients with prior heart attacks or valvular diseases were not included, resulting in 425 subjects, and reduced further to 294 after data preprocessing.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>Disease prevalence is $38 \\%$ .</fact> <scope>from paper context</scope>",
+      "fact": "Disease prevalence is $38 \\%$ .",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>Data preprocesssing resulted in 123 Swiss patient records.</fact> <scope>from paper context</scope>",
+      "fact": "Data preprocesssing resulted in 123 Swiss patient records.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>Disease prevalence $84 \\%$ .</fact> <scope>from paper context</scope>",
+      "fact": "Disease prevalence $84 \\%$ .",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>TABLE I     <table><tr><td>Feature Number</td><td>Feature</td><td>Details</td></tr><tr><td>3</td><td>age</td><td>age in years</td></tr><tr><td>4</td><td>sex</td><td>1=male, 0=female</td></tr><tr><td>9</td><td>cp</td><td>chest pain type</td></tr><tr><td>10</td><td>trestbps</td><td>resting blood pressure</td></tr><tr><td>12</td><td>chol</td><td>serum cholesterol</td></tr><tr><td>16</td><td>fbs</td><td>fasting blood sugar</td></tr><tr><td>19</td><td>restecg</td><td>resting ECG results</td></tr><tr><td>32</td><td>thalach</td><td>max heart rate</td></tr><tr><td>38</td><td>exang</td><td>exercise induced angina</td></tr><tr><td>40</td><td>oldpeak</td><td>ST depression due to exercise</td></tr><tr><td>41</td><td>slope</td><td>slope of exercise ST segment</td></tr><tr><td>44</td><td>ca</td><td># of major vessels</td></tr><tr><td>51</td><td>thal</td><td>Thalassemia disorder presence</td></tr><tr><td>58</td><td>num</td><td>the predicted attribute</td></tr></table>  There are 76 total attributes, but all research conducted on the dataset used only the 14 features indicated in Table I.</fact> <scope>from paper context</scope>",
+      "fact": "TABLE I     <table><tr><td>Feature Number</td><td>Feature</td><td>Details</td></tr><tr><td>3</td><td>age</td><td>age in years</td></tr><tr><td>4</td><td>sex</td><td>1=male, 0=female</td></tr><tr><td>9</td><td>cp</td><td>chest pain type</td></tr><tr><td>10</td><td>trestbps</td><td>resting blood pressure</td></tr><tr><td>12</td><td>chol</td><td>serum cholesterol</td></tr><tr><td>16</td><td>fbs</td><td>fasting blood sugar</td></tr><tr><td>19</td><td>restecg</td><td>resting ECG results</td></tr><tr><td>32</td><td>thalach</td><td>max heart rate</td></tr><tr><td>38</td><td>exang</td><td>exercise induced angina</td></tr><tr><td>40</td><td>oldpeak</td><td>ST depression due to exercise</td></tr><tr><td>41</td><td>slope</td><td>slope of exercise ST segment</td></tr><tr><td>44</td><td>ca</td><td># of major vessels</td></tr><tr><td>51</td><td>thal</td><td>Thalassemia disorder presence</td></tr><tr><td>58</td><td>num</td><td>the predicted attribute</td></tr></table>  There are 76 total attributes, but all research conducted on the dataset used only the 14 features indicated in Table I.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact># B.</fact> <scope>from paper context</scope>",
+      "fact": "# B.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>We first train the logistic regression model in [7] with a learning rate of 0.001, batch size of 4, and for 30 epochs.</fact> <scope>from paper context</scope>",
+      "fact": "We first train the logistic regression model in [7] with a learning rate of 0.001, batch size of 4, and for 30 epochs.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>For other models and hyperparameter combinations, each model is trained on 10 different seeds for data splits and average accuracy is computed.</fact> <scope>from paper context</scope>",
+      "fact": "For other models and hyperparameter combinations, each model is trained on 10 different seeds for data splits and average accuracy is computed.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>Hyperparameters tuned include learning rate $( 0 .</fact> <scope>from paper context</scope>",
+      "fact": "Hyperparameters tuned include learning rate $( 0 .",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>0 0 1 - 0 .</fact> <scope>from paper context</scope>",
+      "fact": "0 0 1 - 0 .",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>1 )$ , batch size $( 4 - 6 4 )$ , hidden units (4−16) for one-hidden-layer NN, SVM regularization strength $C$ $( 0 .</fact> <scope>from paper context</scope>",
+      "fact": "1 )$ , batch size $( 4 - 6 4 )$ , hidden units (4−16) for one-hidden-layer NN, SVM regularization strength $C$ $( 0 .",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>0 1 - 1 0 )$ , Laplace smoothing $\\alpha$ $( 0 .</fact> <scope>from paper context</scope>",
+      "fact": "0 1 - 1 0 )$ , Laplace smoothing $\\alpha$ $( 0 .",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>1 - 1 0 )$ for non-Gaussian Naive Bayes, Decision tree max depth (none $- 1 0 \\phantom { .</fact> <scope>from paper context</scope>",
+      "fact": "1 - 1 0 )$ for non-Gaussian Naive Bayes, Decision tree max depth (none $- 1 0 \\phantom { .",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>0 }$ ), number of RF estimators $( 1 0 0 - 5 0 0 )$ , and $k$ -nearest neighbors (1 − 10).</fact> <scope>from paper context</scope>",
+      "fact": "0 }$ ), number of RF estimators $( 1 0 0 - 5 0 0 )$ , and $k$ -nearest neighbors (1 − 10).",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>For a fair comparison, we follow the data preprocessing steps from [7], including removing entries with missing values (reducing the dataset to 740 points), using a $6 6 \\% - 3 4 \\%$ train-test split, converting labels $\\mathbf { \\dot { \\theta } } 1 - 4 \\mathbf { \\overrightarrow { \\theta } }$ to ”1” for binary classification (0 indicating no heart disease and 1 for heart disease), and normalizing the dataset.</fact> <scope>from paper context</scope>",
+      "fact": "For a fair comparison, we follow the data preprocessing steps from [7], including removing entries with missing values (reducing the dataset to 740 points), using a $6 6 \\% - 3 4 \\%$ train-test split, converting labels $\\mathbf { \\dot { \\theta } } 1 - 4 \\mathbf { \\overrightarrow { \\theta } }$ to ”1” for binary classification (0 indicating no heart disease and 1 for heart disease), and normalizing the dataset.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>In this work, all of the four clients are selected in each federation round, i.e., no client sampling.</fact> <scope>from paper context</scope>",
+      "fact": "In this work, all of the four clients are selected in each federation round, i.e., no client sampling.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>In this work, as in [7], local updates in batches are counted rather than local epochs, aligning with theoretical formulations and extending to related strategies based on FedAvg.</fact> <scope>from paper context</scope>",
+      "fact": "In this work, as in [7], local updates in batches are counted rather than local epochs, aligning with theoretical formulations and extending to related strategies based on FedAvg.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>By dynamically adjusting  # Algorithm 1 Local classifier  Require: Dataset $D$ (920 points)  1: Set hyperparameter values for chosen model    2: Remove points with missing values from $D$    3: Split $D$ into $66 \\%$ training set $T$ and $34 \\%$ test set $E$    4: Normalize $T$ (e.g., scale features to have zero mean and unit variance)    5: Initialize model parameters $\\theta$    6: for $t = 1$ to 50 epochs do    7: Update model parameters $\\theta$ by training on $T$    8: end for    9: Evaluate final model on test set $E$    10: Compute testing accuracy Acc    11: Output Acc as the final testing accuracy  # Algorithm 2 Federated aggregation  Require: Dataset D from 4 clients $( D _ { 1 } , D _ { 2 } , D _ { 3 } , D _ { 4 } )$  1: Set hyperparameter values for chosen model    2: Initialize global model parameters $\\theta$    3: for each client $k \\in \\{ 1 , 2 , 3 , 4 \\}$ do    4: Preprocess data similar to Local Classifier    5: for $t = 1$ to 50 epochs do    6: Local Classifier    7: Send $\\theta _ { k }$ to the server    8: Receive updated global model parameters $\\theta$ from the server    9: end for    10: Evaluate local model on test set $E _ { k }$    11: Compute local testing accuracy $A c c _ { k }$    12: end for    13: Aggregate local testing accuracies $A c c _ { 1 } , A c c _ { 2 } , A c c _ { 3 } , A c c _ { 4 }$    14: PCompute average testing accuracy4k=1 nkn Acck $\\begin{array} { r l } { \\operatorname { A c c } _ { \\mathrm { a v g } } \\quad } & { { } = } \\end{array}$ -nAcck    15: Output $\\mathbf { A c c _ { a v g } }$ as the final testing accuracy  learning rates based on the magnitude and direction of gradients, ADAM optimizes the training process for each client individually, contributing to more accurate model updates.</fact> <scope>from paper context</scope>",
+      "fact": "By dynamically adjusting  # Algorithm 1 Local classifier  Require: Dataset $D$ (920 points)  1: Set hyperparameter values for chosen model    2: Remove points with missing values from $D$    3: Split $D$ into $66 \\%$ training set $T$ and $34 \\%$ test set $E$    4: Normalize $T$ (e.g., scale features to have zero mean and unit variance)    5: Initialize model parameters $\\theta$    6: for $t = 1$ to 50 epochs do    7: Update model parameters $\\theta$ by training on $T$    8: end for    9: Evaluate final model on test set $E$    10: Compute testing accuracy Acc    11: Output Acc as the final testing accuracy  # Algorithm 2 Federated aggregation  Require: Dataset D from 4 clients $( D _ { 1 } , D _ { 2 } , D _ { 3 } , D _ { 4 } )$  1: Set hyperparameter values for chosen model    2: Initialize global model parameters $\\theta$    3: for each client $k \\in \\{ 1 , 2 , 3 , 4 \\}$ do    4: Preprocess data similar to Local Classifier    5: for $t = 1$ to 50 epochs do    6: Local Classifier    7: Send $\\theta _ { k }$ to the server    8: Receive updated global model parameters $\\theta$ from the server    9: end for    10: Evaluate local model on test set $E _ { k }$    11: Compute local testing accuracy $A c c _ { k }$    12: end for    13: Aggregate local testing accuracies $A c c _ { 1 } , A c c _ { 2 } , A c c _ { 3 } , A c c _ { 4 }$    14: PCompute average testing accuracy4k=1 nkn Acck $\\begin{array} { r l } { \\operatorname { A c c } _ { \\mathrm { a v g } } \\quad } & { { } = } \\end{array}$ -nAcck    15: Output $\\mathbf { A c c _ { a v g } }$ as the final testing accuracy  learning rates based on the magnitude and direction of gradients, ADAM optimizes the training process for each client individually, contributing to more accurate model updates.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>Client updates are computed as:  $$ \\begin{array}{l} \\Delta_ {t} = \\frac {1}{| S |} \\sum_ {i \\in S} \\Delta_ {i} ^ {t} \\\\ m _ {t} = \\beta_ {1} m _ {t - 1} + (1 - \\beta_ {1}) \\Delta_ {t} \\tag {1} \\\\ v _ {t} = \\beta_ {2} v _ {t - 1} + (1 - \\beta_ {2}) (\\Delta_ {t}) ^ {2} \\\\ x _ {t + 1} = x _ {t} - \\eta \\frac {m _ {t}}{\\sqrt {v _ {t}} + \\tau} \\\\ \\end{array} $$  where $\\Delta _ { t }$ is the aggregated gradient update at time t, $S$ is the set of clients participating, $| S |$ is the number of clients in $S$ , $m _ { t }$ and $v _ { t }$ are the first and second moment estimates, $\\beta _ { 1 }$ and $\\beta _ { 2 }$ are the exponential decay rates for these moment estimates, $\\eta$ is the learning rate, and $\\tau$ is a small constant for numerical stability.</fact> <scope>from paper context</scope>",
+      "fact": "Client updates are computed as:  $$ \\begin{array}{l} \\Delta_ {t} = \\frac {1}{| S |} \\sum_ {i \\in S} \\Delta_ {i} ^ {t} \\\\ m _ {t} = \\beta_ {1} m _ {t - 1} + (1 - \\beta_ {1}) \\Delta_ {t} \\tag {1} \\\\ v _ {t} = \\beta_ {2} v _ {t - 1} + (1 - \\beta_ {2}) (\\Delta_ {t}) ^ {2} \\\\ x _ {t + 1} = x _ {t} - \\eta \\frac {m _ {t}}{\\sqrt {v _ {t}} + \\tau} \\\\ \\end{array} $$  where $\\Delta _ { t }$ is the aggregated gradient update at time t, $S$ is the set of clients participating, $| S |$ is the number of clients in $S$ , $m _ { t }$ and $v _ { t }$ are the first and second moment estimates, $\\beta _ { 1 }$ and $\\beta _ { 2 }$ are the exponential decay rates for these moment estimates, $\\eta$ is the learning rate, and $\\tau$ is a small constant for numerical stability.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>Specifically, to address the issue of heterogeneity, FedYogi dynamically adjusts the learning rate based on the gradients’ first and second moments, $m _ { t }$ and $v _ { t }$ , respectively.</fact> <scope>from paper context</scope>",
+      "fact": "Specifically, to address the issue of heterogeneity, FedYogi dynamically adjusts the learning rate based on the gradients’ first and second moments, $m _ { t }$ and $v _ { t }$ , respectively.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>For each client, the updates are computed similarly to FedAdam, except for the second moment estimate, $v _ { t }$ , which is computed as  $$ v _ {t} = v _ {t - 1} - (1 - \\beta_ {2}) \\Delta_ {t} ^ {2} \\mathrm {s i g n} (v _ {t - 1} - \\Delta_ {t} ^ {2}) $$  where $v _ { t } , \\beta _ { 2 } , \\Delta _ { t }$ are the same as in (1).</fact> <scope>from paper context</scope>",
+      "fact": "For each client, the updates are computed similarly to FedAdam, except for the second moment estimate, $v _ { t }$ , which is computed as  $$ v _ {t} = v _ {t - 1} - (1 - \\beta_ {2}) \\Delta_ {t} ^ {2} \\mathrm {s i g n} (v _ {t - 1} - \\Delta_ {t} ^ {2}) $$  where $v _ { t } , \\beta _ { 2 } , \\Delta _ { t }$ are the same as in (1).",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>The difference in how $v _ { t }$ is computed between the two strategies is that when $v _ { t - 1 }$ is much larger than $\\Delta _ { t } ^ { 2 }$ , both strategies will rapidly increase the learning rate, but FedYogi does so in a more controlled way [48].</fact> <scope>from paper context</scope>",
+      "fact": "The difference in how $v _ { t }$ is computed between the two strategies is that when $v _ { t - 1 }$ is much larger than $\\Delta _ { t } ^ { 2 }$ , both strategies will rapidly increase the learning rate, but FedYogi does so in a more controlled way [48].",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>Updates for the global and local control variables and model parameters are computed as follows:  $$ \\begin{array}{l} \\boldsymbol {y} _ {i} \\leftarrow \\boldsymbol {y} _ {i} - \\eta_ {l} \\left(g _ {i} \\left(\\boldsymbol {y} _ {i}\\right) + \\boldsymbol {c} - \\boldsymbol {c} _ {i}\\right) \\\\ c _ {i} ^ {+} \\leftarrow (\\mathrm {i}) g _ {i} (\\boldsymbol {x}), \\text {o r (i i)} \\boldsymbol {c} _ {i} - \\boldsymbol {c} + \\frac {1}{K \\eta_ {l}} (\\boldsymbol {x} - \\boldsymbol {y} _ {i}) \\\\ \\boldsymbol {x} \\leftarrow \\boldsymbol {x} + \\frac {\\eta_ {g}}{| S |} \\sum_ {i \\in S} (\\boldsymbol {y} _ {i} - \\boldsymbol {x}) \\\\ \\boldsymbol {c} \\gets \\boldsymbol {c} + \\frac {1}{N} \\sum_ {i \\in S} (\\boldsymbol {c} _ {\\boldsymbol {i}} ^ {+} - \\boldsymbol {c} _ {\\boldsymbol {i}}) \\\\ \\end{array} $$  where $\\mathbf { { \\mathit { y } } } _ { i }$ is client update performed $K$ times, $\\eta$ is the learning rate, $g _ { i } ( y _ { i } )$ is the mini-batch gradient, and $_ { \\textbf { \\em x } }$ are the server parameters.</fact> <scope>from paper context</scope>",
+      "fact": "Updates for the global and local control variables and model parameters are computed as follows:  $$ \\begin{array}{l} \\boldsymbol {y} _ {i} \\leftarrow \\boldsymbol {y} _ {i} - \\eta_ {l} \\left(g _ {i} \\left(\\boldsymbol {y} _ {i}\\right) + \\boldsymbol {c} - \\boldsymbol {c} _ {i}\\right) \\\\ c _ {i} ^ {+} \\leftarrow (\\mathrm {i}) g _ {i} (\\boldsymbol {x}), \\text {o r (i i)} \\boldsymbol {c} _ {i} - \\boldsymbol {c} + \\frac {1}{K \\eta_ {l}} (\\boldsymbol {x} - \\boldsymbol {y} _ {i}) \\\\ \\boldsymbol {x} \\leftarrow \\boldsymbol {x} + \\frac {\\eta_ {g}}{| S |} \\sum_ {i \\in S} (\\boldsymbol {y} _ {i} - \\boldsymbol {x}) \\\\ \\boldsymbol {c} \\gets \\boldsymbol {c} + \\frac {1}{N} \\sum_ {i \\in S} (\\boldsymbol {c} _ {\\boldsymbol {i}} ^ {+} - \\boldsymbol {c} _ {\\boldsymbol {i}}) \\\\ \\end{array} $$  where $\\mathbf { { \\mathit { y } } } _ { i }$ is client update performed $K$ times, $\\eta$ is the learning rate, $g _ { i } ( y _ { i } )$ is the mini-batch gradient, and $_ { \\textbf { \\em x } }$ are the server parameters.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>Notice there are two options to compute the local control variate $c _ { i }$ .</fact> <scope>from paper context</scope>",
+      "fact": "Notice there are two options to compute the local control variate $c _ { i }$ .",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>Option (i) makes an additional pass over the client’s local data to compute the gradient at server model $_ { \\textbf { \\em x } }$ .</fact> <scope>from paper context</scope>",
+      "fact": "Option (i) makes an additional pass over the client’s local data to compute the gradient at server model $_ { \\textbf { \\em x } }$ .",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>Option (ii) reuses the previously computed gradients, making it the cheaper but less stable option.</fact> <scope>from paper context</scope>",
+      "fact": "Option (ii) reuses the previously computed gradients, making it the cheaper but less stable option.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>TABLE II TEST ACCURACIES FOR POOLED DATA AND VARIOUS LEARNING MODELS.</fact> <scope>from paper context</scope>",
+      "fact": "TABLE II TEST ACCURACIES FOR POOLED DATA AND VARIOUS LEARNING MODELS.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>[7] Accuracy (%) = 78.7%</fact> <scope>from table in paper</scope>",
+      "fact": "[7] Accuracy (%) = 78.7%",
+      "scope": "from table in paper",
+      "source_type": "table_metric",
+      "model": "[7]",
+      "metric_name": "Accuracy (%)",
+      "value_raw": "78.7",
+      "reason_codes": [
+        "TABLE_EXPANDED"
+      ]
+    },
+    {
+      "criterion": "<fact>LR Accuracy (%) = 80.5%</fact> <scope>from table in paper</scope>",
+      "fact": "LR Accuracy (%) = 80.5%",
+      "scope": "from table in paper",
+      "source_type": "table_metric",
+      "model": "LR",
+      "metric_name": "Accuracy (%)",
+      "value_raw": "80.5",
+      "reason_codes": [
+        "TABLE_EXPANDED"
+      ]
+    },
+    {
+      "criterion": "<fact>1LNN Accuracy (%) = 82.1%</fact> <scope>from table in paper</scope>",
+      "fact": "1LNN Accuracy (%) = 82.1%",
+      "scope": "from table in paper",
+      "source_type": "table_metric",
+      "model": "1LNN",
+      "metric_name": "Accuracy (%)",
+      "value_raw": "82.1",
+      "reason_codes": [
+        "TABLE_EXPANDED"
+      ]
+    },
+    {
+      "criterion": "<fact>SVM Accuracy (%) = 83.3%</fact> <scope>from table in paper</scope>",
+      "fact": "SVM Accuracy (%) = 83.3%",
+      "scope": "from table in paper",
+      "source_type": "table_metric",
+      "model": "SVM",
+      "metric_name": "Accuracy (%)",
+      "value_raw": "83.3",
+      "reason_codes": [
+        "TABLE_EXPANDED"
+      ]
+    },
+    {
+      "criterion": "<fact>NB Accuracy (%) = 78.5%</fact> <scope>from table in paper</scope>",
+      "fact": "NB Accuracy (%) = 78.5%",
+      "scope": "from table in paper",
+      "source_type": "table_metric",
+      "model": "NB",
+      "metric_name": "Accuracy (%)",
+      "value_raw": "78.5",
+      "reason_codes": [
+        "TABLE_EXPANDED"
+      ]
+    },
+    {
+      "criterion": "<fact>DT Accuracy (%) = 78.1%</fact> <scope>from table in paper</scope>",
+      "fact": "DT Accuracy (%) = 78.1%",
+      "scope": "from table in paper",
+      "source_type": "table_metric",
+      "model": "DT",
+      "metric_name": "Accuracy (%)",
+      "value_raw": "78.1",
+      "reason_codes": [
+        "TABLE_EXPANDED"
+      ]
+    },
+    {
+      "criterion": "<fact>RF Accuracy (%) = 80.3%</fact> <scope>from table in paper</scope>",
+      "fact": "RF Accuracy (%) = 80.3%",
+      "scope": "from table in paper",
+      "source_type": "table_metric",
+      "model": "RF",
+      "metric_name": "Accuracy (%)",
+      "value_raw": "80.3",
+      "reason_codes": [
+        "TABLE_EXPANDED"
+      ]
+    },
+    {
+      "criterion": "<fact>KNN Accuracy (%) = 68.6%</fact> <scope>from table in paper</scope>",
+      "fact": "KNN Accuracy (%) = 68.6%",
+      "scope": "from table in paper",
+      "source_type": "table_metric",
+      "model": "KNN",
+      "metric_name": "Accuracy (%)",
+      "value_raw": "68.6",
+      "reason_codes": [
+        "TABLE_EXPANDED"
+      ]
+    },
+    {
+      "criterion": "<fact># D.</fact> <scope>from paper context</scope>",
+      "fact": "# D.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>Logistic regression (LR), one-layer neural network (1LNN), support vector machine (SVM) with a linear kernel achieve the highest accuracies, with SVM leading at $8 3 .</fact> <scope>from paper context</scope>",
+      "fact": "Logistic regression (LR), one-layer neural network (1LNN), support vector machine (SVM) with a linear kernel achieve the highest accuracies, with SVM leading at $8 3 .",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>The models were all trained for 30 epochs using their respective best performing hyperparameter settings from centralized (pooled) tuning.</fact> <scope>from paper context</scope>",
+      "fact": "The models were all trained for 30 epochs using their respective best performing hyperparameter settings from centralized (pooled) tuning.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>We compare test accuracies (averaged over 10 seeds) of LR, 1LNN, and SVM local models and using FedAvg, FedAdam, FedYogi and SCAFFOLD FL algorithms.</fact> <scope>from paper context</scope>",
+      "fact": "We compare test accuracies (averaged over 10 seeds) of LR, 1LNN, and SVM local models and using FedAvg, FedAdam, FedYogi and SCAFFOLD FL algorithms.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>The SVM local model consistently achieves the highest test accuracy across all federated algorithms, with FedYogi delivering the best performance at $0 .</fact> <scope>from paper context</scope>",
+      "fact": "The SVM local model consistently achieves the highest test accuracy across all federated algorithms, with FedYogi delivering the best performance at $0 .",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>We exclude Switzerland dataset from this comparison where all examples are of the same class after preprocessing.</fact> <scope>from paper context</scope>",
+      "fact": "We exclude Switzerland dataset from this comparison where all examples are of the same class after preprocessing.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>For example, for Hungary and VA hospitals, local training performs consistently worse than FedAdam and FedYogi FL algorithms for all the three learning models considered in the comparison.</fact> <scope>from paper context</scope>",
+      "fact": "For example, for Hungary and VA hospitals, local training performs consistently worse than FedAdam and FedYogi FL algorithms for all the three learning models considered in the comparison.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>TABLE III TEST ACCURACIES FOR LOCAL TRAINING COMPARED TO FL ALGORITHMS     <table><tr><td></td><td>Cleveland</td><td>Hungary</td><td>VA</td><td>FedAvg</td><td>FedAdam</td><td>FedYogi</td><td>SCAFFOLD</td></tr><tr><td>LR</td><td>0.667 ± 0.0831</td><td>0.659 ± 0.0901</td><td>0.608 ± 0.0616</td><td>0.703 ± 0.0262</td><td>0.72 ± 0.0191</td><td>0.721 ± 0.0129</td><td>0.703 ± 0.262</td></tr><tr><td>1LNN</td><td>0.728 ± 0.0462</td><td>0.686 ± 0.0558</td><td>0.648 ± 0.0742</td><td>0.598 ± 0.0223</td><td>0.726 ± 0.483</td><td>0.732 ± 0.329</td><td>0.598 ± 0.1025</td></tr><tr><td>SVM</td><td>0.779 ± 0.0247</td><td>0.628 ± 0.0873</td><td>0.661 ± 0.0719</td><td>0.731 ± 0.0223</td><td>0.736 ± 0.372</td><td>0.738 ± 0.276</td><td>0.731 ± 0.0223</td></tr></table>  # IV.</fact> <scope>from paper context</scope>",
+      "fact": "TABLE III TEST ACCURACIES FOR LOCAL TRAINING COMPARED TO FL ALGORITHMS     <table><tr><td></td><td>Cleveland</td><td>Hungary</td><td>VA</td><td>FedAvg</td><td>FedAdam</td><td>FedYogi</td><td>SCAFFOLD</td></tr><tr><td>LR</td><td>0.667 ± 0.0831</td><td>0.659 ± 0.0901</td><td>0.608 ± 0.0616</td><td>0.703 ± 0.0262</td><td>0.72 ± 0.0191</td><td>0.721 ± 0.0129</td><td>0.703 ± 0.262</td></tr><tr><td>1LNN</td><td>0.728 ± 0.0462</td><td>0.686 ± 0.0558</td><td>0.648 ± 0.0742</td><td>0.598 ± 0.0223</td><td>0.726 ± 0.483</td><td>0.732 ± 0.329</td><td>0.598 ± 0.1025</td></tr><tr><td>SVM</td><td>0.779 ± 0.0247</td><td>0.628 ± 0.0873</td><td>0.661 ± 0.0719</td><td>0.731 ± 0.0223</td><td>0.736 ± 0.372</td><td>0.738 ± 0.276</td><td>0.731 ± 0.0223</td></tr></table>  # IV.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>INTERPRETABILITY ANALYSIS  In critical applications like healthcare, interpretability is essential for understanding the decision-making of predictive models.</fact> <scope>from paper context</scope>",
+      "fact": "INTERPRETABILITY ANALYSIS  In critical applications like healthcare, interpretability is essential for understanding the decision-making of predictive models.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>Similarly, ’trestbps’ (resting blood pressure at admission) is also deemed low in importance.</fact> <scope>from paper context</scope>",
+      "fact": "Similarly, ’trestbps’ (resting blood pressure at admission) is also deemed low in importance.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>Like age, it  TABLE IV MEAN ABSOLUTE SHAP VALUES FOR EACH FEATURE AND THEIR IMPORTANCE RANKING (IN PARANTHES IS)     <table><tr><td></td><td>oldpeak</td><td>cp</td><td>exang</td><td>sex</td><td>thalach</td><td>fbs</td><td>chol</td><td>restecg</td><td>trestbps</td><td>age</td></tr><tr><td>LR</td><td>0.57 (1)</td><td>0.53 (2)</td><td>0.51 (3)</td><td>0.44 (4)</td><td>0.37 (5)</td><td>0.18 (6)</td><td>0.16 (7)</td><td>0.13 (8)</td><td>0.03 (9)</td><td>0.03 (10)</td></tr><tr><td>SVM</td><td>0.44(1)</td><td>0.44 (2)</td><td>0.38 (3)</td><td>0.36 (4)</td><td>0.18 (5)</td><td>0.14 (6)</td><td>0.13 (7)</td><td>0.04 (9)</td><td>0.01 (10)</td><td>0.08 (8)</td></tr><tr><td>1LNN</td><td>0.1 (1)</td><td>0.07 (5)</td><td>0.09 (2)</td><td>0.05 (6)</td><td>0.08 (3)</td><td>0.02 (7)</td><td>0.07 (4)</td><td>0.02 (8)</td><td>0.01 (9)</td><td>0.0 (10)</td></tr><tr><td>NB</td><td>0.11 (3)</td><td>0.09 (4)</td><td>0.15 (1)</td><td>0.11 (2)</td><td>0.06 (6)</td><td>0.04 (7)</td><td>0.06 (5)</td><td>0.01 (10)</td><td>0.03 (9)</td><td>0.03 (8)</td></tr><tr><td>RF</td><td>0.1 (2)</td><td>0.17 (1)</td><td>0.09 (3)</td><td>0.08 (4)</td><td>0.06 (6)</td><td>0.02 (9)</td><td>0.06 (5)</td><td>0.01 (10)</td><td>0.03 (8)</td><td>0.04 (7)</td></tr><tr><td>DT</td><td>0.0 (5)</td><td>0.38 (1)</td><td>0.05 (4)</td><td>0.08 (2)</td><td>0.0 (5)</td><td>0.0 (5)</td><td>0.06 (3)</td><td>0.0 (5)</td><td>0.0 (5)</td><td>0.0 (5)</td></tr><tr><td>KNN</td><td>0.0 (5)</td><td>0.0 (5)</td><td>0.0 (5)</td><td>0.0 (5)</td><td>0.22 (1)</td><td>0.0 (5)</td><td>0.17 (2)</td><td>0.0 (5)</td><td>0.09 (3)</td><td>0.06 (4)</td></tr></table>  serves as a general health indicator rather than a direct measure of heart function.</fact> <scope>from paper context</scope>",
+      "fact": "Like age, it  TABLE IV MEAN ABSOLUTE SHAP VALUES FOR EACH FEATURE AND THEIR IMPORTANCE RANKING (IN PARANTHES IS)     <table><tr><td></td><td>oldpeak</td><td>cp</td><td>exang</td><td>sex</td><td>thalach</td><td>fbs</td><td>chol</td><td>restecg</td><td>trestbps</td><td>age</td></tr><tr><td>LR</td><td>0.57 (1)</td><td>0.53 (2)</td><td>0.51 (3)</td><td>0.44 (4)</td><td>0.37 (5)</td><td>0.18 (6)</td><td>0.16 (7)</td><td>0.13 (8)</td><td>0.03 (9)</td><td>0.03 (10)</td></tr><tr><td>SVM</td><td>0.44(1)</td><td>0.44 (2)</td><td>0.38 (3)</td><td>0.36 (4)</td><td>0.18 (5)</td><td>0.14 (6)</td><td>0.13 (7)</td><td>0.04 (9)</td><td>0.01 (10)</td><td>0.08 (8)</td></tr><tr><td>1LNN</td><td>0.1 (1)</td><td>0.07 (5)</td><td>0.09 (2)</td><td>0.05 (6)</td><td>0.08 (3)</td><td>0.02 (7)</td><td>0.07 (4)</td><td>0.02 (8)</td><td>0.01 (9)</td><td>0.0 (10)</td></tr><tr><td>NB</td><td>0.11 (3)</td><td>0.09 (4)</td><td>0.15 (1)</td><td>0.11 (2)</td><td>0.06 (6)</td><td>0.04 (7)</td><td>0.06 (5)</td><td>0.01 (10)</td><td>0.03 (9)</td><td>0.03 (8)</td></tr><tr><td>RF</td><td>0.1 (2)</td><td>0.17 (1)</td><td>0.09 (3)</td><td>0.08 (4)</td><td>0.06 (6)</td><td>0.02 (9)</td><td>0.06 (5)</td><td>0.01 (10)</td><td>0.03 (8)</td><td>0.04 (7)</td></tr><tr><td>DT</td><td>0.0 (5)</td><td>0.38 (1)</td><td>0.05 (4)</td><td>0.08 (2)</td><td>0.0 (5)</td><td>0.0 (5)</td><td>0.06 (3)</td><td>0.0 (5)</td><td>0.0 (5)</td><td>0.0 (5)</td></tr><tr><td>KNN</td><td>0.0 (5)</td><td>0.0 (5)</td><td>0.0 (5)</td><td>0.0 (5)</td><td>0.22 (1)</td><td>0.0 (5)</td><td>0.17 (2)</td><td>0.0 (5)</td><td>0.09 (3)</td><td>0.06 (4)</td></tr></table>  serves as a general health indicator rather than a direct measure of heart function.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>High blood pressure can be a risk factor, but its predictive strength may be overshadowed by features like ’oldpeak’, which directly assess heart function.</fact> <scope>from paper context</scope>",
+      "fact": "High blood pressure can be a risk factor, but its predictive strength may be overshadowed by features like ’oldpeak’, which directly assess heart function.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>Model complexity effect on Shapley-based interpretability.: The unexpected SHAP values for Decision Trees (DT) and K-Nearest Neighbors (KNN) are due to their inherent complexity compared to simpler linear models.</fact> <scope>from paper context</scope>",
+      "fact": "Model complexity effect on Shapley-based interpretability.: The unexpected SHAP values for Decision Trees (DT) and K-Nearest Neighbors (KNN) are due to their inherent complexity compared to simpler linear models.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>DTs create partitions based on features, complicating the assignment of SHAP values as each split affects the prediction path.</fact> <scope>from paper context</scope>",
+      "fact": "DTs create partitions based on features, complicating the assignment of SHAP values as each split affects the prediction path.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>In contrast, KNN considers instances relative to their nearest neighbors, leading to variability in SHAP values because predictions depend on different neighbor sets.</fact> <scope>from paper context</scope>",
+      "fact": "In contrast, KNN considers instances relative to their nearest neighbors, leading to variability in SHAP values because predictions depend on different neighbor sets.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>This variability makes interpreting SHAP values difficult, as feature contributions are not consistently defined across instances.</fact> <scope>from paper context</scope>",
+      "fact": "This variability makes interpreting SHAP values difficult, as feature contributions are not consistently defined across instances.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>CONCLUSION  In this work, we established a benchmark for binary classification models for heart disease using the UCI heart disease dataset, evaluated in both centralized (pooled) and federated settings, and conducted interpretability analysis using Shapley values to understand the features influencing model predictions.</fact> <scope>from paper context</scope>",
+      "fact": "CONCLUSION  In this work, we established a benchmark for binary classification models for heart disease using the UCI heart disease dataset, evaluated in both centralized (pooled) and federated settings, and conducted interpretability analysis using Shapley values to understand the features influencing model predictions.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>In the centralized setting, a linear kernel SVM achieves the highest accuracy of $8 3 .</fact> <scope>from paper context</scope>",
+      "fact": "In the centralized setting, a linear kernel SVM achieves the highest accuracy of $8 3 .",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>3 \\%$ .</fact> <scope>from paper context</scope>",
+      "fact": "3 \\%$ .",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>In the federated setting, we trained various local training algorithms and model aggregation strategies.</fact> <scope>from paper context</scope>",
+      "fact": "In the federated setting, we trained various local training algorithms and model aggregation strategies.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>The best performing model was an SVM local trainer with testing accuracy $7 3 .</fact> <scope>from paper context</scope>",
+      "fact": "The best performing model was an SVM local trainer with testing accuracy $7 3 .",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>8 \\%$ for FedAdam and FedYogi aggregation strategies.</fact> <scope>from paper context</scope>",
+      "fact": "8 \\%$ for FedAdam and FedYogi aggregation strategies.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>It also provides reliable estimates for test accuracy since it is trained on raw data without duplication, unlike much of the existing literature.</fact> <scope>from paper context</scope>",
+      "fact": "It also provides reliable estimates for test accuracy since it is trained on raw data without duplication, unlike much of the existing literature.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>We compared the federated results with local models trained on the individual hospital datasets.</fact> <scope>from paper context</scope>",
+      "fact": "We compared the federated results with local models trained on the individual hospital datasets.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>Brown, “Measuring the effects of nonidentical data distribution for federated visual classification,” arXiv preprint arXiv:1909.06335, 2019.</fact> <scope>from paper context</scope>",
+      "fact": "Brown, “Measuring the effects of nonidentical data distribution for federated visual classification,” arXiv preprint arXiv:1909.06335, 2019.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>Lee, “A unified approach to interpreting model predictions,” Advances in neural information processing systems, vol.</fact> <scope>from paper context</scope>",
+      "fact": "Lee, “A unified approach to interpreting model predictions,” Advances in neural information processing systems, vol.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>[36] Kaggle, “Heart disease dataset,” https://www.kaggle.com/datasets/johnsmith88/heart-disease-dataset/data, n.d., accessed: February 20, 2024.</fact> <scope>from paper context</scope>",
+      "fact": "[36] Kaggle, “Heart disease dataset,” https://www.kaggle.com/datasets/johnsmith88/heart-disease-dataset/data, n.d., accessed: February 20, 2024.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>Saidi et al., “Efficient medical diagnosis of human heart diseases using machine learning techniques with and without gridsearchcv,” IEEE Access, vol.</fact> <scope>from paper context</scope>",
+      "fact": "Saidi et al., “Efficient medical diagnosis of human heart diseases using machine learning techniques with and without gridsearchcv,” IEEE Access, vol.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>Usman, “Influence of optimal hyperparameters on the performance of machine learning algorithms for predicting heart disease,” Processes, vol.</fact> <scope>from paper context</scope>",
+      "fact": "Usman, “Influence of optimal hyperparameters on the performance of machine learning algorithms for predicting heart disease,” Processes, vol.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>Eytan, “Towards understanding ecg rhythm classification using convolutional neural networks and attention mappings,” in Machine learning for healthcare conference.</fact> <scope>from paper context</scope>",
+      "fact": "Eytan, “Towards understanding ecg rhythm classification using convolutional neural networks and attention mappings,” in Machine learning for healthcare conference.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>Torralba, “Learning deep features for discriminative localization,” in Proceedings of the IEEE conference on computer vision and pattern recognition, 2016, pp.</fact> <scope>from paper context</scope>",
+      "fact": "Torralba, “Learning deep features for discriminative localization,” in Proceedings of the IEEE conference on computer vision and pattern recognition, 2016, pp.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>Zhang, “Interpretable prediction of 3-year all-cause mortality in patients with heart failure caused by coronary heart disease based on machine learning and shap,” Computers in biology and medicine, vol.</fact> <scope>from paper context</scope>",
+      "fact": "Zhang, “Interpretable prediction of 3-year all-cause mortality in patients with heart failure caused by coronary heart disease based on machine learning and shap,” Computers in biology and medicine, vol.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>Ba, “Adam: A method for stochastic optimization,” arXiv preprint arXiv:1412.6980, 2014.</fact> <scope>from paper context</scope>",
+      "fact": "Ba, “Adam: A method for stochastic optimization,” arXiv preprint arXiv:1412.6980, 2014.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>Kumar, “Adaptive methods for nonconvex optimization,” Advances in neural information processing systems, vol.</fact> <scope>from paper context</scope>",
+      "fact": "Kumar, “Adaptive methods for nonconvex optimization,” Advances in neural information processing systems, vol.",
+      "scope": "from paper context",
+      "source_type": "text_statement",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    }
+  ],
+  "input_sentence_indices": [
+    1,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    24,
+    31,
+    46,
+    51,
+    52,
+    56,
+    95,
+    101,
+    102,
+    104,
+    105,
+    108,
+    109,
+    110,
+    111,
+    114,
+    115,
+    116,
+    117,
+    118,
+    119,
+    120,
+    121,
+    122,
+    133,
+    142,
+    153,
+    154,
+    161,
+    162,
+    163,
+    169,
+    170,
+    171,
+    172,
+    173,
+    174,
+    175,
+    177,
+    181,
+    182,
+    183,
+    191,
+    194,
+    195,
+    196,
+    236,
+    237,
+    238,
+    242,
+    243,
+    244,
+    245,
+    247,
+    248,
+    249,
+    250,
+    251,
+    252,
+    254,
+    255,
+    476,
+    507,
+    551,
+    578,
+    589,
+    620,
+    628,
+    638,
+    650,
+    656
+  ],
+  "reason_codes": [
+    "ALGORITHM_PERFORMANCE",
+    "ALGO_EXPLORED",
+    "AMBIGUOUS_METRIC",
+    "BENCHMARK",
+    "CENTRALIZED_AGGREGATION",
+    "CENTRALIZED_ALGORITHM",
+    "CLAIM_NO_ACCURACY_LOSS",
+    "CLIENT_COUNT_SPECIFIED",
+    "CLIENT_TYPE_HOSPITAL",
+    "COMPARISON",
+    "COORDINATING_SERVER",
+    "DATASET",
+    "DATASET_PARTITION_USED",
+    "DATA_ORIGIN",
+    "DATA_POOLING",
+    "EXACT_QUOTATION",
+    "FEDERATED_ALGORITHM",
+    "GEOGRAPHY",
+    "GOAL_ENHANCE_PRIVACY",
+    "HEART_DISEASE_CLASSIFICATION",
+    "HEURISTIC_FALLBACK",
+    "ITERATIVE_PROCESS",
+    "LLM_BUDGET_EXCEEDED",
+    "LOCAL_TRAINING",
+    "MODEL_METHOD_SPECIFIED",
+    "NO_RAW_DATA_SHARED",
+    "NUMERIC_MALFORMATION",
+    "NUMERIC_VALUE_REPORTED",
+    "ONLY_UPDATES_SHARED",
+    "RC-CONTAINS_BACKSLASH",
+    "RC-CONTAINS_DIGIT",
+    "RC-CONTAINS_DOLLAR",
+    "RC-CONTAINS_PERCENT",
+    "RC-CONTAINS_PERIOD",
+    "RECORD_COUNT",
+    "SAMPLE_SIZE",
+    "SCOPE_IDENTIFICATION",
+    "SITES_COUNT",
+    "SITE_COUNTRIES",
+    "TASK",
+    "TRAINING_SETUP",
+    "UCI",
+    "VALUE_LINKED_TO_METHOD",
+    "ambiguous_numeric_format",
+    "ambiguous_relationship",
+    "ambiguous_unit_symbol",
+    "ambiguous_units",
+    "assertion_unverifiable_without_source",
+    "logical_inconsistency",
+    "malformed_characters",
+    "malformed_numeric",
+    "missing_unit_percent",
+    "parsing_error_currency_symbol",
+    "scope_unspecified",
+    "subjective_term_uncommon",
+    "units_mismatch"
+  ]
+}

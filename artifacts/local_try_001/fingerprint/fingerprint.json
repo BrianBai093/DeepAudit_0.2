@@ -1,0 +1,344 @@
+{
+  "fingerprint_id": "10.24432/C52P4X.",
+  "metadata": {
+    "paper_id": "10.24432/C52P4X.",
+    "repository_url": "https://doi.org/10.24432/C52P4X.",
+    "venue": null,
+    "year": 1981
+  },
+  "configurations": {
+    "dataset_specs": [],
+    "hyperparameters": {},
+    "model_arch": [],
+    "environment": {},
+    "evaluation_metrics": []
+  },
+  "claims": [
+    {
+      "id": "claim_01",
+      "claim_type": "Unknown",
+      "fact": "with four clients",
+      "scope": "number of clients",
+      "comparator": null,
+      "verification_logic": "unknown",
+      "tolerance": {
+        "abs": null,
+        "rel": null,
+        "text": "use default verification tolerance"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[19]",
+        "visual_anchor": null,
+        "visual_data": {}
+      },
+      "reason_codes": [
+        "CLIENT_COUNT_SPECIFIED"
+      ]
+    },
+    {
+      "id": "claim_02",
+      "claim_type": "Unknown",
+      "fact": "Instead, clients train local model updates and only these updates are shared and aggregated globally with a coordinating central server in an iterative fashion.",
+      "scope": "client",
+      "comparator": null,
+      "verification_logic": "unknown",
+      "tolerance": {
+        "abs": null,
+        "rel": null,
+        "text": "use default verification tolerance"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[33]",
+        "visual_anchor": null,
+        "visual_data": {}
+      },
+      "reason_codes": [
+        "LOCAL_TRAINING"
+      ]
+    },
+    {
+      "id": "claim_03",
+      "claim_type": "Unknown",
+      "fact": "Instead, clients train local model updates and only these updates are shared and aggregated globally with a coordinating central server in an iterative fashion.",
+      "scope": "communication",
+      "comparator": null,
+      "verification_logic": "unknown",
+      "tolerance": {
+        "abs": null,
+        "rel": null,
+        "text": "use default verification tolerance"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[35]",
+        "visual_anchor": null,
+        "visual_data": {}
+      },
+      "reason_codes": [
+        "COORDINATING_SERVER"
+      ]
+    },
+    {
+      "id": "claim_04",
+      "claim_type": "Unknown",
+      "fact": "Instead, clients train local model updates and only these updates are shared and aggregated globally with a coordinating central server in an iterative fashion.",
+      "scope": "server",
+      "comparator": null,
+      "verification_logic": "unknown",
+      "tolerance": {
+        "abs": null,
+        "rel": null,
+        "text": "use default verification tolerance"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[36]",
+        "visual_anchor": null,
+        "visual_data": {}
+      },
+      "reason_codes": [
+        "CENTRALIZED_AGGREGATION"
+      ]
+    },
+    {
+      "id": "claim_05",
+      "claim_type": "Unknown",
+      "fact": "Instead, clients train local model updates and only these updates are shared and aggregated globally with a coordinating central server in an iterative fashion.",
+      "scope": "process",
+      "comparator": null,
+      "verification_logic": "unknown",
+      "tolerance": {
+        "abs": null,
+        "rel": null,
+        "text": "use default verification tolerance"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[37]",
+        "visual_anchor": null,
+        "visual_data": {}
+      },
+      "reason_codes": [
+        "ITERATIVE_PROCESS"
+      ]
+    },
+    {
+      "id": "claim_06",
+      "claim_type": "Unknown",
+      "fact": "Dataset details  The dataset consists of 920 patient records spread across four separate hospitals’ databases in Cleveland, Hungary, Switzerland, and the VA Long Beach.",
+      "scope": "from paper context",
+      "comparator": null,
+      "verification_logic": "unknown",
+      "tolerance": {
+        "abs": null,
+        "rel": null,
+        "text": "use default verification tolerance"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[43]",
+        "visual_anchor": null,
+        "visual_data": {}
+      },
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "id": "claim_07",
+      "claim_type": "Empirical",
+      "fact": "[7] Accuracy (%) = 78.7%",
+      "scope": "from table in paper",
+      "comparator": null,
+      "verification_logic": "exact_match",
+      "tolerance": {
+        "abs": null,
+        "rel": null,
+        "text": "use default verification tolerance"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[73]",
+        "visual_anchor": null,
+        "visual_data": {}
+      },
+      "reason_codes": [
+        "TABLE_EXPANDED"
+      ]
+    },
+    {
+      "id": "claim_08",
+      "claim_type": "Empirical",
+      "fact": "LR Accuracy (%) = 80.5%",
+      "scope": "from table in paper",
+      "comparator": null,
+      "verification_logic": "exact_match",
+      "tolerance": {
+        "abs": null,
+        "rel": null,
+        "text": "use default verification tolerance"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[74]",
+        "visual_anchor": null,
+        "visual_data": {}
+      },
+      "reason_codes": [
+        "TABLE_EXPANDED"
+      ]
+    },
+    {
+      "id": "claim_09",
+      "claim_type": "Empirical",
+      "fact": "1LNN Accuracy (%) = 82.1%",
+      "scope": "from table in paper",
+      "comparator": null,
+      "verification_logic": "exact_match",
+      "tolerance": {
+        "abs": null,
+        "rel": null,
+        "text": "use default verification tolerance"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[75]",
+        "visual_anchor": null,
+        "visual_data": {}
+      },
+      "reason_codes": [
+        "TABLE_EXPANDED"
+      ]
+    },
+    {
+      "id": "claim_10",
+      "claim_type": "Empirical",
+      "fact": "SVM Accuracy (%) = 83.3%",
+      "scope": "from table in paper",
+      "comparator": null,
+      "verification_logic": "exact_match",
+      "tolerance": {
+        "abs": null,
+        "rel": null,
+        "text": "use default verification tolerance"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[76]",
+        "visual_anchor": null,
+        "visual_data": {}
+      },
+      "reason_codes": [
+        "TABLE_EXPANDED"
+      ]
+    },
+    {
+      "id": "claim_11",
+      "claim_type": "Empirical",
+      "fact": "NB Accuracy (%) = 78.5%",
+      "scope": "from table in paper",
+      "comparator": null,
+      "verification_logic": "exact_match",
+      "tolerance": {
+        "abs": null,
+        "rel": null,
+        "text": "use default verification tolerance"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[77]",
+        "visual_anchor": null,
+        "visual_data": {}
+      },
+      "reason_codes": [
+        "TABLE_EXPANDED"
+      ]
+    },
+    {
+      "id": "claim_12",
+      "claim_type": "Empirical",
+      "fact": "DT Accuracy (%) = 78.1%",
+      "scope": "from table in paper",
+      "comparator": null,
+      "verification_logic": "exact_match",
+      "tolerance": {
+        "abs": null,
+        "rel": null,
+        "text": "use default verification tolerance"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[78]",
+        "visual_anchor": null,
+        "visual_data": {}
+      },
+      "reason_codes": [
+        "TABLE_EXPANDED"
+      ]
+    },
+    {
+      "id": "claim_13",
+      "claim_type": "Empirical",
+      "fact": "RF Accuracy (%) = 80.3%",
+      "scope": "from table in paper",
+      "comparator": null,
+      "verification_logic": "exact_match",
+      "tolerance": {
+        "abs": null,
+        "rel": null,
+        "text": "use default verification tolerance"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[79]",
+        "visual_anchor": null,
+        "visual_data": {}
+      },
+      "reason_codes": [
+        "TABLE_EXPANDED"
+      ]
+    },
+    {
+      "id": "claim_14",
+      "claim_type": "Empirical",
+      "fact": "KNN Accuracy (%) = 68.6%",
+      "scope": "from table in paper",
+      "comparator": null,
+      "verification_logic": "exact_match",
+      "tolerance": {
+        "abs": null,
+        "rel": null,
+        "text": "use default verification tolerance"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[80]",
+        "visual_anchor": null,
+        "visual_data": {}
+      },
+      "reason_codes": [
+        "TABLE_EXPANDED"
+      ]
+    },
+    {
+      "id": "claim_15",
+      "claim_type": "Unknown",
+      "fact": "TABLE III TEST ACCURACIES FOR LOCAL TRAINING COMPARED TO FL ALGORITHMS     <table><tr><td></td><td>Cleveland</td><td>Hungary</td><td>VA</td><td>FedAvg</td><td>FedAdam</td><td>FedYogi</td><td>SCAFFOLD</td></tr><tr><td>LR</td><td>0.667 ± 0.0831</td><td>0.659 ± 0.0901</td><td>0.608 ± 0.0616</td><td>0.703 ± 0.0262</td><td>0.72 ± 0.0191</td><td>0.721 ± 0.0129</td><td>0.703 ± 0.262</td></tr><tr><td>1LNN</td><td>0.728 ± 0.0462</td><td>0.686 ± 0.0558</td><td>0.648 ± 0.0742</td><td>0.598 ± 0.0223</td><td>0.726 ± 0.483</td><td>0.732 ± 0.329</td><td>0.598 ± 0.1025</td></tr><tr><td>SVM</td><td>0.779 ± 0.0247</td><td>0.628 ± 0.0873</td><td>0.661 ± 0.0719</td><td>0.731 ± 0.0223</td><td>0.736 ± 0.372</td><td>0.738 ± 0.276</td><td>0.731 ± 0.0223</td></tr></table>  # IV.",
+      "scope": "from paper context",
+      "comparator": null,
+      "verification_logic": "unknown",
+      "tolerance": {
+        "abs": null,
+        "rel": null,
+        "text": "use default verification tolerance"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[88]",
+        "visual_anchor": null,
+        "visual_data": {}
+      },
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    }
+  ],
+  "reason_codes": [
+    "explicit_Table_III_presenting_test_accuracies_for_local_training_compared_to_federated_algorithms",
+    "explicit_dataset_description_in_paper_including_record_count_and_hospital_sites",
+    "explicit_description_each_client_trains_local_model_and_computes_updates",
+    "explicit_statement_shared_model_updates_are_transmitted_to_a_central_server",
+    "explicit_statement_that_the_federated_setup_uses_four_clients",
+    "explicit_statement_the_central_server_aggregates_received_updates_into_a_global_model",
+    "explicit_statement_the_cycle_is_repeated_across_multiple_iterative_rounds",
+    "explicit_table_entry_reporting_SVM_test_accuracy_83.3%_clear_numeric_value"
+  ],
+  "notes": "Generated via guide -> atomic -> filter pipeline aligned with paper_fingerprint_schema.md"
+}

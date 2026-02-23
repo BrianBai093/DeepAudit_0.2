@@ -1,0 +1,1265 @@
+[
+    {
+        "type": "text",
+        "text": "Centralized and Federated Heart Disease Classification Models Using UCI Dataset and their Shapley-value Based Intepretability ",
+        "text_level": 1,
+        "bbox": [
+            88,
+            63,
+            910,
+            167
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "Mario Padilla Rodriguez ",
+        "bbox": [
+            222,
+            186,
+            408,
+            203
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "Electrical and Computer Engineering ",
+        "bbox": [
+            184,
+            204,
+            439,
+            218
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "University of Detroit Mercy ",
+        "bbox": [
+            222,
+            220,
+            408,
+            233
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "padillma1@udmercy.edu ",
+        "bbox": [
+            232,
+            234,
+            398,
+            250
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "Mohamed Nafea ",
+        "bbox": [
+            617,
+            186,
+            745,
+            200
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "Electrical and Computer Engineering ",
+        "bbox": [
+            550,
+            204,
+            805,
+            218
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "University of Detroit Mercy ",
+        "bbox": [
+            588,
+            220,
+            774,
+            233
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "nafeamo@udmercy.edu ",
+        "bbox": [
+            602,
+            234,
+            759,
+            250
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "Abstract—Cardiovascular diseases are a leading cause of mortality worldwide, highlighting the need for accurate diagnostic methods. This study benchmarks centralized and federated machine learning algorithms for heart disease classification using the UCI dataset which includes 920 patient records from four hospitals in the USA, Hungary and Switzerland. Our benchmark is supported by Shapley-value interpretability analysis to quantify features’ importance for classification. In the centralized setup, various binary classification algorithms are trained on pooled data, with a support vector machine (SVM) achieving the highest testing accuracy of $8 3 . 3 \\%$ , surpassing the established benchmark of $78 . 7 \\%$ with logistic regression. Additionally, federated learning algorithms with four clients (hospitals) are explored, leveraging the dataset’s natural partition to enhance privacy without sacrificing accuracy. Federated SVM, an uncommon approach in the literature, achieves a top testing accuracy of $7 3 . 8 \\%$ . Our interpretability analysis aligns with existing medical knowledge of heart disease indicators. Overall, this study establishes a benchmark for efficient and interpretable pre-screening tools for heart disease while maintaining patients’ privacy. ",
+        "bbox": [
+            73,
+            304,
+            491,
+            556
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "I. INTRODUCTION AND BACKGROUND ",
+        "text_level": 1,
+        "bbox": [
+            145,
+            566,
+            418,
+            580
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "A. Motivation ",
+        "text_level": 1,
+        "bbox": [
+            73,
+            587,
+            174,
+            601
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "Cardiovascular diseases remain a leading global cause of death highlighting the urgent need for accurate and efficient diagnostic tools. Over the past decade, machine learning (ML) has shown promise in revolutionizing healthcare diagnostics. This paper offers a comprehensive benchmark study of centralized and federated ML algorithms for heart disease classification using the UCI heart disease dataset [1]. Due to the presence of several inflated results in the literature based on this dataset, our benchmark provides a useful reference for further development. Additionally, our benchmark is supported by Shapley-value based interpretability analysis to quantify importance of features in influencing the decision, enhancing the transparency and trustworthiness of the adopted predictive models for healthcare professionals. In the following, we outline our contributions and provide background on federated learning and model interpretability. ",
+        "bbox": [
+            73,
+            606,
+            491,
+            848
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "B. Background ",
+        "text_level": 1,
+        "bbox": [
+            73,
+            857,
+            181,
+            872
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "Federated learning: In privacy-sensitive applications such as healthcare, there exist strict privacy guidelines pro-",
+        "bbox": [
+            73,
+            877,
+            491,
+            907
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "tecting patient’s information [2]. To comply with these critical guidelines, cloud-center (centralized) training of ML models in healthcare applications involve strong anonymization or encryption of patients data, for example using metrics such as k-anonymity [3], strictly limiting their utility. Such limitations resulted in the recent popularity of federated learning (FL), a privacy-preserving, communication and computation efficient, distributed learning paradigm, in healthcare [4]–[7]. FL enables several clients holding sensitive data to collaboratively train ML models for better generalization, while promoting higher privacy guarantees via maintaining local data local, see [8]–[10]. Instead, clients train local model updates and only these updates are shared and aggregated globally with a coordinating central server in an iterative fashion. These updates are often ephemeral (deleted after use) and contain significantly less (private) information than raw or anonymized data, hence enhancing privacy protection of clients data, and improving communication efficiency and computational requirements at the server. ",
+        "bbox": [
+            501,
+            303,
+            921,
+            590
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "FL however is typically characterized by high inter-client statistical dataset heterogeneity [11]–[13]. To cope with data heterogeneity, researchers proposed several methods for improving local model performance, while continue to benefit from improved generalization due to global training. These include (i) improving worst-case performance of the global model by ensuring uniform performance across clients [14]– [16], and (ii) training personalized local models, for example by fine tuning the global model on local clients’ data or regularizing local models with global penalties [17]–[23]. ",
+        "bbox": [
+            503,
+            598,
+            921,
+            750
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "In order to examine the FL algorithms that address data heterogeneity, researches tend to synthetically simulate data partitioning across clients. Common approaches to produce such synthetic partitions for classification datasets include associating samples from a limited number of classes to each client [9] and Dirichlet sampling based on the class labels [24]. The UCI heart disease dataset provides a great example of naturally heterogeneous splits of the data across geographically distant hospitals. Therefore, providing a benchmark for FL on this dataset is of an active interest. ",
+        "bbox": [
+            503,
+            756,
+            921,
+            906
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "aside_text",
+        "text": "arXiv:2408.06183v2 [cs.LG] 16 Aug 2024 ",
+        "bbox": [
+            22,
+            233,
+            58,
+            681
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "Interpretability: Recently, there has been a growing interest in transparency and interpretability analysis of machine learning systems [25]–[27]. Interpretable ML aims to clarify the often opaque inner workings of black-box models, enhancing understanding of the features influencing their decisions. In healthcare applications, understanding how a ML model produces its predictions could (i) provide critical insights into disease mechanisms; (ii) guide clinical decision-making; (iii) increase clinician acceptance and adoption by aligning with medical expertise and ethical standards, and overall (iv) improve patient outcomes. In this work, we integrate interpretability analysis into our benchmark to facilitate their practical application in clinical practice. ",
+        "bbox": [
+            73,
+            61,
+            491,
+            257
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "Shapley-value based interpetability: The Shapley value function, derived from cooperative game theory, quantifies the marginal contributions of individuals to the overall utility generated by a coalition of participants [28]. It does this by evaluating and averaging the contributions of an individual participant to the overall utility when considered with any possible coalition of other participants. In ML, they are used to attribute a model’s predictions to its input features by assessing each feature’s marginal impact on prediction accuracy. Shapley values support a theoretically sound and easily understandable interpretability analysis. They are desirable due to their key properties: (i) Efficiency, where the sum of Shapley values for all features equals the total utility (accuracy) of the model’s predictions; (ii) Symmetry, meaning features with identical contributions across all coalitions receive equal Shapley values; (iii) Dummy features (with no contribution to prediction) receive a Shapley value of zero; and (iv) Monotonicity, ensuring that if feature $i$ consistently contributes more to the overall utility than feature $j$ across all possible coalitions, then feature $i$ has a higher Shapley value. [29] extends Shapley values to the SHAP (SHapley Additive exPlanations) framework which systematically decomposes model predictions into additive contributions from each feature. SHAP also includes efficient approximations for Shapley values in large-scale models and provides a unified framework for interpreting various types of ML models, including tree-based models and deep neural networks. In this work, we utilize the SHAP framework for integrating interpretability results to our benchmark. ",
+        "bbox": [
+            73,
+            258,
+            493,
+            681
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "C. Contributions ",
+        "text_level": 1,
+        "bbox": [
+            75,
+            691,
+            192,
+            705
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "Centralized benchmark: We train various binary classification algorithms, including logistic regression (LR), neural networks (NN), support vector machines (SVM), k-nearest neighbor (KNN), Na¨ıve Bayes (NB), and random forests. Notably, we achieve centralized accuracy of $8 3 . 3 \\%$ via the application of a linear-kernel SVM model, surpassing established standards such as the $7 8 . 7 \\%$ accuracy attained by the logistic regression (LR) model in [7]. ",
+        "bbox": [
+            73,
+            710,
+            491,
+            830
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "Federated benchmark: Our federated benchmark for the UCI heart disease dataset improves over the benchmark reported in [7]. In particular, we use the top three performing models in the centralized setup as local trainers for the federated setting. We examine various federated aggregation ",
+        "bbox": [
+            73,
+            830,
+            491,
+            907
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "strategies including FedAvg [9], FedAdam [16], FedYogi [16], and SCAFFOLD [14]. Once again, SVM is the top-performing model in the federated setting, achieving the highest test accuracy across the four aggregation strategies; the highest being $7 3 . 8 \\%$ using FedYogi. Federating SVMs is not common in the literature; there exist only a handful works that uses federated SVMs which are all outside our scope of applications. To meet our specific needs, we develop our own version of federated SVM from scratch. Finally, except for the 1-layer NN model, FedAvg seems to perform closely to the more complicated aggregation algorithms like FedAdam and FedYogi. ",
+        "bbox": [
+            501,
+            61,
+            921,
+            227
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "Interpretability Analysis: Computing SHAP values for the centralized models highlights four features that are most important factors for predictions. The first is the ST depression induced by exercise (‘oldpeak’): The ST segment is the part of the ECG between the end of the S wave and start of the T wave [30]. Patients with ST depression are up to 2.34 times more likely to suffer from heart failure than those without [31]. Another important feature is the type of chest pain (‘cp’): Out of its four categories, typical angina is a well-known symptom of heart conditions, most notably coronary artery disease [32]. Another identified feature is ’exang’, indicating whether exercise-induced angina is present. Similar to ’cp’, angina is a common precursor to heart disease. ",
+        "bbox": [
+            501,
+            228,
+            921,
+            425
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "The rest of this paper is organized as follows. Section II discusses the related work. Section 3 presents our methodology for tuning and testing the models, as well as the results obtained for the centralized and federated settings. Section 4 discusses the interpretability of the models, highlighting the features that are most and least important to the predictions. Section 5 concludes the paper and discusses future work. ",
+        "bbox": [
+            503,
+            424,
+            921,
+            531
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "II. RELATED WORK ",
+        "text_level": 1,
+        "bbox": [
+            638,
+            540,
+            785,
+            554
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "A substantial body of literature explores ML models for heart disease detection. [33]–[35] detail various methods and algorithms with binary classification being the most common approach. Some studies use altered versions of the Cleveland dataset from the UCI collection, which include duplicated entries [36]. For example, the dataset is expanded from the original 303 entries to 1025 by adding over 700 duplicates. Validation on such duplicated data can lead to unreliable and inflated performance metrics. A recent study [37] reports a $9 9 . 7 \\%$ accuracy using a KNN model on this duplicated dataset. Other examples of studies using this data include [38], [39], and [40]. In contrast, our work provides a reliable benchmark using the unmodified UCI heart disease datasets. ",
+        "bbox": [
+            501,
+            559,
+            921,
+            755
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "FLamby [7] is a recent benchmark suite for cross-silo federated learning (FL) in healthcare. It addresses the need for realistic datasets with natural partitions suitable for crosssilo FL settings involving a few reliable clients with medium to large datasets, typically found in healthcare and finance applications. The FLamby suite includes 7 healthcare datasets with diverse tasks, data modalities, and volumes, and provides baseline training code along with benchmarks for various FL aggregation algorithms. Our work enhances the benchmark for the UCI heart disease dataset included in FLamby. We find that ",
+        "bbox": [
+            501,
+            756,
+            921,
+            907
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "SVM outperforms logistic regression, utilized by Flamby for this dataset, in both centralized and federated settings ",
+        "bbox": [
+            76,
+            61,
+            488,
+            92
+        ],
+        "page_idx": 2
+    },
+    {
+        "type": "text",
+        "text": "Several works incorporate interpretability in heart disease classification. [41] reviews interpretable ML methods using electrocardiogram (ECG) data. Processing time-series data like ECGs requires complex models, making their decisions harder to understand. [42] uses SHAP to highlight ECG segments most relevant for model prediction. [43] employs class activation maps (CAM) [44] to visualize the ECG regions a convolutional neural network (CNN) emphasizes. Interpretability analysis has also been applied to models using tabular data. [45] trained six models on a private dataset including patient demographics, medical history, physical status, vitals, medical therapy, echocardiography, electrocardiography, and lab parameters. They used SHAP to predict mortality in heart failure patients over a 3-year period and identify influential features. [46] visualized SHAP values for models trained on augmented versions of the UCI database to create a user-friendly prediction interface without analyzing important features. In contrast, our work is the first to perform interpretability analysis on the unmodified UCI heart disease database, enhancing the practicality of our established benchmark. ",
+        "bbox": [
+            76,
+            92,
+            488,
+            393
+        ],
+        "page_idx": 2
+    },
+    {
+        "type": "text",
+        "text": "III. EXPERIMENTAL SETUP ",
+        "text_level": 1,
+        "bbox": [
+            187,
+            402,
+            379,
+            415
+        ],
+        "page_idx": 2
+    },
+    {
+        "type": "text",
+        "text": "A. Dataset details ",
+        "text_level": 1,
+        "bbox": [
+            76,
+            421,
+            200,
+            434
+        ],
+        "page_idx": 2
+    },
+    {
+        "type": "text",
+        "text": "The dataset consists of 920 patient records spread across four separate hospitals’ databases in Cleveland, Hungary, Switzerland, and the VA Long Beach. The Cleveland dataset is the most commonly known of the four UCI datasets. It consists of data collected from 303 patients who were referred for coronary angiography at the Cleveland Clinic from May 1981 to September 1984. These patients had no previous history or electrocardiographic signs of heart disease. All 303 patients underwent a thorough evaluation including medical history assessment, physical examination, resting electrocardiogram, serum cholesterol testing, and fasting blood sugar measurement as part of their routine assessment. ",
+        "bbox": [
+            76,
+            439,
+            488,
+            619
+        ],
+        "page_idx": 2
+    },
+    {
+        "type": "text",
+        "text": "For the Long Beach VA dataset, the patients included all individuals who underwent cardiac catheterization at the Long Beach Veterans Administration Medical Center between 1984 and 1987. After excluding those with prior infarction, valvular disease and prior catheterization, there were 200 patient data points remaining in the dataset. Disease prevalence is $7 5 \\%$ . ",
+        "bbox": [
+            76,
+            621,
+            488,
+            710
+        ],
+        "page_idx": 2
+    },
+    {
+        "type": "text",
+        "text": "The Hungary dataset is comprised of patients who underwent catheterization at the Hungarian Institute of Cardiology in Budapest from 1983 to 1987. Patients with prior heart attacks or valvular diseases were not included, resulting in 425 subjects, and reduced further to 294 after data preprocessing. Disease prevalence is $38 \\%$ . ",
+        "bbox": [
+            76,
+            710,
+            488,
+            801
+        ],
+        "page_idx": 2
+    },
+    {
+        "type": "text",
+        "text": "For the Switzerland dataset, data was collected from individuals who underwent cardiac catheterization at the university hospitals in Zurich and Basel, Switzerland, in 1985 (excluded patients similar to the Long Beach VA dataset). Out of the 143 Swiss patients, 58 had the procedure done in Zurich, and 85 in Basel. Data preprocesssing resulted in 123 Swiss patient records. Disease prevalence $84 \\%$ . ",
+        "bbox": [
+            76,
+            801,
+            488,
+            906
+        ],
+        "page_idx": 2
+    },
+    {
+        "type": "table",
+        "img_path": "images/c3c8be5171171c28b5ab595baf5c969dd34b247f09b339a27a89e9d17cfa720d.jpg",
+        "table_caption": [
+            "TABLE I "
+        ],
+        "table_footnote": [],
+        "table_body": "<table><tr><td>Feature Number</td><td>Feature</td><td>Details</td></tr><tr><td>3</td><td>age</td><td>age in years</td></tr><tr><td>4</td><td>sex</td><td>1=male, 0=female</td></tr><tr><td>9</td><td>cp</td><td>chest pain type</td></tr><tr><td>10</td><td>trestbps</td><td>resting blood pressure</td></tr><tr><td>12</td><td>chol</td><td>serum cholesterol</td></tr><tr><td>16</td><td>fbs</td><td>fasting blood sugar</td></tr><tr><td>19</td><td>restecg</td><td>resting ECG results</td></tr><tr><td>32</td><td>thalach</td><td>max heart rate</td></tr><tr><td>38</td><td>exang</td><td>exercise induced angina</td></tr><tr><td>40</td><td>oldpeak</td><td>ST depression due to exercise</td></tr><tr><td>41</td><td>slope</td><td>slope of exercise ST segment</td></tr><tr><td>44</td><td>ca</td><td># of major vessels</td></tr><tr><td>51</td><td>thal</td><td>Thalassemia disorder presence</td></tr><tr><td>58</td><td>num</td><td>the predicted attribute</td></tr></table>",
+        "bbox": [
+            529,
+            84,
+            890,
+            265
+        ],
+        "page_idx": 2
+    },
+    {
+        "type": "text",
+        "text": "There are 76 total attributes, but all research conducted on the dataset used only the 14 features indicated in Table I. ",
+        "bbox": [
+            508,
+            292,
+            919,
+            321
+        ],
+        "page_idx": 2
+    },
+    {
+        "type": "text",
+        "text": "B. Centralized binary classification models ",
+        "text_level": 1,
+        "bbox": [
+            508,
+            330,
+            797,
+            345
+        ],
+        "page_idx": 2
+    },
+    {
+        "type": "text",
+        "text": "Binary classification models are popular in heart disease detection and other healthcare applications. We train various binary classification models on the combined (pooled) data, including logistic regression (LR); fully-connected neural network (NN) with one hidden layer; support vector machine (SVM), k-nearest neighbor (KNN); Na¨ıve Bayes (NB); descision tree (DT), and random forests (RF). ",
+        "bbox": [
+            506,
+            349,
+            919,
+            455
+        ],
+        "page_idx": 2
+    },
+    {
+        "type": "text",
+        "text": "We first train the logistic regression model in [7] with a learning rate of 0.001, batch size of 4, and for 30 epochs. For other models and hyperparameter combinations, each model is trained on 10 different seeds for data splits and average accuracy is computed. Hyperparameters tuned include learning rate $( 0 . 0 0 1 - 0 . 1 )$ , batch size $( 4 - 6 4 )$ , hidden units (4−16) for one-hidden-layer NN, SVM regularization strength $C$ $( 0 . 0 1 - 1 0 )$ , Laplace smoothing $\\alpha$ $( 0 . 1 - 1 0 )$ for non-Gaussian Naive Bayes, Decision tree max depth (none $- 1 0 \\phantom { . 0 }$ ), number of RF estimators $( 1 0 0 - 5 0 0 )$ , and $k$ -nearest neighbors (1 − 10). For a fair comparison, we follow the data preprocessing steps from [7], including removing entries with missing values (reducing the dataset to 740 points), using a $6 6 \\% - 3 4 \\%$ train-test split, converting labels $\\mathbf { \\dot { \\theta } } 1 - 4 \\mathbf { \\overrightarrow { \\theta } }$ to ”1” for binary classification (0 indicating no heart disease and 1 for heart disease), and normalizing the dataset. Initially, we focus on pooled performance (no federation). The top three models will be tested in the federated setting. Algorithm 1 outlines the testing process for centralized data, while Algorithm 2 covers the federated setting. ",
+        "bbox": [
+            506,
+            455,
+            919,
+            757
+        ],
+        "page_idx": 2
+    },
+    {
+        "type": "text",
+        "text": "C. Federated aggregation strategies ",
+        "text_level": 1,
+        "bbox": [
+            508,
+            767,
+            748,
+            782
+        ],
+        "page_idx": 2
+    },
+    {
+        "type": "text",
+        "text": "Federated learning (FL) reduces communication overhead compared to traditional centralized approaches by exchanging model updates, in an iterative fashion, instead of raw data. FL also preserves data privacy and reduces bandwidth usage, crucial for large-scale and distributed environments. In it’s general form, it begins each round by sampling a subset of clients $s$ from the existing number of $N$ clients. Each client $i \\in S$ performs local training on its own data in parallel with ",
+        "bbox": [
+            506,
+            786,
+            919,
+            906
+        ],
+        "page_idx": 2
+    },
+    {
+        "type": "text",
+        "text": "other selected clients. After local updates, clients communicate their model updates to the central server. At the central server, the received model updates are aggregated using one of the aggregation schemes to be explained in this section. In this work, all of the four clients are selected in each federation round, i.e., no client sampling. ",
+        "bbox": [
+            73,
+            61,
+            491,
+            151
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "The benchmark in [7] provides a code to several federated aggregation algorithms, including FedAvg, FedAdam, Scaffold, and FedProx. In the following, we provide the technical details for each of these aggregation schemes. ",
+        "bbox": [
+            73,
+            152,
+            491,
+            213
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "FedAvg [9] is the first federated aggregation algorithm introduced in the literature. It operates through iterative rounds of local training, where each round involves clients performing local updates on mini-batches, followed by a central server aggregating the local models. The aggregation weights depend on the number of data points at each client. Suppose we have $K$ clients, where client $k$ has $n _ { k }$ data points, and the total number of data points is $n$ , then the aggregated model at any federation round $t$ is given by ",
+        "bbox": [
+            73,
+            214,
+            491,
+            349
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "equation",
+        "text": "$$\n\\theta^ {(t)} = \\sum_ {k = 1} ^ {K} \\frac {n _ {k}}{n} \\theta_ {k} ^ {(t)}\n$$",
+        "text_format": "latex",
+        "bbox": [
+            220,
+            356,
+            344,
+            398
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "where $\\theta _ { k } ^ { ( t ) }$ (k are the trained model parameters at client $k$ and federation round $t$ . That is, the received model updates are aggregated using weighted averaging, where the weights are determined by the proportion of data each client holds relative to the total dataset size. This ensures that clients with more data contribute more significantly to the global model, maintaining fairness in representation. In this work, as in [7], local updates in batches are counted rather than local epochs, aligning with theoretical formulations and extending to related strategies based on FedAvg. ",
+        "bbox": [
+            73,
+            406,
+            491,
+            559
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "Despite its widespread adoption, FedAvg has several notable weaknesses. Firstly, FedAvg can suffer from high communication costs, especially when dealing with a large number of participating devices or clients. Each round of training requires the transmission of model updates between clients and the central server, which can become a bottleneck in environments with limited bandwidth or high latency. Secondly, FedAvg often struggles with non-IID (non-Independent and Identically Distributed) data, where the data distribution across clients is heterogeneous. This can lead to biased updates and a global model that may not perform well across all clients. This sensitivity to heterogeneity gets worse as the number of communication rounds increases. It is also slow to converge due to the aggregation stage, where it may struggle to average updates from clients with unique data distributions. The following algorithms often outperform FedAvg in the case of high data heterogeneity. ",
+        "bbox": [
+            73,
+            560,
+            493,
+            816
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "FedAdam [16] is an extension of the FedAvg algorithm that incorporates the ADAM [47] optimizer for improved performance. It combines FedAvg’s model aggregation with ADAM’s adaptive learning rate mechanism, allowing FedAdam to handle non-stationary and sparse gradients typically encountered in FL settings. By dynamically adjusting ",
+        "bbox": [
+            73,
+            816,
+            491,
+            907
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "Algorithm 1 Local classifier ",
+        "text_level": 1,
+        "bbox": [
+            506,
+            59,
+            702,
+            73
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "Require: Dataset $D$ (920 points) ",
+        "bbox": [
+            506,
+            75,
+            735,
+            90
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "list",
+        "sub_type": "text",
+        "list_items": [
+            "1: Set hyperparameter values for chosen model ",
+            "2: Remove points with missing values from $D$ ",
+            "3: Split $D$ into $66 \\%$ training set $T$ and $34 \\%$ test set $E$ ",
+            "4: Normalize $T$ (e.g., scale features to have zero mean and unit variance) ",
+            "5: Initialize model parameters $\\theta$ ",
+            "6: for $t = 1$ to 50 epochs do ",
+            "7: Update model parameters $\\theta$ by training on $T$ ",
+            "8: end for ",
+            "9: Evaluate final model on test set $E$ ",
+            "10: Compute testing accuracy Acc ",
+            "11: Output Acc as the final testing accuracy "
+        ],
+        "bbox": [
+            511,
+            92,
+            919,
+            272
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "Algorithm 2 Federated aggregation ",
+        "text_level": 1,
+        "bbox": [
+            504,
+            292,
+            750,
+            309
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "Require: Dataset D from 4 clients $( D _ { 1 } , D _ { 2 } , D _ { 3 } , D _ { 4 } )$ ",
+        "bbox": [
+            506,
+            311,
+            867,
+            325
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "list",
+        "sub_type": "text",
+        "list_items": [
+            "1: Set hyperparameter values for chosen model ",
+            "2: Initialize global model parameters $\\theta$ ",
+            "3: for each client $k \\in \\{ 1 , 2 , 3 , 4 \\}$ do ",
+            "4: Preprocess data similar to Local Classifier ",
+            "5: for $t = 1$ to 50 epochs do ",
+            "6: Local Classifier ",
+            "7: Send $\\theta _ { k }$ to the server ",
+            "8: Receive updated global model parameters $\\theta$ from the server ",
+            "9: end for ",
+            "10: Evaluate local model on test set $E _ { k }$ ",
+            "11: Compute local testing accuracy $A c c _ { k }$ ",
+            "12: end for ",
+            "13: Aggregate local testing accuracies $A c c _ { 1 } , A c c _ { 2 } , A c c _ { 3 } , A c c _ { 4 }$ ",
+            "14: PCompute average testing accuracy4k=1 nkn Acck $\\begin{array} { r l } { \\operatorname { A c c } _ { \\mathrm { a v g } } \\quad } & { { } = } \\end{array}$ -nAcck ",
+            "15: Output $\\mathbf { A c c _ { a v g } }$ as the final testing accuracy "
+        ],
+        "bbox": [
+            511,
+            327,
+            919,
+            598
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "learning rates based on the magnitude and direction of gradients, ADAM optimizes the training process for each client individually, contributing to more accurate model updates. Client updates are computed as: ",
+        "bbox": [
+            503,
+            633,
+            921,
+            695
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "equation",
+        "text": "$$\n\\begin{array}{l} \\Delta_ {t} = \\frac {1}{| S |} \\sum_ {i \\in S} \\Delta_ {i} ^ {t} \\\\ m _ {t} = \\beta_ {1} m _ {t - 1} + (1 - \\beta_ {1}) \\Delta_ {t} \\tag {1} \\\\ v _ {t} = \\beta_ {2} v _ {t - 1} + (1 - \\beta_ {2}) (\\Delta_ {t}) ^ {2} \\\\ x _ {t + 1} = x _ {t} - \\eta \\frac {m _ {t}}{\\sqrt {v _ {t}} + \\tau} \\\\ \\end{array}\n$$",
+        "text_format": "latex",
+        "bbox": [
+            604,
+            702,
+            919,
+            806
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "where $\\Delta _ { t }$ is the aggregated gradient update at time t, $S$ is the set of clients participating, $| S |$ is the number of clients in $S$ , $m _ { t }$ and $v _ { t }$ are the first and second moment estimates, $\\beta _ { 1 }$ and $\\beta _ { 2 }$ are the exponential decay rates for these moment estimates, $\\eta$ is the learning rate, and $\\tau$ is a small constant for numerical stability. ",
+        "bbox": [
+            503,
+            816,
+            921,
+            907
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "Each client then sends these gradients to the server, which aggregates them and updates the global model accordingly. This approach helps address issues related to heterogeneous data and varying computation capabilities among clients, leading to more efficient and effective federated learning (FL) training. Specifically, by employing the ADAM optimizer, FedAdam optimizes learning rates based on local gradients, which helps mitigate the impact of data distribution variations across clients. This adaptive approach results in more robust and efficient FL training, improving model convergence and overall performance metrics compared to FedAvg. ",
+        "bbox": [
+            73,
+            61,
+            491,
+            227
+        ],
+        "page_idx": 4
+    },
+    {
+        "type": "text",
+        "text": "FedYogi [16] is designed to be a more adaptive and efficient variant of FedAvg, leveraging techniques to handle non-IID data distributions and optimize communication for improved federated aggregation. It uses adaptive sampling techniques to select and prioritize client updates based on factors such as data distribution characteristics and model performance. Specifically, to address the issue of heterogeneity, FedYogi dynamically adjusts the learning rate based on the gradients’ first and second moments, $m _ { t }$ and $v _ { t }$ , respectively. For each client, the updates are computed similarly to FedAdam, except for the second moment estimate, $v _ { t }$ , which is computed as ",
+        "bbox": [
+            73,
+            227,
+            491,
+            393
+        ],
+        "page_idx": 4
+    },
+    {
+        "type": "equation",
+        "text": "$$\nv _ {t} = v _ {t - 1} - (1 - \\beta_ {2}) \\Delta_ {t} ^ {2} \\mathrm {s i g n} (v _ {t - 1} - \\Delta_ {t} ^ {2})\n$$",
+        "text_format": "latex",
+        "bbox": [
+            140,
+            395,
+            423,
+            414
+        ],
+        "page_idx": 4
+    },
+    {
+        "type": "text",
+        "text": "where $v _ { t } , \\beta _ { 2 } , \\Delta _ { t }$ are the same as in (1). The difference in how $v _ { t }$ is computed between the two strategies is that when $v _ { t - 1 }$ is much larger than $\\Delta _ { t } ^ { 2 }$ , both strategies will rapidly increase the learning rate, but FedYogi does so in a more controlled way [48]. ",
+        "bbox": [
+            73,
+            419,
+            490,
+            494
+        ],
+        "page_idx": 4
+    },
+    {
+        "type": "text",
+        "text": "SCAFFOLD [14] tackles client drift in FL by using control variables. Client drift occurs when individual clients’ models diverge from the global model due to differences in data, computation capabilities, or environmental changes, leading to inconsistencies and reduced overall performance. [7] enhances this approach to ensure full client participation while minimizing data exchange between clients and the server. SCAFFOLD uses control variables to adjust local model updates based on discrepancies with the global model. Specifically, each client has a control variable $c _ { i }$ , and the server maintains a global control variable c. Updates for the global and local control variables and model parameters are computed as follows: ",
+        "bbox": [
+            73,
+            494,
+            491,
+            676
+        ],
+        "page_idx": 4
+    },
+    {
+        "type": "equation",
+        "text": "$$\n\\begin{array}{l} \\boldsymbol {y} _ {i} \\leftarrow \\boldsymbol {y} _ {i} - \\eta_ {l} \\left(g _ {i} \\left(\\boldsymbol {y} _ {i}\\right) + \\boldsymbol {c} - \\boldsymbol {c} _ {i}\\right) \\\\ c _ {i} ^ {+} \\leftarrow (\\mathrm {i}) g _ {i} (\\boldsymbol {x}), \\text {o r (i i)} \\boldsymbol {c} _ {i} - \\boldsymbol {c} + \\frac {1}{K \\eta_ {l}} (\\boldsymbol {x} - \\boldsymbol {y} _ {i}) \\\\ \\boldsymbol {x} \\leftarrow \\boldsymbol {x} + \\frac {\\eta_ {g}}{| S |} \\sum_ {i \\in S} (\\boldsymbol {y} _ {i} - \\boldsymbol {x}) \\\\ \\boldsymbol {c} \\gets \\boldsymbol {c} + \\frac {1}{N} \\sum_ {i \\in S} (\\boldsymbol {c} _ {\\boldsymbol {i}} ^ {+} - \\boldsymbol {c} _ {\\boldsymbol {i}}) \\\\ \\end{array}\n$$",
+        "text_format": "latex",
+        "bbox": [
+            130,
+            678,
+            437,
+            796
+        ],
+        "page_idx": 4
+    },
+    {
+        "type": "text",
+        "text": "where $\\mathbf { { \\mathit { y } } } _ { i }$ is client update performed $K$ times, $\\eta$ is the learning rate, $g _ { i } ( y _ { i } )$ is the mini-batch gradient, and $_ { \\textbf { \\em x } }$ are the server parameters. Notice there are two options to compute the local control variate $c _ { i }$ . Option (i) makes an additional pass over the client’s local data to compute the gradient at server model $_ { \\textbf { \\em x } }$ . Option (ii) reuses the previously computed gradients, making it the cheaper but less stable option. ",
+        "bbox": [
+            73,
+            801,
+            491,
+            907
+        ],
+        "page_idx": 4
+    },
+    {
+        "type": "table",
+        "img_path": "images/8312c82da356fff23d66fa28896e63d287c9a017152060fed2b46b9ae94e37f3.jpg",
+        "table_caption": [
+            "TABLE II TEST ACCURACIES FOR POOLED DATA AND VARIOUS LEARNING MODELS. "
+        ],
+        "table_footnote": [],
+        "table_body": "<table><tr><td>Test</td><td>[7]</td><td>LR</td><td>1LNN</td><td>SVM</td></tr><tr><td>Accuracy (%)</td><td>78.7</td><td>80.5</td><td>82.1</td><td>83.3</td></tr><tr><td>Test</td><td>NB</td><td>DT</td><td>RF</td><td>KNN</td></tr><tr><td>Accuracy (%)</td><td>78.5</td><td>78.1</td><td>80.3</td><td>68.6</td></tr></table>",
+        "bbox": [
+            568,
+            95,
+            857,
+            147
+        ],
+        "page_idx": 4
+    },
+    {
+        "type": "text",
+        "text": "This adjustment helps ensure that the local updates are more aligned with the global model’s direction, reducing the divergence caused by non-IID data distributions and other heterogeneities among clients. ",
+        "bbox": [
+            503,
+            174,
+            921,
+            234
+        ],
+        "page_idx": 4
+    },
+    {
+        "type": "text",
+        "text": "D. Results ",
+        "text_level": 1,
+        "bbox": [
+            504,
+            250,
+            581,
+            263
+        ],
+        "page_idx": 4
+    },
+    {
+        "type": "text",
+        "text": "The results for the pooled data are presented in Table II, which highlights the testing accuracies for adopted models. Logistic regression (LR), one-layer neural network (1LNN), support vector machine (SVM) with a linear kernel achieve the highest accuracies, with SVM leading at $8 3 . 3 \\%$ . The [7] model refers to the LR model configured with a learning rate of 0.001 and a batch size of 4, trained over 30 epochs. ",
+        "bbox": [
+            501,
+            271,
+            919,
+            377
+        ],
+        "page_idx": 4
+    },
+    {
+        "type": "text",
+        "text": "The results for the federated setting are presented in Table III. The models were all trained for 30 epochs using their respective best performing hyperparameter settings from centralized (pooled) tuning. We compare test accuracies (averaged over 10 seeds) of LR, 1LNN, and SVM local models and using FedAvg, FedAdam, FedYogi and SCAFFOLD FL algorithms. The SVM local model consistently achieves the highest test accuracy across all federated algorithms, with FedYogi delivering the best performance at $0 . 7 3 8 \\pm 0 . 0 2 7 6$ . ",
+        "bbox": [
+            501,
+            377,
+            921,
+            513
+        ],
+        "page_idx": 4
+    },
+    {
+        "type": "text",
+        "text": "The results in Tables II and III show that while LR and 1LNN perform competitively, SVM generally outperforms them in both centralized and federated settings. Notably from Table III, federated algorithms like FedAdam and FedYogi provide improved accuracy compared to FedAvg and SCAF-FOLD, demonstrating the advantages of adaptive optimization techniques in addressing the challenge of non-IID data distributions (client heterogeneity) and difficulty of hyperparameter tuning as a result. For example, in Table III, FedAvg and SCAFFOLD perform $1 8 \\%$ worse than FedYogi for 1LNN. We believe the reason is that when the hyperparameter space becomes larger such as in 1LNN, FedAvg and SCAFFOLD become more sensitive to selection of hyperparameters. ",
+        "bbox": [
+            503,
+            513,
+            921,
+            710
+        ],
+        "page_idx": 4
+    },
+    {
+        "type": "text",
+        "text": "Further, in Table III, we compare the FL aggregation strategies to local training on individual hospital datasets, i.e., each hospital uses only its local dataset to train a local model. We exclude Switzerland dataset from this comparison where all examples are of the same class after preprocessing. The comparison results in Table III show that FL does improve the performance compared to local training at least for some of the hospitals. Therefore, these hospitals gain from federation without having to sacrifice privacy by data pooling or sacrifice accuracy by data anonymization. For example, for Hungary and VA hospitals, local training performs consistently worse than FedAdam and FedYogi FL algorithms for all the three learning models considered in the comparison. ",
+        "bbox": [
+            501,
+            710,
+            921,
+            907
+        ],
+        "page_idx": 4
+    },
+    {
+        "type": "table",
+        "img_path": "images/d23a1240f22c66f621d7aa363a63d4630fb966fa27704453cf09ac6b76014106.jpg",
+        "table_caption": [
+            "TABLE III TEST ACCURACIES FOR LOCAL TRAINING COMPARED TO FL ALGORITHMS "
+        ],
+        "table_footnote": [],
+        "table_body": "<table><tr><td></td><td>Cleveland</td><td>Hungary</td><td>VA</td><td>FedAvg</td><td>FedAdam</td><td>FedYogi</td><td>SCAFFOLD</td></tr><tr><td>LR</td><td>0.667 ± 0.0831</td><td>0.659 ± 0.0901</td><td>0.608 ± 0.0616</td><td>0.703 ± 0.0262</td><td>0.72 ± 0.0191</td><td>0.721 ± 0.0129</td><td>0.703 ± 0.262</td></tr><tr><td>1LNN</td><td>0.728 ± 0.0462</td><td>0.686 ± 0.0558</td><td>0.648 ± 0.0742</td><td>0.598 ± 0.0223</td><td>0.726 ± 0.483</td><td>0.732 ± 0.329</td><td>0.598 ± 0.1025</td></tr><tr><td>SVM</td><td>0.779 ± 0.0247</td><td>0.628 ± 0.0873</td><td>0.661 ± 0.0719</td><td>0.731 ± 0.0223</td><td>0.736 ± 0.372</td><td>0.738 ± 0.276</td><td>0.731 ± 0.0223</td></tr></table>",
+        "bbox": [
+            104,
+            95,
+            888,
+            148
+        ],
+        "page_idx": 5
+    },
+    {
+        "type": "text",
+        "text": "IV. INTERPRETABILITY ANALYSIS ",
+        "text_level": 1,
+        "bbox": [
+            158,
+            172,
+            406,
+            186
+        ],
+        "page_idx": 5
+    },
+    {
+        "type": "text",
+        "text": "In critical applications like healthcare, interpretability is essential for understanding the decision-making of predictive models. Our goal is to identify feature importance in driving model predictions. ",
+        "bbox": [
+            73,
+            196,
+            491,
+            258
+        ],
+        "page_idx": 5
+    },
+    {
+        "type": "text",
+        "text": "A. SHAP ",
+        "text_level": 1,
+        "bbox": [
+            73,
+            275,
+            143,
+            289
+        ],
+        "page_idx": 5
+    },
+    {
+        "type": "text",
+        "text": "To address the need for interpretability, we employ SHapley Additive exPlanations (SHAP) values [29], which provide a measure of feature importance in supervised learning models. SHAP is based on Shapley values from cooperative game theory which measure the marginal contribution of each feature to prediction accuracy. This is done by computing a utility (accuracy) measure for the inclusion of a feature with any other subset of features and averaging these out. In particular, the Shapley value for feature $i$ is calculated as ",
+        "bbox": [
+            73,
+            297,
+            490,
+            434
+        ],
+        "page_idx": 5
+    },
+    {
+        "type": "equation",
+        "text": "$$\n\\phi_ {i} = \\sum_ {S \\subseteq \\{1, \\dots , p \\} \\backslash \\{i \\}} \\frac {| S | ! (p - | S | - 1) !}{p !} [ f (S \\cup i) - f (S) ] \\tag {2}\n$$",
+        "text_format": "latex",
+        "bbox": [
+            84,
+            441,
+            488,
+            484
+        ],
+        "page_idx": 5
+    },
+    {
+        "type": "text",
+        "text": "where $p$ is the total number of features, $S$ is the subset (or coalition) of features excluding feature i, $| S |$ is the number of features in subset S. $f ( S )$ measures the model’s accuracy when only features in $S$ are input to the model. Thus, $[ f ( S \\cup i ) - f ( S ) ]$ measures the difference in model accuracy when feature $i$ is included versus excluded from the input set $S$ . This difference is computed for all possible subsets $S \\subseteq \\{ 1 , \\dots , p \\} \\setminus \\{ i \\}$ . The $\\frac { | \\dot { S } | ! ( p - | S | - 1 ) ! } { p ! }$ term serves as a weighting factor that ensures each subset’s contribution is considered fairly. ",
+        "bbox": [
+            73,
+            492,
+            491,
+            643
+        ],
+        "page_idx": 5
+    },
+    {
+        "type": "text",
+        "text": "Several SHAP methods adapt Shapley values to different models but share the same core principles. For example, Kernel SHAP uses kernel approximations and sampling to estimate Shapley values for complex models like neural networks through the use of a weighting kernel $\\pi _ { x ^ { \\prime } }$ : ",
+        "bbox": [
+            73,
+            645,
+            491,
+            720
+        ],
+        "page_idx": 5
+    },
+    {
+        "type": "equation",
+        "text": "$$\n\\pi_ {x ^ {\\prime}} \\left(z ^ {\\prime}\\right) = \\frac {M - 1}{(M \\text {c h o o s e} | z ^ {\\prime} |) | z ^ {\\prime} | (M - | z ^ {\\prime} |)} \\tag {3}\n$$",
+        "text_format": "latex",
+        "bbox": [
+            140,
+            743,
+            488,
+            777
+        ],
+        "page_idx": 5
+    },
+    {
+        "type": "text",
+        "text": "where $| z ^ { \\prime } |$ is the number of non-zero elements in subset $z ^ { \\prime }$ , $M$ is the total number of features, and $M - | z ^ { \\prime } |$ is the number of features not in subset $z ^ { \\prime }$ . The $M$ choose $| z ^ { \\prime } | ,$ ) term is the binomial coefficient, which is the number of ways to sample a subset $| z ^ { \\prime } |$ from M. ",
+        "bbox": [
+            73,
+            785,
+            491,
+            861
+        ],
+        "page_idx": 5
+    },
+    {
+        "type": "text",
+        "text": "Regardless of the method, SHAP values consistently quantify each feature’s contribution to predictions, improving transparency and model interpretation. ",
+        "bbox": [
+            73,
+            862,
+            491,
+            907
+        ],
+        "page_idx": 5
+    },
+    {
+        "type": "text",
+        "text": "B. Importance of features ",
+        "text_level": 1,
+        "bbox": [
+            504,
+            172,
+            684,
+            188
+        ],
+        "page_idx": 5
+    },
+    {
+        "type": "text",
+        "text": "The mean absolute SHAP values for each feature across the seven tested models are presented in Table IV. Mean absolute SHAP values represent the average magnitude of SHAP values across all instances in the data, regardless of the direction (positive or negative) of the contribution. They indicate the overall importance of a given feature in the model, showing how much, on average, that feature influences the prediction. The values in parentheses represent the features’ importance ranking based on the mean absolute SHAP values, with ’1’ being the highest importance and $\\mathit { \\Omega } ^ { , } _ { 1 0 ^ { \\prime } }$ being the lowest. ",
+        "bbox": [
+            501,
+            194,
+            919,
+            345
+        ],
+        "page_idx": 5
+    },
+    {
+        "type": "text",
+        "text": "The results indicate that features are consistently identified as being of either high or low importance by most of the tested models, with the exceptions of Decision Tree and KNN classifiers. For example, features ‘oldpeak’, ‘cp’, and ‘exang’ are ranked as high importance, while ’age’, ’restecg’, and ’trestbps’ are low importance. ‘oldpeak’ represents ST (the section between the end of the S wave and the beginning of the T wave) depression induced by exercise relative to rest. It measures the deviation of the ST segment on an electrocardiogram (ECG), which can indicate ischemia, which is reduced blood flow to the heart. High values of oldpeak suggest that the heart is not receiving enough oxygen during physical activity, which is a strong indicator of coronary artery disease or other heart conditions [31]. ",
+        "bbox": [
+            501,
+            345,
+            919,
+            556
+        ],
+        "page_idx": 5
+    },
+    {
+        "type": "text",
+        "text": "‘cp’ is a categorical feature that indicates the type of chest pain experienced by the patient. It is categorized into typical angina (1), atypical angina (2), non-anginal pain (3), and asymptomatic (4). The type of chest pain a patient has can be a good indicator of whether or not they have heart disease. Typical angina, for example, is a classic symptom of coronary artery disease [32]. As a result, the type of chest pain can be a strong predictor of heart disease. ",
+        "bbox": [
+            503,
+            558,
+            919,
+            679
+        ],
+        "page_idx": 5
+    },
+    {
+        "type": "text",
+        "text": "‘exang’, or exercised-induced angina, is a binary feature that indicates whether the patient experiences angina (chest pain) during exercise. If physical activity causes a patient to experience chest pain, it can be another indicator of heart disease. ",
+        "bbox": [
+            503,
+            680,
+            919,
+            753
+        ],
+        "page_idx": 5
+    },
+    {
+        "type": "text",
+        "text": "Among the features with low mean absolute SHAP values, age is notably surprising. Its general nature makes it less specific compared to clinical features directly related to heart conditions. The variability of heart disease across age groups further complicates its predictive value, with some older patients being healthy and younger patients showing symptoms. This variability may be influenced by factors like genetics, lifestyle, and pre-existing conditions, making age a less reliable indicator [49]. Similarly, ’trestbps’ (resting blood pressure at admission) is also deemed low in importance. Like age, it ",
+        "bbox": [
+            501,
+            756,
+            919,
+            907
+        ],
+        "page_idx": 5
+    },
+    {
+        "type": "table",
+        "img_path": "images/39789e665b6285a7740205487a761ab26b9cffdf0630264ecff65c7eaaebf528.jpg",
+        "table_caption": [
+            "TABLE IV MEAN ABSOLUTE SHAP VALUES FOR EACH FEATURE AND THEIR IMPORTANCE RANKING (IN PARANTHES IS) "
+        ],
+        "table_footnote": [],
+        "table_body": "<table><tr><td></td><td>oldpeak</td><td>cp</td><td>exang</td><td>sex</td><td>thalach</td><td>fbs</td><td>chol</td><td>restecg</td><td>trestbps</td><td>age</td></tr><tr><td>LR</td><td>0.57 (1)</td><td>0.53 (2)</td><td>0.51 (3)</td><td>0.44 (4)</td><td>0.37 (5)</td><td>0.18 (6)</td><td>0.16 (7)</td><td>0.13 (8)</td><td>0.03 (9)</td><td>0.03 (10)</td></tr><tr><td>SVM</td><td>0.44(1)</td><td>0.44 (2)</td><td>0.38 (3)</td><td>0.36 (4)</td><td>0.18 (5)</td><td>0.14 (6)</td><td>0.13 (7)</td><td>0.04 (9)</td><td>0.01 (10)</td><td>0.08 (8)</td></tr><tr><td>1LNN</td><td>0.1 (1)</td><td>0.07 (5)</td><td>0.09 (2)</td><td>0.05 (6)</td><td>0.08 (3)</td><td>0.02 (7)</td><td>0.07 (4)</td><td>0.02 (8)</td><td>0.01 (9)</td><td>0.0 (10)</td></tr><tr><td>NB</td><td>0.11 (3)</td><td>0.09 (4)</td><td>0.15 (1)</td><td>0.11 (2)</td><td>0.06 (6)</td><td>0.04 (7)</td><td>0.06 (5)</td><td>0.01 (10)</td><td>0.03 (9)</td><td>0.03 (8)</td></tr><tr><td>RF</td><td>0.1 (2)</td><td>0.17 (1)</td><td>0.09 (3)</td><td>0.08 (4)</td><td>0.06 (6)</td><td>0.02 (9)</td><td>0.06 (5)</td><td>0.01 (10)</td><td>0.03 (8)</td><td>0.04 (7)</td></tr><tr><td>DT</td><td>0.0 (5)</td><td>0.38 (1)</td><td>0.05 (4)</td><td>0.08 (2)</td><td>0.0 (5)</td><td>0.0 (5)</td><td>0.06 (3)</td><td>0.0 (5)</td><td>0.0 (5)</td><td>0.0 (5)</td></tr><tr><td>KNN</td><td>0.0 (5)</td><td>0.0 (5)</td><td>0.0 (5)</td><td>0.0 (5)</td><td>0.22 (1)</td><td>0.0 (5)</td><td>0.17 (2)</td><td>0.0 (5)</td><td>0.09 (3)</td><td>0.06 (4)</td></tr></table>",
+        "bbox": [
+            145,
+            97,
+            846,
+            193
+        ],
+        "page_idx": 6
+    },
+    {
+        "type": "text",
+        "text": "serves as a general health indicator rather than a direct measure of heart function. High blood pressure can be a risk factor, but its predictive strength may be overshadowed by features like ’oldpeak’, which directly assess heart function. Additionally, medications might lower blood pressure, masking underlying risks at admission [50]. ",
+        "bbox": [
+            73,
+            219,
+            491,
+            309
+        ],
+        "page_idx": 6
+    },
+    {
+        "type": "text",
+        "text": "The ‘restecg’ feature represents the results of a resting electrocardiogram, categorized as: Value 0 (normal), Value 1 (ST-T wave abnormalities), and Value 2 (probable or definite left ventricular hypertrophy). Its low importance may stem from its inability to capture dynamic heart changes as effectively as stress-induced measures, such as during exercise [31]. ",
+        "bbox": [
+            73,
+            309,
+            491,
+            398
+        ],
+        "page_idx": 6
+    },
+    {
+        "type": "text",
+        "text": "Model complexity effect on Shapley-based interpretability.: The unexpected SHAP values for Decision Trees (DT) and K-Nearest Neighbors (KNN) are due to their inherent complexity compared to simpler linear models. DTs create partitions based on features, complicating the assignment of SHAP values as each split affects the prediction path. In contrast, KNN considers instances relative to their nearest neighbors, leading to variability in SHAP values because predictions depend on different neighbor sets. This variability makes interpreting SHAP values difficult, as feature contributions are not consistently defined across instances. ",
+        "bbox": [
+            73,
+            398,
+            491,
+            565
+        ],
+        "page_idx": 6
+    },
+    {
+        "type": "text",
+        "text": "V. CONCLUSION ",
+        "text_level": 1,
+        "bbox": [
+            220,
+            571,
+            344,
+            585
+        ],
+        "page_idx": 6
+    },
+    {
+        "type": "text",
+        "text": "In this work, we established a benchmark for binary classification models for heart disease using the UCI heart disease dataset, evaluated in both centralized (pooled) and federated settings, and conducted interpretability analysis using Shapley values to understand the features influencing model predictions. In the centralized setting, a linear kernel SVM achieves the highest accuracy of $8 3 . 3 \\%$ . In the federated setting, we trained various local training algorithms and model aggregation strategies. The best performing model was an SVM local trainer with testing accuracy $7 3 . 8 \\%$ for FedAdam and FedYogi aggregation strategies. Our benchmark improves on the most recent benchmark provided in [7] for the UCI heart disease data. It also provides reliable estimates for test accuracy since it is trained on raw data without duplication, unlike much of the existing literature. We compared the federated results with local models trained on the individual hospital datasets. In the vast majority of cases, models trained with federated aggregation outperformed the locally trained models, demonstrating the usefulness of FL. Shapley values identified oldpeak, cp, sex, and exang as the most significant features, results that coincide with medical knowledge. Future directions ",
+        "bbox": [
+            73,
+            590,
+            493,
+            907
+        ],
+        "page_idx": 6
+    },
+    {
+        "type": "text",
+        "text": "include providing a benchmark incorporating electrocardiogram (ECG) data to enhance performance in both centralized and federated settings, and extending interpretability analysis to deep models trained on ECG data. ",
+        "bbox": [
+            503,
+            219,
+            921,
+            279
+        ],
+        "page_idx": 6
+    },
+    {
+        "type": "text",
+        "text": "REFERENCES ",
+        "text_level": 1,
+        "bbox": [
+            665,
+            301,
+            761,
+            313
+        ],
+        "page_idx": 6
+    },
+    {
+        "type": "list",
+        "sub_type": "ref_text",
+        "list_items": [
+            "[1] A. Janosi, W. Steinbrunn, M. Pfisterer, and R. Detrano, “Heart Disease,” UCI Machine Learning Repository, 1988, DOI: https://doi.org/10.24432/C52P4X. ",
+            "[2] B. Puhan and S. Gupta, “Digital health rules and regulations: an overview,” CSI Transactions on ICT, vol. 11, no. 1, pp. 97–102, 2023. ",
+            "[3] L. Sweeney, “k-anonymity: A model for protecting privacy,” International journal of uncertainty, fuzziness and knowledge-based systems, vol. 10, no. 05, pp. 557–570, 2002. ",
+            "[4] N. Rieke, J. Hancox, W. Li, F. Milletari, H. R. Roth, S. Albarqouni, S. Bakas, M. N. Galtier, B. A. Landman, K. Maier-Hein et al., “The future of digital health with federated learning,” NPJ digital medicine, vol. 3, no. 1, p. 119, 2020. ",
+            "[5] J. Xu, B. S. Glicksberg, C. Su, P. Walker, J. Bian, and F. Wang, “Federated learning for healthcare informatics,” Journal of Healthcare Informatics Research, vol. 5, pp. 1–19, 2021. ",
+            "[6] D. C. Nguyen, Q.-V. Pham, P. N. Pathirana, M. Ding, A. Seneviratne, Z. Lin, O. Dobre, and W.-J. Hwang, “Federated learning for smart healthcare: A survey,” ACM Computing Surveys (CSUR), vol. 55, no. 3, pp. 1–37, 2022. ",
+            "[7] J. Ogier du Terrail, S.-S. Ayed, E. Cyffers, F. Grimberg, C. He, R. Loeb, P. Mangold, T. Marchand, O. Marfoq, E. Mushtaq et al., “Flamby: Datasets and benchmarks for cross-silo federated learning in realistic healthcare settings,” Advances in Neural Information Processing Systems, vol. 35, pp. 5315–5334, 2022. ",
+            "[8] J. Koneˇcn ´y, H. B. McMahan et al., “Federated learning: Strategies for improving communication efficiency,” in NIPS Workshop on Private Multi-Party Machine Learning, 2016. [Online]. Available: https://arxiv.org/abs/1610.05492 ",
+            "[9] B. McMahan, E. Moore, D. Ramage, S. Hampson, and B. A. y Arcas, “Communication-efficient learning of deep networks from decentralized data,” in Artificial intelligence and statistics. PMLR, 2017, pp. 1273– 1282. ",
+            "[10] P. Kairouz, H. B. McMahan, B. Avent, A. Bellet, M. Bennis, A. N. Bhagoji, K. Bonawitz, Z. Charles, G. Cormode, R. Cummings et al., “Advances and open problems in federated learning,” Foundations and trends® in machine learning, vol. 14, no. 1–2, pp. 1–210, 2021. ",
+            "[11] J. O. Du Terrail, A. Leopold, C. Joly, C. Beguier, M. Andreux, C. Maussion, B. Schmauch, E. W. Tramel, E. Bendjebbar, M. Zaslavskiy et al., “Collaborative federated learning behind hospitals’ firewalls for predicting histological response to neoadjuvant chemotherapy in triplenegative breast cancer,” medRxiv, pp. 2021–10, 2021. ",
+            "[12] W. T. Li, J. Ma, N. Shende, G. Castaneda, J. Chakladar, J. C. Tsai, L. Apostol, C. O. Honda, J. Xu, L. M. Wong et al., “Using machine learning of clinical data to diagnose covid-19: a systematic review and meta-analysis,” BMC medical informatics and decision making, vol. 20, pp. 1–13, 2020. ",
+            "[13] S. Pati, U. Baid, M. Zenk, B. Edwards, M. Sheller, G. A. Reina, P. Foley, A. Gruzdev, J. Martin, S. Albarqouni et al., “The federated tumor segmentation (fets) challenge,” arXiv preprint arXiv:2105.05874, 2021. "
+        ],
+        "bbox": [
+            506,
+            329,
+            921,
+            905
+        ],
+        "page_idx": 6
+    },
+    {
+        "type": "list",
+        "sub_type": "ref_text",
+        "list_items": [
+            "[14] S. P. Karimireddy, S. Kale, M. Mohri, S. Reddi, S. Stich, and A. T. Suresh, “Scaffold: Stochastic controlled averaging for federated learning,” in International conference on machine learning. PMLR, 2020, pp. 5132–5143. ",
+            "[15] T. Li, A. K. Sahu, M. Zaheer, M. Sanjabi, A. Talwalkar, and V. Smith, “Federated optimization in heterogeneous networks,” Proceedings of Machine learning and systems, vol. 2, pp. 429–450, 2020. ",
+            "[16] S. Reddi, Z. Charles, M. Zaheer, Z. Garrett, K. Rush, J. Koneˇcn `y, S. Kumar, and H. B. McMahan, “Adaptive federated optimization,” arXiv preprint arXiv:2003.00295, 2020. ",
+            "[17] Y. J. Cho, J. Wang, T. Chiruvolu, and G. Joshi, “Personalized federated learning for heterogeneous clients with clustered knowledge transfer,” arXiv preprint arXiv:2109.08119, 2021. ",
+            "[18] A. Fallah, A. Mokhtari, and A. Ozdaglar, “Personalized federated learning with theoretical guarantees: A model-agnostic meta-learning approach,” Advances in Neural Information Processing Systems, vol. 33, pp. 3557–3568, 2020. ",
+            "[19] A. Ghosh, J. Chung, D. Yin, and K. Ramchandran, “An efficient framework for clustered federated learning,” in the 33rd Conference on Advances in Neural Information Processing Systems (NeurIPS), 2020, pp. 19 586–19 597. ",
+            "[20] Y. Jiang, J. Koneˇcn ´y, K. Rush, and S. Kannan, “Improving federated learning personalization via model agnostic meta learning,” arXiv preprint arXiv:1909.12488, 2019. ",
+            "[21] M. Nafea, E. Shin, and A. Yener, “Proportional fair clustered federated learning,” in IEEE International Symposium on Information Theory (ISIT). IEEE, 2022. ",
+            "[22] F. Sattler, K.-R. M ¨uller, and W. Samek, “Clustered federated learning: Model-agnostic distributed multi-task optimization under privacy constraints,” arXiv preprint arXiv:1910.01991, 2019. ",
+            "[23] V. Smith, C.-K. Chiang, M. Sanjabi, and A. S. Talwalkar, “Federated multi-Task learning,” in Advances in Neural Information Processing Systems, vol. 30, 2017. ",
+            "[24] T.-M. H. Hsu, H. Qi, and M. Brown, “Measuring the effects of nonidentical data distribution for federated visual classification,” arXiv preprint arXiv:1909.06335, 2019. ",
+            "[25] A. Datta, S. Sen, and Y. Zick, “Algorithmic transparency via quantitative input influence: Theory and experiments with learning systems,” in 2016 IEEE symposium on security and privacy (SP). IEEE, 2016, pp. 598– 617. ",
+            "[26] F. Doshi-Velez and B. Kim, “Towards a rigorous science of interpretable machine learning,” arXiv preprint arXiv:1702.08608, 2017. ",
+            "[27] A. B. Arrieta, N. D´ıaz-Rodr´ıguez, J. Del Ser, A. Bennetot, S. Tabik, A. Barbado, S. Garc´ıa, S. Gil-L ´opez, D. Molina, R. Benjamins et al., “Explainable artificial intelligence (xai): Concepts, taxonomies, opportunities and challenges toward responsible ai,” Information fusion, vol. 58, pp. 82–115, 2020. ",
+            "[28] L. S. Shapley et al., A value for n-person games. Princeton University Press Princeton, 1953. ",
+            "[29] S. M. Lundberg and S.-I. Lee, “A unified approach to interpreting model predictions,” Advances in neural information processing systems, vol. 30, 2017. ",
+            "[30] N. C. for Biotechnology Information, “St segment,” 2024. [Online]. Available: https://www.ncbi.nlm.nih.gov/books/NBK459364/ ",
+            "[31] T. Kawaji, Y. Hamatani, M. Kato, T. Yokomatsu, S. Miki, M. Abe, and M. Akao, “Clinical significance of st-segment depression during atrial fibrillation rhythm for subsequent heart failure events,” European Heart Journal Open, vol. 3, no. 3, p. oead060, 2023. ",
+            "[32] NHLBI, “Angina (chest pain) causes and risk factors,” 2024. [Online]. Available: https://www.nhlbi.nih.gov/health/angina/causes#:∼:text=The%20main%2 ",
+            "[33] M. M. Ahsan and Z. Siddique, “Machine learning-based heart disease diagnosis: A systematic literature review,” Artificial Intelligence in Medicine, vol. 128, p. 102289, 2022. ",
+            "[34] M. Aljanabi, M. H. Qutqut, and M. Hijjawi, “Machine learning classification techniques for heart disease prediction: a review,” International Journal of Engineering & Technology, vol. 7, no. 4, pp. 5373–5379, 2018. ",
+            "[35] J. Azmi, M. Arif, M. T. Nafis, M. A. Alam, S. Tanweer, and G. Wang, “A systematic review on machine learning approaches for cardiovascular disease prediction using medical big data,” Medical engineering & physics, vol. 105, p. 103825, 2022. ",
+            "[36] Kaggle, “Heart disease dataset,” https://www.kaggle.com/datasets/johnsmith88/heart-disease-dataset/data, n.d., accessed: February 20, 2024. "
+        ],
+        "bbox": [
+            76,
+            63,
+            661,
+            906
+        ],
+        "page_idx": 7
+    },
+    {
+        "type": "list",
+        "sub_type": "ref_text",
+        "list_items": [
+            "[37] S. Prasher, L. Nelson, and S. Hariharan, “Evaluation of machine learning algorithms for heart disease prediction in healthcare,” in 2023 International Conference on Innovations in Engineering and Technology (ICIET). IEEE, 2023, pp. 1–4. ",
+            "[38] M. M. Ali, B. K. Paul, K. Ahmed, F. M. Bui, J. M. Quinn, and M. A. Moni, “Heart disease prediction using supervised machine learning algorithms: Performance analysis and comparison,” Computers in Biology and Medicine, vol. 136, p. 104672, 2021. ",
+            "[39] G. N. Ahmad, H. Fatima, S. Ullah, A. S. Saidi et al., “Efficient medical diagnosis of human heart diseases using machine learning techniques with and without gridsearchcv,” IEEE Access, vol. 10, pp. 80 151– 80 173, 2022. ",
+            "[40] G. N. Ahamad, Shafiullah, H. Fatima, Imdadullah, S. Zakariya, M. Abbas, M. S. Alqahtani, and M. Usman, “Influence of optimal hyperparameters on the performance of machine learning algorithms for predicting heart disease,” Processes, vol. 11, no. 3, p. 734, 2023. ",
+            "[41] Y. M. Ayano, F. Schwenker, B. D. Dufera, and T. G. Debelee, “Interpretable machine learning techniques in ecg-based heart disease classification: a systematic review,” Diagnostics, vol. 13, no. 1, p. 111, 2022. ",
+            "[42] A. Anand, T. Kadian, M. K. Shetty, and A. Gupta, “Explainable ai decision model for ecg data of cardiac disorders,” Biomedical Signal Processing and Control, vol. 75, p. 103584, 2022. ",
+            "[43] S. D. Goodfellow, A. Goodwin, R. Greer, P. C. Laussen, M. Mazwi, and D. Eytan, “Towards understanding ecg rhythm classification using convolutional neural networks and attention mappings,” in Machine learning for healthcare conference. PMLR, 2018, pp. 83–101. ",
+            "[44] B. Zhou, A. Khosla, A. Lapedriza, A. Oliva, and A. Torralba, “Learning deep features for discriminative localization,” in Proceedings of the IEEE conference on computer vision and pattern recognition, 2016, pp. 2921– 2929. ",
+            "[45] K. Wang, J. Tian, C. Zheng, H. Yang, J. Ren, Y. Liu, Q. Han, and Y. Zhang, “Interpretable prediction of 3-year all-cause mortality in patients with heart failure caused by coronary heart disease based on machine learning and shap,” Computers in biology and medicine, vol. 137, p. 104813, 2021. ",
+            "[46] A. Sethi, S. Dharmavaram, and S. Somasundaram, “Explainable artificial intelligence (xai) approach to heart disease prediction,” in 2024 3rd International Conference on Artificial Intelligence For Internet of Things (AIIoT). IEEE, 2024, pp. 1–6. ",
+            "[47] D. P. Kingma and J. Ba, “Adam: A method for stochastic optimization,” arXiv preprint arXiv:1412.6980, 2014. ",
+            "[48] M. Zaheer, S. Reddi, D. Sachan, S. Kale, and S. Kumar, “Adaptive methods for nonconvex optimization,” Advances in neural information processing systems, vol. 31, 2018. ",
+            "[49] S. H. Bots, S. A. Peters, and M. Woodward, “Sex differences in coronary heart disease and stroke mortality: a global assessment of the effect of ageing between 1980 and 2010,” BMJ global health, vol. 2, no. 2, p. e000298, 2017. ",
+            "[50] J. Stokes 3rd, W. B. Kannel, P. A. Wolf, R. B. D’Agostino, and L. A. Cupples, “Blood pressure as a risk factor for cardiovascular disease. the framingham study–30 years of follow-up.” Hypertension, vol. 13, no. 5 supplement, p. I13, 1989. "
+        ],
+        "bbox": [
+            506,
+            63,
+            919,
+            665
+        ],
+        "page_idx": 7
+    }
+]
