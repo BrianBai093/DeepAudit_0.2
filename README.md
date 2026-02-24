@@ -1,4 +1,81 @@
-# Paper2Code (Development Stage) / 当前开发阶段说明
+# Paper2Code (Development Stage) 
+
+### 1) Project Overview
+
+This project implements a 3-phase automated pipeline:
+
+1. Phase 1: Extract reproducible paper facts from `Target/paper/full.md`, then generate `fingerprint`, `claims_ir`, and `task_spec`.  
+2. Phase 2: Execute code inside E2B Sandbox and collect structured run outputs.  
+3. Phase 3: Align evidence and verify claims, then generate final reports.
+
+Current orchestration lives in `p2c/main.py` and `p2c/graph.py`.
+
+### 2) Execution Strategy (Updated)
+
+We have **dropped swe-agent** for execution and moved to the **official E2B + Codex** path:
+
+- Runtime: E2B Sandbox
+- Executor: `codex exec`
+- Main agents: `prepare_sandbox` -> `run_codex_exec` -> `collect_codex_outputs`
+
+### 3) What Works Today
+
+- E2B sandbox creation works.
+- Codex can run and write simple programs in sandbox.
+- File and log collection works in simple scenarios.
+
+### 4) Current Blockers
+
+#### Issue A: Complex repo exits early with error code 1
+
+For this long, multi-environment dependency repo, Codex often exits right after directory/file scanning with no meaningful error.  
+From OpenAI API logs, execution often stops around:
+
+```text
+Function call
+Arguments
+shell({
+  "command": [
+    "/bin/sh",
+    "-c",
+    "cd /home/user/workspace/repo && head -n 20 requirements.txt"
+  ]
+})
+```
+
+Observed behavior: process exits after this step; `run_codex_exec` only gets `exit code 1`.
+
+#### Issue B: Codex API token rate limit causes timeouts
+
+- Current limit is around `20,000 tokens/min`.
+- Complex repos frequently hit timeout/interruption.
+- We likely need explicit wait/backoff throttling (manual or automated).
+
+### 5) Current Investigation Focus
+
+1. Improve Phase 2 observability: last command, stdout/stderr tail, pip tail, stage logs.  
+2. Separate stage logs (main vs repair) to locate real failure point.  
+3. Verify whether silent exits occur in:
+   - Codex CLI layer
+   - Sandbox command layer
+   - API streaming layer (deadline/stream interruption)
+
+### 6) TODO (Next Mandatory Task)
+
+Build an isolated test module (independent from full pipeline complexity):
+
+1. Create an E2B sandbox using the same method (Codex preinstalled).  
+2. Inject key and upload target repo.  
+3. Connect to the same sandbox via E2B CLI.  
+4. Run commands manually and observe outputs/exit codes.  
+5. Compare manual path vs agent path (command, cwd, env vars, timeout settings).
+
+### 7) Goal of This Stage
+
+Identify why the agent gets killed with no explicit error and provide a reproducible minimal case, then fix it:
+
+- Complex repo should complete first-pass dependency and entrypoint execution reliably.  
+- Failures must be diagnosable with explicit cause, not just `exit code 1`.
 
 ## 中文
 
@@ -80,83 +157,4 @@ shell({
 - 失败时必须有明确错误归因，而不是只有 `exit code 1`。  
 
 ---
-
-## English
-
-### 1) Project Overview
-
-This project implements a 3-phase automated pipeline:
-
-1. Phase 1: Extract reproducible paper facts from `Target/paper/full.md`, then generate `fingerprint`, `claims_ir`, and `task_spec`.  
-2. Phase 2: Execute code inside E2B Sandbox and collect structured run outputs.  
-3. Phase 3: Align evidence and verify claims, then generate final reports.
-
-Current orchestration lives in `p2c/main.py` and `p2c/graph.py`.
-
-### 2) Execution Strategy (Updated)
-
-We have **dropped swe-agent** for execution and moved to the **official E2B + Codex** path:
-
-- Runtime: E2B Sandbox
-- Executor: `codex exec`
-- Main agents: `prepare_sandbox` -> `run_codex_exec` -> `collect_codex_outputs`
-
-### 3) What Works Today
-
-- E2B sandbox creation works.
-- Codex can run and write simple programs in sandbox.
-- File and log collection works in simple scenarios.
-
-### 4) Current Blockers
-
-#### Issue A: Complex repo exits early with error code 1
-
-For this long, multi-environment dependency repo, Codex often exits right after directory/file scanning with no meaningful error.  
-From OpenAI API logs, execution often stops around:
-
-```text
-Function call
-Arguments
-shell({
-  "command": [
-    "/bin/sh",
-    "-c",
-    "cd /home/user/workspace/repo && head -n 20 requirements.txt"
-  ]
-})
-```
-
-Observed behavior: process exits after this step; `run_codex_exec` only gets `exit code 1`.
-
-#### Issue B: Codex API token rate limit causes timeouts
-
-- Current limit is around `20,000 tokens/min`.
-- Complex repos frequently hit timeout/interruption.
-- We likely need explicit wait/backoff throttling (manual or automated).
-
-### 5) Current Investigation Focus
-
-1. Improve Phase 2 observability: last command, stdout/stderr tail, pip tail, stage logs.  
-2. Separate stage logs (main vs repair) to locate real failure point.  
-3. Verify whether silent exits occur in:
-   - Codex CLI layer
-   - Sandbox command layer
-   - API streaming layer (deadline/stream interruption)
-
-### 6) TODO (Next Mandatory Task)
-
-Build an isolated test module (independent from full pipeline complexity):
-
-1. Create an E2B sandbox using the same method (Codex preinstalled).  
-2. Inject key and upload target repo.  
-3. Connect to the same sandbox via E2B CLI.  
-4. Run commands manually and observe outputs/exit codes.  
-5. Compare manual path vs agent path (command, cwd, env vars, timeout settings).
-
-### 7) Goal of This Stage
-
-Identify why the agent gets killed with no explicit error and provide a reproducible minimal case, then fix it:
-
-- Complex repo should complete first-pass dependency and entrypoint execution reliably.  
-- Failures must be diagnosable with explicit cause, not just `exit code 1`.
 
