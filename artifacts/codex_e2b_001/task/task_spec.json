@@ -1,0 +1,94 @@
+{
+  "goal": [
+    "claim_11",
+    "claim_12",
+    "claim_13",
+    "claim_14",
+    "claim_15",
+    "claim_16",
+    "claim_17",
+    "claim_18",
+    "claim_19",
+    "claim_20",
+    "claim_21",
+    "claim_23",
+    "claim_24",
+    "claim_25",
+    "claim_26",
+    "claim_28",
+    "claim_29",
+    "claim_30",
+    "claim_33",
+    "claim_34",
+    "claim_35",
+    "claim_36",
+    "claim_37",
+    "claim_38",
+    "claim_39",
+    "claim_40"
+  ],
+  "constraints": {
+    "budget_minutes": 30,
+    "network": "limited",
+    "allowed_modification_scope": "Target/code",
+    "max_self_heal_iters": 2
+  },
+  "entrypoints": [
+    {
+      "path": "main_gru_svm.py",
+      "command": "python3 main_gru_svm.py",
+      "confidence": 0.8,
+      "evidence": "main*.py discovered"
+    },
+    {
+      "path": "main_linear_regression.py",
+      "command": "python3 main_linear_regression.py",
+      "confidence": 0.8,
+      "evidence": "main*.py discovered"
+    },
+    {
+      "path": "main_logistic_regression.py",
+      "command": "python3 main_logistic_regression.py",
+      "confidence": 0.8,
+      "evidence": "main*.py discovered"
+    },
+    {
+      "path": "main_mlp.py",
+      "command": "python3 main_mlp.py",
+      "confidence": 0.8,
+      "evidence": "main*.py discovered"
+    },
+    {
+      "path": "main_nearest_neighbor.py",
+      "command": "python3 main_nearest_neighbor.py",
+      "confidence": 0.8,
+      "evidence": "main*.py discovered"
+    }
+  ],
+  "metric_observers": [
+    {
+      "name": "accuracy_percent",
+      "kind": "stdout_regex",
+      "pattern": "accuracy[^0-9]*(\\d+(?:\\.\\d+)?)%"
+    },
+    {
+      "name": "accuracy_decimal",
+      "kind": "stdout_regex",
+      "pattern": "accuracy[^0-9]*(0\\.\\d+|1\\.0+)"
+    }
+  ],
+  "run_matrix": [
+    {
+      "seed": 0,
+      "timeout_sec": 1800,
+      "budget_minutes": 30
+    }
+  ],
+  "reason_codes": [
+    "main_mlp.py: selected for non-linear function approximation and deep-model training; serves as the primary metric observer (training loss, validation accuracy, logging hooks). Relevant claims: claim_11, claim_12, claim_13, claim_14, claim_15, claim_16, claim_17.",
+    "main_logistic_regression.py: selected to provide a probabilistic/classification baseline with evaluation metrics (accuracy, AUC) for comparison to the MLP observer. Relevant claims: claim_18, claim_19, claim_20, claim_21.",
+    "main_linear_regression.py: selected to provide a simple continuous-output baseline (MSE, R^2) and to support claims about regression workflows and metric reporting. Relevant claims: claim_23, claim_24, claim_25.",
+    "main_gru_svm.py: selected to cover sequence-modeling and hybrid approaches (GRU + SVM) for claims related to sequential data handling and combined architectures. Relevant claims: claim_26, claim_28, claim_29.",
+    "main_nearest_neighbor.py: selected to include an instance-based, interpretable baseline (k-NN) useful for small-data regimes and for robustness/interpretability claims. Relevant claims: claim_30, claim_33, claim_34, claim_35, claim_36, claim_37, claim_38, claim_39, claim_40."
+  ]
+}

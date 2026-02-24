@@ -1,0 +1,12 @@
+{
+  "stage": "postcheck",
+  "last_command": "",
+  "exit_code": 0,
+  "stdout_tail": "",
+  "stderr_tail": "",
+  "codex_exec_log_tail": "",
+  "pip_log_tail": "",
+  "reason_codes": [
+    "INITIALIZED_PLACEHOLDER"
+  ]
+}

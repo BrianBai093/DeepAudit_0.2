@@ -22,12 +22,25 @@ REQUIRED_FILES = [
     "execution/run.log",
     "execution/commands.jsonl",
     "execution/patch.diff",
+    "execution/codex_outputs/run_manifest.json",
+    "execution/codex_outputs/codex_worklog.jsonl",
+    "execution/codex_outputs/patches.diff",
+    "execution/codex_outputs/claim_alignment.json",
+    "execution/codex_outputs/codex_exec.log",
+    "execution/codex_outputs/dependency_solver.json",
+    "execution/codex_outputs/pip_install.log",
+    "execution/codex_outputs/codex_failure.json",
+    "execution/codex_outputs/codex_main.log",
+    "execution/codex_outputs/codex_repair.log",
     "execution/repo_state.json",
+    "execution/codex_failure.json",
     "execution/system_info.json",
     "execution/env_lock/pip_freeze.txt",
     "execution/data_manifest.json",
     "results/metrics.json",
     "results/parsed_evidence.json",
+    "results/evaluability.json",
+    "results/evaluability_verdict.json",
     "results/verdict.json",
     "results/report.md",
 ]
@@ -57,6 +70,36 @@ class ArtifactManager:
                     payload = {"records": [], "reason_codes": ["INITIALIZED_PLACEHOLDER"]}
                 elif rel.endswith("parsed_evidence.json"):
                     payload = {"claim_evidence": [], "reason_codes": ["INITIALIZED_PLACEHOLDER"]}
+                elif rel.endswith("run_manifest.json"):
+                    payload = {"runs": [], "reason_codes": ["INITIALIZED_PLACEHOLDER"]}
+                elif rel.endswith("claim_alignment.json"):
+                    payload = {"claims": [], "reason_codes": ["INITIALIZED_PLACEHOLDER"]}
+                elif rel.endswith("codex_failure.json"):
+                    payload = {
+                        "stage": "postcheck",
+                        "last_command": "",
+                        "exit_code": 0,
+                        "stdout_tail": "",
+                        "stderr_tail": "",
+                        "codex_exec_log_tail": "",
+                        "pip_log_tail": "",
+                        "reason_codes": ["INITIALIZED_PLACEHOLDER"],
+                    }
+                elif rel.endswith("dependency_solver.json"):
+                    payload = {
+                        "steps": [],
+                        "status": "not_run",
+                        "reason_codes": ["INITIALIZED_PLACEHOLDER"],
+                    }
+                elif rel.endswith("evaluability.json"):
+                    payload = {"entries": [], "reason_codes": ["INITIALIZED_PLACEHOLDER"]}
+                elif rel.endswith("evaluability_verdict.json"):
+                    payload = {
+                        "status": "NOT_EVALUABLE",
+                        "claim_rows": [],
+                        "reason_codes": ["INITIALIZED_PLACEHOLDER"],
+                        "summary": "Pipeline not complete yet.",
+                    }
                 elif rel.endswith("task_spec.json"):
                     payload = {
                         "goal": [],
@@ -72,6 +115,14 @@ class ArtifactManager:
                         "parsers": [],
                         "normalization": {},
                         "reason_codes": ["INITIALIZED_PLACEHOLDER"],
+                    }
+                elif rel.endswith("repo_state.json"):
+                    payload = {
+                        "head": None,
+                        "branch": None,
+                        "diff_summary": None,
+                        "submodules": [],
+                        "reason_codes": ["INITIALIZED_PLACEHOLDER", "NO_GIT_METADATA"],
                     }
                 else:
                     payload = {"reason_codes": ["INITIALIZED_PLACEHOLDER"]}

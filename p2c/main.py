@@ -38,26 +38,26 @@ def ensure_phase_prereq(phase: int, artifacts: ArtifactManager) -> None:
                 "Run: python -m p2c.main --phase 1 ..."
             )
     if phase == 3:
-        metrics = artifacts.path("results/metrics.json")
-        commands = artifacts.path("execution/commands.jsonl")
-        if not metrics.exists() or metrics.stat().st_size == 0:
+        run_manifest = artifacts.path("execution/codex_outputs/run_manifest.json")
+        claim_alignment = artifacts.path("execution/codex_outputs/claim_alignment.json")
+        if not run_manifest.exists() or run_manifest.stat().st_size == 0:
             raise RuntimeError(
                 "Phase 3 requires phase 2 artifacts. Run: python -m p2c.main --phase 2 ..."
             )
         try:
-            metrics_payload = json.loads(metrics.read_text(encoding="utf-8"))
+            manifest_payload = json.loads(run_manifest.read_text(encoding="utf-8"))
         except Exception as e:  # noqa: BLE001
             raise RuntimeError(
-                "Phase 3 requires a valid metrics.json from phase 2. "
+                "Phase 3 requires a valid execution/codex_outputs/run_manifest.json from phase 2. "
                 "Run: python -m p2c.main --phase 2 ..."
             ) from e
-        if not metrics_payload.get("records"):
+        if not manifest_payload.get("runs"):
             raise RuntimeError(
-                "Phase 3 requires phase 2 metrics records. Run: python -m p2c.main --phase 2 ..."
+                "Phase 3 requires phase 2 run_manifest runs. Run: python -m p2c.main --phase 2 ..."
             )
-        if not commands.exists() or commands.stat().st_size == 0:
+        if not claim_alignment.exists() or claim_alignment.stat().st_size == 0:
             raise RuntimeError(
-                "Phase 3 requires phase 2 command logs. Run: python -m p2c.main --phase 2 ..."
+                "Phase 3 requires phase 2 claim alignment output. Run: python -m p2c.main --phase 2 ..."
             )
 
 

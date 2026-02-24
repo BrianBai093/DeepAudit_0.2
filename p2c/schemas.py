@@ -227,6 +227,7 @@ class DataManifestEntry(BaseModel):
     path: str
     exists: bool
     size_bytes: int | None = None
+    sandbox_path: str | None = None
 
 
 class DataManifest(BaseModel):
@@ -250,6 +251,50 @@ class RepoState(BaseModel):
     branch: str | None = None
     diff_summary: str | None = None
     submodules: list[str] = Field(default_factory=list)
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+class CodexRun(BaseModel):
+    run_id: str
+    command: str
+    params: dict[str, Any] = Field(default_factory=dict)
+    cwd: str
+    exit_code: int
+    status: str
+    runtime_sec: float | None = None
+    stdout_tail: str | None = None
+    stderr_tail: str | None = None
+    artifacts: list[str] = Field(default_factory=list)
+    metrics: dict[str, Any] = Field(default_factory=dict)
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+class RunManifestDoc(BaseModel):
+    runs: list[CodexRun] = Field(default_factory=list)
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+class ClaimAlignmentItem(BaseModel):
+    claim_id: str
+    required_metrics: list[str] = Field(default_factory=list)
+    source: list[str] = Field(default_factory=list)
+    evaluable: Literal["yes", "no", "partial"] = "partial"
+    reason: str | None = None
+
+
+class ClaimAlignmentDoc(BaseModel):
+    claims: list[ClaimAlignmentItem] = Field(default_factory=list)
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+class CodexFailureDoc(BaseModel):
+    stage: Literal["precheck", "main", "repair", "postcheck"] = "postcheck"
+    last_command: str
+    exit_code: int
+    stdout_tail: str = ""
+    stderr_tail: str = ""
+    codex_exec_log_tail: str = ""
+    pip_log_tail: str = ""
     reason_codes: list[str] = Field(default_factory=list)
 
 
@@ -279,6 +324,18 @@ class ParsedEvidence(BaseModel):
     reason_codes: list[str] = Field(default_factory=list)
 
 
+class EvaluabilityEntry(BaseModel):
+    claim_id: str
+    evaluable: Literal["yes", "no", "partial"] = "partial"
+    source: list[str] = Field(default_factory=list)
+    reason: str | None = None
+
+
+class EvaluabilityDoc(BaseModel):
+    entries: list[EvaluabilityEntry] = Field(default_factory=list)
+    reason_codes: list[str] = Field(default_factory=list)
+
+
 class ClaimVerdict(BaseModel):
     claim_id: str
     status: VerdictStatus
@@ -291,6 +348,20 @@ class ClaimVerdict(BaseModel):
 class VerdictDoc(BaseModel):
     status: VerdictStatus
     claim_verdicts: list[ClaimVerdict] = Field(default_factory=list)
+    reason_codes: list[str] = Field(default_factory=list)
+    summary: str | None = None
+
+
+class EvaluabilityVerdictRow(BaseModel):
+    claim_id: str
+    status: Literal["EVALUABLE", "PARTIAL", "NOT_EVALUABLE"]
+    detail: str
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+class EvaluabilityVerdictDoc(BaseModel):
+    status: Literal["EVALUABLE", "PARTIAL", "NOT_EVALUABLE"]
+    claim_rows: list[EvaluabilityVerdictRow] = Field(default_factory=list)
     reason_codes: list[str] = Field(default_factory=list)
     summary: str | None = None
 

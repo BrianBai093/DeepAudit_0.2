@@ -1,0 +1,899 @@
+{
+  "fingerprint_id": "10.24432/C52P4X.",
+  "metadata": {
+    "paper_id": "10.24432/C52P4X.",
+    "repository_url": "https://doi.org/10.24432/C52P4X.",
+    "venue": null,
+    "year": 2002
+  },
+  "configurations": {
+    "dataset_specs": [
+      {
+        "facet": "dataset_task",
+        "detail": "The classification task in the study is heart disease classification.",
+        "scope": "study.task"
+      },
+      {
+        "facet": "dataset_task",
+        "detail": "The dataset used for training is the combined (pooled) data.",
+        "scope": "Training experiments in this study."
+      },
+      {
+        "facet": "dataset_task",
+        "detail": "The models were trained to perform a binary classification task.",
+        "scope": "Training experiments on the combined (pooled) dataset used in this study."
+      },
+      {
+        "facet": "dataset_task",
+        "detail": "A support vector machine (SVM) was trained on the combined (pooled) data.",
+        "scope": "Training experiments on the combined (pooled) dataset used in this study."
+      },
+      {
+        "facet": "dataset_task",
+        "detail": "A k-nearest neighbor (KNN) classifier was trained on the combined (pooled) data.",
+        "scope": "Training experiments on the combined (pooled) dataset used in this study."
+      },
+      {
+        "facet": "dataset_task",
+        "detail": "A Naïve Bayes (NB) classifier was trained on the combined (pooled) data.",
+        "scope": "Training experiments on the combined (pooled) dataset used in this study."
+      },
+      {
+        "facet": "dataset_task",
+        "detail": "A decision tree (DT) classifier was trained on the combined (pooled) data.",
+        "scope": "Training experiments on the combined (pooled) dataset used in this study."
+      },
+      {
+        "facet": "dataset_task",
+        "detail": "A random forests (RF) model was trained on the combined (pooled) data.",
+        "scope": "Training experiments on the combined (pooled) dataset used in this study."
+      },
+      {
+        "facet": "dataset_task",
+        "detail": "The model trained is the logistic regression model described in reference [7].",
+        "scope": "Experimental training procedure in this study."
+      },
+      {
+        "facet": "dataset_task",
+        "detail": "The logistic regression model from reference [7] is trained as the first step in the procedure.",
+        "scope": "Order of operations within the experimental protocol of this study."
+      },
+      {
+        "facet": "dataset_task",
+        "detail": "TABLE II TEST ACCURACIES FOR POOLED DATA AND VARIOUS LEARNING MODELS.",
+        "scope": "from paper context"
+      },
+      {
+        "facet": "dataset_task",
+        "detail": "We exclude Switzerland dataset from this comparison where all examples are of the same class after preprocessing.",
+        "scope": "dataset"
+      },
+      {
+        "facet": "dataset_task",
+        "detail": "The UCI heart disease dataset provides a great example of naturally heterogeneous splits of the data across geographically distant hospitals.",
+        "scope": "uci"
+      }
+    ],
+    "hyperparameters": {
+      "learning_rate": 0.001,
+      "batch_size": 4
+    },
+    "model_arch": [
+      "Hidden units count for a one-hidden-layer neural network is an integer in the inclusive range [4,16]."
+    ],
+    "environment": {},
+    "evaluation_metrics": [
+      "accuracy"
+    ]
+  },
+  "claims": [
+    {
+      "id": "claim_01",
+      "claim_type": "Methodological",
+      "fact": "The classification task in the study is heart disease classification.",
+      "scope": "study.task",
+      "comparator": null,
+      "verification_logic": "exact_match",
+      "tolerance": {
+        "abs": null,
+        "rel": null,
+        "text": "exact config/value match"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[0]",
+        "visual_anchor": null,
+        "visual_data": {}
+      },
+      "reason_codes": []
+    },
+    {
+      "id": "claim_02",
+      "claim_type": "Methodological",
+      "fact": "The dataset used for training is the combined (pooled) data.",
+      "scope": "Training experiments in this study.",
+      "comparator": null,
+      "verification_logic": "exact_match",
+      "tolerance": {
+        "abs": null,
+        "rel": null,
+        "text": "exact config/value match"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[1]",
+        "visual_anchor": null,
+        "visual_data": {}
+      },
+      "reason_codes": []
+    },
+    {
+      "id": "claim_03",
+      "claim_type": "Methodological",
+      "fact": "The models were trained to perform a binary classification task.",
+      "scope": "Training experiments on the combined (pooled) dataset used in this study.",
+      "comparator": null,
+      "verification_logic": "exact_match",
+      "tolerance": {
+        "abs": null,
+        "rel": null,
+        "text": "exact config/value match"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[2]",
+        "visual_anchor": null,
+        "visual_data": {}
+      },
+      "reason_codes": []
+    },
+    {
+      "id": "claim_04",
+      "claim_type": "Methodological",
+      "fact": "A support vector machine (SVM) was trained on the combined (pooled) data.",
+      "scope": "Training experiments on the combined (pooled) dataset used in this study.",
+      "comparator": null,
+      "verification_logic": "exact_match",
+      "tolerance": {
+        "abs": null,
+        "rel": null,
+        "text": "exact config/value match"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[3]",
+        "visual_anchor": null,
+        "visual_data": {}
+      },
+      "reason_codes": []
+    },
+    {
+      "id": "claim_05",
+      "claim_type": "Methodological",
+      "fact": "A k-nearest neighbor (KNN) classifier was trained on the combined (pooled) data.",
+      "scope": "Training experiments on the combined (pooled) dataset used in this study.",
+      "comparator": null,
+      "verification_logic": "exact_match",
+      "tolerance": {
+        "abs": null,
+        "rel": null,
+        "text": "exact config/value match"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[4]",
+        "visual_anchor": null,
+        "visual_data": {}
+      },
+      "reason_codes": []
+    },
+    {
+      "id": "claim_06",
+      "claim_type": "Methodological",
+      "fact": "A Naïve Bayes (NB) classifier was trained on the combined (pooled) data.",
+      "scope": "Training experiments on the combined (pooled) dataset used in this study.",
+      "comparator": null,
+      "verification_logic": "exact_match",
+      "tolerance": {
+        "abs": null,
+        "rel": null,
+        "text": "exact config/value match"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[5]",
+        "visual_anchor": null,
+        "visual_data": {}
+      },
+      "reason_codes": []
+    },
+    {
+      "id": "claim_07",
+      "claim_type": "Methodological",
+      "fact": "A decision tree (DT) classifier was trained on the combined (pooled) data.",
+      "scope": "Training experiments on the combined (pooled) dataset used in this study.",
+      "comparator": null,
+      "verification_logic": "exact_match",
+      "tolerance": {
+        "abs": null,
+        "rel": null,
+        "text": "exact config/value match"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[6]",
+        "visual_anchor": null,
+        "visual_data": {}
+      },
+      "reason_codes": []
+    },
+    {
+      "id": "claim_08",
+      "claim_type": "Methodological",
+      "fact": "A random forests (RF) model was trained on the combined (pooled) data.",
+      "scope": "Training experiments on the combined (pooled) dataset used in this study.",
+      "comparator": null,
+      "verification_logic": "exact_match",
+      "tolerance": {
+        "abs": null,
+        "rel": null,
+        "text": "exact config/value match"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[7]",
+        "visual_anchor": null,
+        "visual_data": {}
+      },
+      "reason_codes": []
+    },
+    {
+      "id": "claim_09",
+      "claim_type": "Methodological",
+      "fact": "The model trained is the logistic regression model described in reference [7].",
+      "scope": "Experimental training procedure in this study.",
+      "comparator": null,
+      "verification_logic": "exact_match",
+      "tolerance": {
+        "abs": null,
+        "rel": null,
+        "text": "exact config/value match"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[8]",
+        "visual_anchor": null,
+        "visual_data": {}
+      },
+      "reason_codes": []
+    },
+    {
+      "id": "claim_10",
+      "claim_type": "Methodological",
+      "fact": "The logistic regression model from reference [7] is trained as the first step in the procedure.",
+      "scope": "Order of operations within the experimental protocol of this study.",
+      "comparator": null,
+      "verification_logic": "exact_match",
+      "tolerance": {
+        "abs": null,
+        "rel": null,
+        "text": "exact config/value match"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[9]",
+        "visual_anchor": null,
+        "visual_data": {}
+      },
+      "reason_codes": []
+    },
+    {
+      "id": "claim_11",
+      "claim_type": "Methodological",
+      "fact": "The training uses a learning rate of 0.001.",
+      "scope": "Hyperparameter settings for training the logistic regression model in this study.",
+      "comparator": null,
+      "verification_logic": "exact_match",
+      "tolerance": {
+        "abs": null,
+        "rel": null,
+        "text": "exact config/value match"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[10]",
+        "visual_anchor": null,
+        "visual_data": {}
+      },
+      "reason_codes": []
+    },
+    {
+      "id": "claim_12",
+      "claim_type": "Methodological",
+      "fact": "The training uses a batch size of 4.",
+      "scope": "Hyperparameter settings for training the logistic regression model in this study.",
+      "comparator": null,
+      "verification_logic": "exact_match",
+      "tolerance": {
+        "abs": null,
+        "rel": null,
+        "text": "exact config/value match"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[11]",
+        "visual_anchor": null,
+        "visual_data": {}
+      },
+      "reason_codes": []
+    },
+    {
+      "id": "claim_13",
+      "claim_type": "Methodological",
+      "fact": "The training runs for 30 epochs.",
+      "scope": "Hyperparameter settings for training the logistic regression model in this study.",
+      "comparator": null,
+      "verification_logic": "exact_match",
+      "tolerance": {
+        "abs": null,
+        "rel": null,
+        "text": "exact config/value match"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[12]",
+        "visual_anchor": null,
+        "visual_data": {}
+      },
+      "reason_codes": []
+    },
+    {
+      "id": "claim_14",
+      "claim_type": "Methodological",
+      "fact": "Each model is trained using 10 different random seeds.",
+      "scope": "Other models and hyperparameter combinations in the experiment.",
+      "comparator": null,
+      "verification_logic": "exact_match",
+      "tolerance": {
+        "abs": null,
+        "rel": null,
+        "text": "exact config/value match"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[13]",
+        "visual_anchor": null,
+        "visual_data": {}
+      },
+      "reason_codes": []
+    },
+    {
+      "id": "claim_15",
+      "claim_type": "Methodological",
+      "fact": "The 10 random seeds are used to produce different data splits.",
+      "scope": "Other models and hyperparameter combinations in the experiment.",
+      "comparator": null,
+      "verification_logic": "exact_match",
+      "tolerance": {
+        "abs": null,
+        "rel": null,
+        "text": "exact config/value match"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[14]",
+        "visual_anchor": null,
+        "visual_data": {}
+      },
+      "reason_codes": []
+    },
+    {
+      "id": "claim_16",
+      "claim_type": "Methodological",
+      "fact": "The numeric value or range for the learning rate is incomplete/truncated in the input; the text ends with the substring \"$( 0 .\".",
+      "scope": "Input Facts (user-provided line)",
+      "comparator": null,
+      "verification_logic": "exact_match",
+      "tolerance": {
+        "abs": null,
+        "rel": null,
+        "text": "exact config/value match"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[15]",
+        "visual_anchor": null,
+        "visual_data": {}
+      },
+      "reason_codes": []
+    },
+    {
+      "id": "claim_17",
+      "claim_type": "Methodological",
+      "fact": "Batch size is an integer in the inclusive range [4,64].",
+      "scope": "Hyperparameter: batch size for training.",
+      "comparator": null,
+      "verification_logic": "exact_match",
+      "tolerance": {
+        "abs": null,
+        "rel": null,
+        "text": "exact config/value match"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[16]",
+        "visual_anchor": null,
+        "visual_data": {}
+      },
+      "reason_codes": []
+    },
+    {
+      "id": "claim_18",
+      "claim_type": "Methodological",
+      "fact": "Hidden units count for a one-hidden-layer neural network is an integer in the inclusive range [4,16].",
+      "scope": "Model: one-hidden-layer neural network architecture (hidden units).",
+      "comparator": null,
+      "verification_logic": "exact_match",
+      "tolerance": {
+        "abs": null,
+        "rel": null,
+        "text": "exact config/value match"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[17]",
+        "visual_anchor": null,
+        "visual_data": {}
+      },
+      "reason_codes": []
+    },
+    {
+      "id": "claim_19",
+      "claim_type": "Methodological",
+      "fact": "In this work, as in [7], local updates in batches are counted rather than local epochs, aligning with theoretical formulations and extending to related strategies based on FedAvg.",
+      "scope": "from paper context",
+      "comparator": null,
+      "verification_logic": "exact_match",
+      "tolerance": {
+        "abs": null,
+        "rel": null,
+        "text": "exact config/value match"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[18]",
+        "visual_anchor": null,
+        "visual_data": {}
+      },
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "id": "claim_20",
+      "claim_type": "Methodological",
+      "fact": "Client updates are computed as: $$ \\begin{array}{l} \\Delta_ {t} = \\frac {1}{| S |} \\sum_ {i \\in S} \\Delta_ {i} ^ {t} \\\\ m _ {t} = \\beta_ {1} m _ {t - 1} + (1 - \\beta_ {1}) \\Delta_ {t} \\tag {1} \\\\ v _ {t} = \\beta_ {2} v _ {t - 1} + (1 - \\beta_ {2}) (\\Delta_ {t}) ^ {2} \\\\ x _ {t + 1} = x _ {t} - \\eta \\frac {m _ {t}}{\\sqrt {v _ {t}} + \\tau} \\\\ \\end{array} $$ where $\\Delta _ { t }$ is the aggregated gradient update at time t, $S$ is the set of clients participating, $| S |$ is the number of clients in $S$ , $m _ { t }$ and $v _ { t }$ are the first and second moment estimates, $\\beta _ { 1 }$ and $\\beta _ { 2 }$ are the exponential decay rates for these moment estimates, $\\eta$ is the learning rate, and $\\tau$ is a small constant for numerical stability.",
+      "scope": "from paper context",
+      "comparator": null,
+      "verification_logic": "exact_match",
+      "tolerance": {
+        "abs": null,
+        "rel": null,
+        "text": "exact config/value match"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[19]",
+        "visual_anchor": null,
+        "visual_data": {}
+      },
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "id": "claim_21",
+      "claim_type": "Methodological",
+      "fact": "Updates for the global and local control variables and model parameters are computed as follows: $$ \\begin{array}{l} \\boldsymbol {y} _ {i} \\leftarrow \\boldsymbol {y} _ {i} - \\eta_ {l} \\left(g _ {i} \\left(\\boldsymbol {y} _ {i}\\right) + \\boldsymbol {c} - \\boldsymbol {c} _ {i}\\right) \\\\ c _ {i} ^ {+} \\leftarrow (\\mathrm {i}) g _ {i} (\\boldsymbol {x}), \\text {o r (i i)} \\boldsymbol {c} _ {i} - \\boldsymbol {c} + \\frac {1}{K \\eta_ {l}} (\\boldsymbol {x} - \\boldsymbol {y} _ {i}) \\\\ \\boldsymbol {x} \\leftarrow \\boldsymbol {x} + \\frac {\\eta_ {g}}{| S |} \\sum_ {i \\in S} (\\boldsymbol {y} _ {i} - \\boldsymbol {x}) \\\\ \\boldsymbol {c} \\gets \\boldsymbol {c} + \\frac {1}{N} \\sum_ {i \\in S} (\\boldsymbol {c} _ {\\boldsymbol {i}} ^ {+} - \\boldsymbol {c} _ {\\boldsymbol {i}}) \\\\ \\end{array} $$ where $\\mathbf { { \\mathit { y } } } _ { i }$ is client update performed $K$ times, $\\eta$ is the learning rate, $g _ { i } ( y _ { i } )$ is the mini-batch gradient, and $_ { \\textbf { \\em x } }$ are the server parameters.",
+      "scope": "from paper context",
+      "comparator": null,
+      "verification_logic": "exact_match",
+      "tolerance": {
+        "abs": null,
+        "rel": null,
+        "text": "exact config/value match"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[20]",
+        "visual_anchor": null,
+        "visual_data": {}
+      },
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "id": "claim_22",
+      "claim_type": "Methodological",
+      "fact": "TABLE II TEST ACCURACIES FOR POOLED DATA AND VARIOUS LEARNING MODELS.",
+      "scope": "from paper context",
+      "comparator": null,
+      "verification_logic": "exact_match",
+      "tolerance": {
+        "abs": null,
+        "rel": null,
+        "text": "exact config/value match"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[21]",
+        "visual_anchor": null,
+        "visual_data": {}
+      },
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "id": "claim_23",
+      "claim_type": "Methodological",
+      "fact": "Logistic regression (LR), one-layer neural network (1LNN), support vector machine (SVM) with a linear kernel achieve the highest accuracies, with SVM leading at $8 3 .",
+      "scope": "from paper context",
+      "comparator": null,
+      "verification_logic": "exact_match",
+      "tolerance": {
+        "abs": null,
+        "rel": null,
+        "text": "exact config/value match"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[22]",
+        "visual_anchor": null,
+        "visual_data": {}
+      },
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "id": "claim_24",
+      "claim_type": "Methodological",
+      "fact": "The [7] model refers to the LR model configured with a learning rate of 0.001 and a batch size of 4, trained over 30 epochs.",
+      "scope": "from paper context",
+      "comparator": null,
+      "verification_logic": "exact_match",
+      "tolerance": {
+        "abs": null,
+        "rel": null,
+        "text": "exact config/value match"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[23]",
+        "visual_anchor": null,
+        "visual_data": {}
+      },
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "id": "claim_25",
+      "claim_type": "Methodological",
+      "fact": "The models were all trained for 30 epochs using their respective best performing hyperparameter settings from centralized (pooled) tuning.",
+      "scope": "from paper context",
+      "comparator": null,
+      "verification_logic": "exact_match",
+      "tolerance": {
+        "abs": null,
+        "rel": null,
+        "text": "exact config/value match"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[24]",
+        "visual_anchor": null,
+        "visual_data": {}
+      },
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "id": "claim_26",
+      "claim_type": "Methodological",
+      "fact": "We compare test accuracies (averaged over 10 seeds) of LR, 1LNN, and SVM local models and using FedAvg, FedAdam, FedYogi and SCAFFOLD FL algorithms.",
+      "scope": "from paper context",
+      "comparator": null,
+      "verification_logic": "exact_match",
+      "tolerance": {
+        "abs": null,
+        "rel": null,
+        "text": "exact config/value match"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[25]",
+        "visual_anchor": null,
+        "visual_data": {}
+      },
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "id": "claim_27",
+      "claim_type": "Methodological",
+      "fact": "We exclude Switzerland dataset from this comparison where all examples are of the same class after preprocessing.",
+      "scope": "dataset",
+      "comparator": null,
+      "verification_logic": "exact_match",
+      "tolerance": {
+        "abs": null,
+        "rel": null,
+        "text": "exact config/value match"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[26]",
+        "visual_anchor": null,
+        "visual_data": {}
+      },
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "id": "claim_28",
+      "claim_type": "Methodological",
+      "fact": "TABLE III TEST ACCURACIES FOR LOCAL TRAINING COMPARED TO FL ALGORITHMS <table><tr><td></td><td>Cleveland</td><td>Hungary</td><td>VA</td><td>FedAvg</td><td>FedAdam</td><td>FedYogi</td><td>SCAFFOLD</td></tr><tr><td>LR</td><td>0.667 ± 0.0831</td><td>0.659 ± 0.0901</td><td>0.608 ± 0.0616</td><td>0.703 ± 0.0262</td><td>0.72 ± 0.0191</td><td>0.721 ± 0.0129</td><td>0.703 ± 0.262</td></tr><tr><td>1LNN</td><td>0.728 ± 0.0462</td><td>0.686 ± 0.0558</td><td>0.648 ± 0.0742</td><td>0.598 ± 0.0223</td><td>0.726 ± 0.483</td><td>0.732 ± 0.329</td><td>0.598 ± 0.1025</td></tr><tr><td>SVM</td><td>0.779 ± 0.0247</td><td>0.628 ± 0.0873</td><td>0.661 ± 0.0719</td><td>0.731 ± 0.0223</td><td>0.736 ± 0.372</td><td>0.738 ± 0.276</td><td>0.731 ± 0.0223</td></tr></table> # IV.",
+      "scope": "from paper context",
+      "comparator": null,
+      "verification_logic": "exact_match",
+      "tolerance": {
+        "abs": null,
+        "rel": null,
+        "text": "exact config/value match"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[27]",
+        "visual_anchor": null,
+        "visual_data": {}
+      },
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "id": "claim_29",
+      "claim_type": "Methodological",
+      "fact": "Like age, it TABLE IV MEAN ABSOLUTE SHAP VALUES FOR EACH FEATURE AND THEIR IMPORTANCE RANKING (IN PARANTHES IS) <table><tr><td></td><td>oldpeak</td><td>cp</td><td>exang</td><td>sex</td><td>thalach</td><td>fbs</td><td>chol</td><td>restecg</td><td>trestbps</td><td>age</td></tr><tr><td>LR</td><td>0.57 (1)</td><td>0.53 (2)</td><td>0.51 (3)</td><td>0.44 (4)</td><td>0.37 (5)</td><td>0.18 (6)</td><td>0.16 (7)</td><td>0.13 (8)</td><td>0.03 (9)</td><td>0.03 (10)</td></tr><tr><td>SVM</td><td>0.44(1)</td><td>0.44 (2)</td><td>0.38 (3)</td><td>0.36 (4)</td><td>0.18 (5)</td><td>0.14 (6)</td><td>0.13 (7)</td><td>0.04 (9)</td><td>0.01 (10)</td><td>0.08 (8)</td></tr><tr><td>1LNN</td><td>0.1 (1)</td><td>0.07 (5)</td><td>0.09 (2)</td><td>0.05 (6)</td><td>0.08 (3)</td><td>0.02 (7)</td><td>0.07 (4)</td><td>0.02 (8)</td><td>0.01 (9)</td><td>0.0 (10)</td></tr><tr><td>NB</td><td>0.11 (3)</td><td>0.09 (4)</td><td>0.15 (1)</td><td>0.11 (2)</td><td>0.06 (6)</td><td>0.04 (7)</td><td>0.06 (5)</td><td>0.01 (10)</td><td>0.03 (9)</td><td>0.03 (8)</td></tr><tr><td>RF</td><td>0.1 (2)</td><td>0.17 (1)</td><td>0.09 (3)</td><td>0.08 (4)</td><td>0.06 (6)</td><td>0.02 (9)</td><td>0.06 (5)</td><td>0.01 (10)</td><td>0.03 (8)</td><td>0.04 (7)</td></tr><tr><td>DT</td><td>0.0 (5)</td><td>0.38 (1)</td><td>0.05 (4)</td><td>0.08 (2)</td><td>0.0 (5)</td><td>0.0 (5)</td><td>0.06 (3)</td><td>0.0 (5)</td><td>0.0 (5)</td><td>0.0 (5)</td></tr><tr><td>KNN</td><td>0.0 (5)</td><td>0.0 (5)</td><td>0.0 (5)</td><td>0.0 (5)</td><td>0.22 (1)</td><td>0.0 (5)</td><td>0.17 (2)</td><td>0.0 (5)</td><td>0.09 (3)</td><td>0.06 (4)</td></tr></table> serves as a general health indicator rather than a direct measure of heart function.",
+      "scope": "from paper context",
+      "comparator": null,
+      "verification_logic": "exact_match",
+      "tolerance": {
+        "abs": null,
+        "rel": null,
+        "text": "exact config/value match"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[28]",
+        "visual_anchor": null,
+        "visual_data": {}
+      },
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "id": "claim_30",
+      "claim_type": "Comparative",
+      "fact": "In the centralized setup, various binary classification algorithms are trained on pooled data, with a support vector machine (SVM) achieving the highest testing accuracy of $8 3 .",
+      "scope": "from paper context",
+      "comparator": null,
+      "verification_logic": "greater_than_margin",
+      "tolerance": {
+        "abs": 0.005,
+        "rel": 0.02,
+        "text": "default metric tolerance"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[29]",
+        "visual_anchor": null,
+        "visual_data": {}
+      },
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "id": "claim_31",
+      "claim_type": "Methodological",
+      "fact": "The UCI heart disease dataset provides a great example of naturally heterogeneous splits of the data across geographically distant hospitals.",
+      "scope": "uci",
+      "comparator": null,
+      "verification_logic": "exact_match",
+      "tolerance": {
+        "abs": null,
+        "rel": null,
+        "text": "exact config/value match"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[30]",
+        "visual_anchor": null,
+        "visual_data": {}
+      },
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "id": "claim_32",
+      "claim_type": "Methodological",
+      "fact": "We examine various federated aggregation strategies including FedAvg [9], FedAdam [16], FedYogi [16], and SCAFFOLD [14].",
+      "scope": "from paper context",
+      "comparator": null,
+      "verification_logic": "exact_match",
+      "tolerance": {
+        "abs": null,
+        "rel": null,
+        "text": "exact config/value match"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[31]",
+        "visual_anchor": null,
+        "visual_data": {}
+      },
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "id": "claim_33",
+      "claim_type": "Empirical",
+      "fact": "[7] accuracy = 78.7",
+      "scope": "from table in paper",
+      "comparator": null,
+      "verification_logic": "exact_match",
+      "tolerance": {
+        "abs": 0.005,
+        "rel": 0.02,
+        "text": "default metric tolerance"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[32]",
+        "visual_anchor": "Table II",
+        "visual_data": {}
+      },
+      "reason_codes": [
+        "TABLE_EXPANDED"
+      ]
+    },
+    {
+      "id": "claim_34",
+      "claim_type": "Empirical",
+      "fact": "LR accuracy = 80.5",
+      "scope": "from table in paper",
+      "comparator": null,
+      "verification_logic": "exact_match",
+      "tolerance": {
+        "abs": 0.005,
+        "rel": 0.02,
+        "text": "default metric tolerance"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[33]",
+        "visual_anchor": "Table II",
+        "visual_data": {}
+      },
+      "reason_codes": [
+        "TABLE_EXPANDED"
+      ]
+    },
+    {
+      "id": "claim_35",
+      "claim_type": "Empirical",
+      "fact": "1LNN accuracy = 82.1",
+      "scope": "from table in paper",
+      "comparator": null,
+      "verification_logic": "exact_match",
+      "tolerance": {
+        "abs": 0.005,
+        "rel": 0.02,
+        "text": "default metric tolerance"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[34]",
+        "visual_anchor": "Table II",
+        "visual_data": {}
+      },
+      "reason_codes": [
+        "TABLE_EXPANDED"
+      ]
+    },
+    {
+      "id": "claim_36",
+      "claim_type": "Empirical",
+      "fact": "SVM accuracy = 83.3",
+      "scope": "from table in paper",
+      "comparator": null,
+      "verification_logic": "exact_match",
+      "tolerance": {
+        "abs": 0.005,
+        "rel": 0.02,
+        "text": "default metric tolerance"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[35]",
+        "visual_anchor": "Table II",
+        "visual_data": {}
+      },
+      "reason_codes": [
+        "TABLE_EXPANDED"
+      ]
+    },
+    {
+      "id": "claim_37",
+      "claim_type": "Empirical",
+      "fact": "NB accuracy = 78.5",
+      "scope": "from table in paper",
+      "comparator": null,
+      "verification_logic": "exact_match",
+      "tolerance": {
+        "abs": 0.005,
+        "rel": 0.02,
+        "text": "default metric tolerance"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[36]",
+        "visual_anchor": "Table II",
+        "visual_data": {}
+      },
+      "reason_codes": [
+        "TABLE_EXPANDED"
+      ]
+    },
+    {
+      "id": "claim_38",
+      "claim_type": "Empirical",
+      "fact": "DT accuracy = 78.1",
+      "scope": "from table in paper",
+      "comparator": null,
+      "verification_logic": "exact_match",
+      "tolerance": {
+        "abs": 0.005,
+        "rel": 0.02,
+        "text": "default metric tolerance"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[37]",
+        "visual_anchor": "Table II",
+        "visual_data": {}
+      },
+      "reason_codes": [
+        "TABLE_EXPANDED"
+      ]
+    },
+    {
+      "id": "claim_39",
+      "claim_type": "Empirical",
+      "fact": "RF accuracy = 80.3",
+      "scope": "from table in paper",
+      "comparator": null,
+      "verification_logic": "exact_match",
+      "tolerance": {
+        "abs": 0.005,
+        "rel": 0.02,
+        "text": "default metric tolerance"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[38]",
+        "visual_anchor": "Table II",
+        "visual_data": {}
+      },
+      "reason_codes": [
+        "TABLE_EXPANDED"
+      ]
+    },
+    {
+      "id": "claim_40",
+      "claim_type": "Empirical",
+      "fact": "KNN accuracy = 68.6",
+      "scope": "from table in paper",
+      "comparator": null,
+      "verification_logic": "exact_match",
+      "tolerance": {
+        "abs": 0.005,
+        "rel": 0.02,
+        "text": "default metric tolerance"
+      },
+      "evidence_anchors": {
+        "text_anchor": "atomic_criteria[39]",
+        "visual_anchor": "Table II",
+        "visual_data": {}
+      },
+      "reason_codes": [
+        "TABLE_EXPANDED"
+      ]
+    }
+  ],
+  "reason_codes": [
+    "FILTER_DROPPED_NON_ACTIONABLE"
+  ],
+  "notes": "Generated via strict guide -> atomic -> filter pipeline aligned with paper_fingerprint_schema.md"
+}

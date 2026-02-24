@@ -23,6 +23,18 @@ class LLMClient:
         if not self.base_url.endswith("/v1"):
             self.base_url = self.base_url.rstrip("/") + "/v1"
 
+    @staticmethod
+    def _validate_ascii_env(name: str, value: str | None) -> None:
+        if value is None:
+            return
+        try:
+            value.encode("ascii")
+        except UnicodeEncodeError as e:
+            raise LLMClientError(
+                f"{name} contains non-ASCII characters. "
+                "Please re-set it with plain ASCII text in your shell."
+            ) from e
+
     def chat_text(self, system: str, user: str) -> str:
         payload = {
             "model": self.model,
@@ -61,6 +73,10 @@ class LLMClient:
     def _post_json(self, payload: dict[str, Any]) -> dict[str, Any]:
         if not self.api_key:
             raise LLMClientError("OPENAI_API_KEY is not set")
+        # urllib/http headers are latin-1 encoded. Non-ASCII key/base_url values cause opaque
+        # UnicodeEncodeError like: "latin-1 codec can't encode characters in position 7-8".
+        self._validate_ascii_env("OPENAI_API_KEY", self.api_key)
+        self._validate_ascii_env("OPENAI_BASE_URL", self.base_url)
         url = f"{self.base_url}/chat/completions"
         body = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(
@@ -80,6 +96,13 @@ class LLMClient:
             raise LLMClientError(f"OpenAI HTTP error {e.code}: {details}") from e
         except urllib.error.URLError as e:
             raise LLMClientError(f"OpenAI request failed: {e}") from e
+        except UnicodeEncodeError as e:
+            raise LLMClientError(
+                "OpenAI request header encoding failed. "
+                "Check OPENAI_API_KEY/OPENAI_BASE_URL for non-ASCII characters."
+            ) from e
+        except Exception as e:  # noqa: BLE001
+            raise LLMClientError(f"OpenAI client unexpected error: {e}") from e
 
     @staticmethod
     def _extract_content(data: dict[str, Any]) -> str:

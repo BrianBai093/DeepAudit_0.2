@@ -24,19 +24,25 @@ class AuditReportAgent(BaseAgent):
         manifest = self.artifacts.read_json("execution/data_manifest.json")
         metrics = self.artifacts.read_json("results/metrics.json")
         verdict = self.artifacts.read_json("results/verdict.json")
+        eval_verdict = self.artifacts.read_json("results/evaluability_verdict.json")
         task_spec = self.artifacts.read_json("task/task_spec.json")
 
         report = []
+        commit = repo_state.get("head")
+        branch = repo_state.get("branch")
+        commit_text = str(commit) if commit else "N/A (gitless run)"
+        branch_text = str(branch) if branch else "N/A (gitless run)"
         report.append("# Paper2Code Audit Report")
         report.append("")
         report.append(f"- run_id: `{ctx['run_id']}`")
         report.append(f"- repo_dir: `{ctx['repo_dir']}`")
-        report.append(f"- commit: `{repo_state.get('head')}`")
-        report.append(f"- branch: `{repo_state.get('branch')}`")
+        report.append(f"- commit: `{commit_text}`")
+        report.append(f"- branch: `{branch_text}`")
         report.append("")
         report.append("## Execution Trace")
         report.append("")
-        report.append("- commands log: `execution/commands.jsonl`")
+        report.append("- codex worklog: `execution/codex_outputs/codex_worklog.jsonl`")
+        report.append("- codex run manifest: `execution/codex_outputs/run_manifest.json`")
         report.append("- run log: `execution/run.log`")
         report.append("")
         report.append("## Data Manifest")
@@ -54,6 +60,7 @@ class AuditReportAgent(BaseAgent):
         report.append("## Claim Verdicts")
         report.append("")
         report.append(f"- overall status: **{verdict.get('status', 'INCONCLUSIVE')}**")
+        report.append(f"- evaluability status: **{eval_verdict.get('status', 'NOT_EVALUABLE')}**")
         for row in verdict.get("claim_verdicts", []):
             report.append(
                 f"- {row.get('claim_id')}: {row.get('status')} ({row.get('detail')})"

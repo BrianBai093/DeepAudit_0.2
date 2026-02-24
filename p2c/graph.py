@@ -5,16 +5,15 @@ from typing import Any
 from p2c.agents.align_evidence import AlignEvidenceAgent
 from p2c.agents.audit_report import AuditReportAgent
 from p2c.agents.build_claims_ir import BuildClaimsIRAgent
+from p2c.agents.collect_codex_outputs import CollectCodexOutputsAgent
 from p2c.agents.compile_task_spec import CompileTaskSpecAgent
-from p2c.agents.execute_and_heal import ExecuteAndHealAgent
 from p2c.agents.extract_fingerprint_atomic import ExtractFingerprintAtomicAgent
 from p2c.agents.extract_fingerprint_filter import ExtractFingerprintFilterAgent
 from p2c.agents.extract_fingerprint_guide import ExtractFingerprintGuideAgent
 from p2c.agents.ingest_paper import IngestPaperAgent
 from p2c.agents.observe_metrics import ObserveMetricsAgent
 from p2c.agents.prepare_sandbox import PrepareSandboxAgent
-from p2c.agents.resolve_data import ResolveDataAgent
-from p2c.agents.setup_env import SetupEnvAgent
+from p2c.agents.run_codex_exec import RunCodexExecAgent
 from p2c.agents.verify_claims import VerifyClaimsAgent
 
 
@@ -29,9 +28,8 @@ def run_phase_1(ctx: dict[str, Any], agents: dict[str, Any]) -> None:
 
 def run_phase_2(ctx: dict[str, Any], agents: dict[str, Any]) -> None:
     agents["prepare_sandbox"].run(ctx)
-    agents["setup_env"].run(ctx)
-    agents["resolve_data"].run(ctx)
-    agents["execute_and_heal"].run(ctx)
+    agents["run_codex_exec"].run(ctx)
+    agents["collect_codex_outputs"].run(ctx)
 
 
 def run_phase_3(ctx: dict[str, Any], agents: dict[str, Any]) -> None:
@@ -56,9 +54,8 @@ def build_agents(llm, artifacts) -> dict[str, Any]:
         "build_claims_ir": BuildClaimsIRAgent(llm=llm, artifacts=artifacts, step_index=5, step_total=14),
         "compile_task_spec": CompileTaskSpecAgent(llm=llm, artifacts=artifacts, step_index=6, step_total=14),
         "prepare_sandbox": PrepareSandboxAgent(llm=llm, artifacts=artifacts, step_index=7, step_total=14),
-        "setup_env": SetupEnvAgent(llm=llm, artifacts=artifacts, step_index=8, step_total=14),
-        "resolve_data": ResolveDataAgent(llm=llm, artifacts=artifacts, step_index=9, step_total=14),
-        "execute_and_heal": ExecuteAndHealAgent(llm=llm, artifacts=artifacts, step_index=10, step_total=14),
+        "run_codex_exec": RunCodexExecAgent(llm=llm, artifacts=artifacts, step_index=8, step_total=14),
+        "collect_codex_outputs": CollectCodexOutputsAgent(llm=llm, artifacts=artifacts, step_index=9, step_total=14),
         "observe_metrics": ObserveMetricsAgent(llm=llm, artifacts=artifacts, step_index=11, step_total=14),
         "align_evidence": AlignEvidenceAgent(llm=llm, artifacts=artifacts, step_index=12, step_total=14),
         "verify_claims": VerifyClaimsAgent(llm=llm, artifacts=artifacts, step_index=13, step_total=14),

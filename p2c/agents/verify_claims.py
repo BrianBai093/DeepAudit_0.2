@@ -3,10 +3,17 @@ from __future__ import annotations
 from typing import Any
 
 from p2c.agents.base import BaseAgent
-from p2c.schemas import ClaimVerdict, MetricRecord, VerdictDoc
+from p2c.schemas import (
+    ClaimVerdict,
+    EvaluabilityDoc,
+    EvaluabilityVerdictDoc,
+    EvaluabilityVerdictRow,
+    MetricRecord,
+    VerdictDoc,
+)
 
 SYSTEM_PROMPT = "You verify claims against evidence using deterministic rules. Output JSON only."
-USER_PROMPT_TEMPLATE = "Input: claims_ir + parsed_evidence. Output: results/verdict.json"
+USER_PROMPT_TEMPLATE = "Input: claims_ir + parsed_evidence + evaluability. Output: verdict + evaluability_verdict"
 
 
 def evaluate_claim(claim: dict[str, Any], matched_records: list[MetricRecord]) -> ClaimVerdict:
@@ -57,7 +64,6 @@ def evaluate_claim(claim: dict[str, Any], matched_records: list[MetricRecord]) -
                 reason_codes=["MISSING_TARGET"],
             )
         if baseline is None:
-            # Fallback: require reproduced metric near target.
             ok = x_rep >= float(target) - abs_eps
             return ClaimVerdict(
                 claim_id=claim_id,
@@ -78,7 +84,6 @@ def evaluate_claim(claim: dict[str, Any], matched_records: list[MetricRecord]) -
         )
 
     if ctype == "ranking":
-        # MVP fallback: if there is any parsed metric, treat as partial support due to missing rank labels.
         return ClaimVerdict(
             claim_id=claim_id,
             status="INCONCLUSIVE",
@@ -104,6 +109,7 @@ class VerifyClaimsAgent(BaseAgent):
 
         claims_doc = self.artifacts.read_json("fingerprint/claims_ir.json")
         parsed_doc = self.artifacts.read_json("results/parsed_evidence.json")
+        evaluability_doc = EvaluabilityDoc(**self.artifacts.read_json("results/evaluability.json"))
 
         evidence_map = {
             row.get("claim_id"): [MetricRecord(**r) for r in row.get("matched_records", [])]
@@ -129,7 +135,6 @@ class VerifyClaimsAgent(BaseAgent):
             elif all(s == "NOT_SUPPORTED" for s in statuses):
                 overall = "NOT_SUPPORTED"
             elif any(s == "INCONCLUSIVE" for s in statuses):
-                # Missing evidence must remain inconclusive.
                 overall = "INCONCLUSIVE"
             else:
                 overall = "PARTIALLY_SUPPORTED"
@@ -137,8 +142,53 @@ class VerifyClaimsAgent(BaseAgent):
                 status=overall,
                 claim_verdicts=verdicts,
                 reason_codes=[],
-                summary=f"Evaluated {len(verdicts)} claims.",
+                summary=f"Numeric track: evaluated {len(verdicts)} claims.",
             )
 
+        eval_rows: list[EvaluabilityVerdictRow] = []
+        for row in evaluability_doc.entries:
+            if row.evaluable == "yes":
+                status = "EVALUABLE"
+            elif row.evaluable == "partial":
+                status = "PARTIAL"
+            else:
+                status = "NOT_EVALUABLE"
+            eval_rows.append(
+                EvaluabilityVerdictRow(
+                    claim_id=row.claim_id,
+                    status=status,
+                    detail=row.reason or "",
+                    reason_codes=[],
+                )
+            )
+
+        if not eval_rows:
+            eval_verdict = EvaluabilityVerdictDoc(
+                status="NOT_EVALUABLE",
+                claim_rows=[],
+                reason_codes=["NO_EVALUABILITY_ROWS"],
+                summary="No claim evaluability rows available.",
+            )
+        else:
+            row_statuses = [r.status for r in eval_rows]
+            if all(s == "EVALUABLE" for s in row_statuses):
+                eval_status = "EVALUABLE"
+            elif all(s == "NOT_EVALUABLE" for s in row_statuses):
+                eval_status = "NOT_EVALUABLE"
+            else:
+                eval_status = "PARTIAL"
+            eval_verdict = EvaluabilityVerdictDoc(
+                status=eval_status,
+                claim_rows=eval_rows,
+                reason_codes=[],
+                summary=f"Evaluability track: {len(eval_rows)} claims assessed.",
+            )
+
+        verdict.summary = (
+            f"Numeric={verdict.status}; Evaluability={eval_verdict.status}; "
+            f"claims={len(verdict.claim_verdicts)}"
+        )
+
         self.artifacts.write_json("results/verdict.json", verdict.model_dump())
-        return {"verdict": verdict.model_dump()}
+        self.artifacts.write_json("results/evaluability_verdict.json", eval_verdict.model_dump())
+        return {"verdict": verdict.model_dump(), "evaluability_verdict": eval_verdict.model_dump()}
