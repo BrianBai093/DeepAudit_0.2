@@ -295,6 +295,8 @@ class CodexFailureDoc(BaseModel):
     stderr_tail: str = ""
     codex_exec_log_tail: str = ""
     pip_log_tail: str = ""
+    capability_snapshot: dict[str, Any] = Field(default_factory=dict)
+    dependency_bootstrap_trace: list[str] = Field(default_factory=list)
     reason_codes: list[str] = Field(default_factory=list)
 
 

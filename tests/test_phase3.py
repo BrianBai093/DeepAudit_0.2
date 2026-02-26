@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from p2c.agents.audit_report import AuditReportAgent
-from p2c.agents.align_evidence import AlignEvidenceAgent
-from p2c.agents.observe_metrics import ObserveMetricsAgent
-from p2c.agents.verify_claims import evaluate_claim, VerifyClaimsAgent
+from p2c.agents.phase3.audit_report import AuditReportAgent
+from p2c.agents.phase3.align_evidence import AlignEvidenceAgent
+from p2c.agents.phase3.observe_metrics import ObserveMetricsAgent
+from p2c.agents.phase3.verify_claims import evaluate_claim, VerifyClaimsAgent
 from p2c.io_artifacts import ArtifactManager
 from p2c.llm.client import LLMClient
 from p2c.schemas import MetricRecord
@@ -161,7 +161,7 @@ def test_audit_report_handles_missing_commit_branch(tmp_path: Path, monkeypatch)
         stdout = ""
         stderr = ""
 
-    monkeypatch.setattr("p2c.agents.audit_report.subprocess.run", lambda *args, **kwargs: _Proc())
+    monkeypatch.setattr("p2c.agents.phase3.audit_report.subprocess.run", lambda *args, **kwargs: _Proc())
 
     agent = AuditReportAgent(llm=LLMClient(), artifacts=artifacts, step_index=14, step_total=14)
     agent.run({"run_id": "run_test", "repo_dir": "Target/code"})

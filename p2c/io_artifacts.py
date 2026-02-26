@@ -29,6 +29,8 @@ REQUIRED_FILES = [
     "execution/codex_outputs/codex_exec.log",
     "execution/codex_outputs/dependency_solver.json",
     "execution/codex_outputs/pip_install.log",
+    "execution/codex_outputs/capability_probe.json",
+    "execution/codex_outputs/dependency_bootstrap.log",
     "execution/codex_outputs/codex_failure.json",
     "execution/codex_outputs/codex_main.log",
     "execution/codex_outputs/codex_repair.log",
@@ -83,6 +85,17 @@ class ArtifactManager:
                         "stderr_tail": "",
                         "codex_exec_log_tail": "",
                         "pip_log_tail": "",
+                        "capability_snapshot": {},
+                        "dependency_bootstrap_trace": [],
+                        "reason_codes": ["INITIALIZED_PLACEHOLDER"],
+                    }
+                elif rel.endswith("capability_probe.json"):
+                    payload = {
+                        "python_ok": False,
+                        "python_version": "",
+                        "pip_available": False,
+                        "ensurepip_available": False,
+                        "required_modules_available": {},
                         "reason_codes": ["INITIALIZED_PLACEHOLDER"],
                     }
                 elif rel.endswith("dependency_solver.json"):

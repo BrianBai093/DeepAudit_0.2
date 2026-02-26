@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from p2c.agents.build_claims_ir import BuildClaimsIRAgent
+from p2c.agents.phase1.build_claims_ir import BuildClaimsIRAgent
 from p2c.io_artifacts import ArtifactManager
 from p2c.llm.client import LLMClient
 

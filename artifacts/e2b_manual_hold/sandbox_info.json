@@ -1,0 +1,19 @@
+{
+  "sandbox_id": "ias07cj6yhb2zgec99qif",
+  "runtime": {
+    "backend": "e2b",
+    "sandbox_id": "ias07cj6yhb2zgec99qif",
+    "timeout_sec": 1800
+  },
+  "repo_local": "Target\\code",
+  "task_spec_local": "artifacts\\codex_e2b_001\\task\\task_spec.json",
+  "claims_ir_local": "artifacts\\codex_e2b_001\\fingerprint\\claims_ir.json",
+  "workspace": {
+    "workspace_root": "/home/user/workspace",
+    "workspace_repo_dir": "/home/user/workspace/repo",
+    "workspace_inputs_dir": "/home/user/workspace/inputs",
+    "workspace_outputs_dir": "/home/user/workspace/outputs"
+  },
+  "include_git": false,
+  "connection_hint": "e2b sandbox connect ias07cj6yhb2zgec99qif"
+}

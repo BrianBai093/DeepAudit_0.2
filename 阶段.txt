@@ -1,0 +1,5 @@
+"codex exec --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox 'Create a hello world index.html'",
+直接给这条命令
+，再把提示词截短，让codex读这俩文件
+
+现在不知道什么原因还跑不了

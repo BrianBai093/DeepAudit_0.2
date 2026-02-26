@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from p2c.agents.extract_fingerprint_atomic import ExtractFingerprintAtomicAgent
-from p2c.agents.extract_fingerprint_filter import ExtractFingerprintFilterAgent
-from p2c.agents.extract_fingerprint_guide import ExtractFingerprintGuideAgent
+from p2c.agents.phase1.extract_fingerprint_atomic import ExtractFingerprintAtomicAgent
+from p2c.agents.phase1.extract_fingerprint_filter import ExtractFingerprintFilterAgent
+from p2c.agents.phase1.extract_fingerprint_guide import ExtractFingerprintGuideAgent
 from p2c.io_artifacts import ArtifactManager
 from p2c.llm.client import LLMClient
 from p2c.schemas import Fingerprint

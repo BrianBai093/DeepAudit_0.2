@@ -1,0 +1,31 @@
+{
+  "python_ok": true,
+  "python_version": "3.10.12 (main, Jan 26 2026, 14:55:28) [GCC 11.4.0]",
+  "pip_available": true,
+  "ensurepip_available": false,
+  "required_modules_available": {
+    "numpy": true
+  },
+  "module_probe_detail": {
+    "numpy": {
+      "rc": 0,
+      "stdout_tail": "1\n",
+      "stderr_tail": ""
+    }
+  },
+  "reason_codes": [
+    "ENSUREPIP_MISSING"
+  ],
+  "runtime_metadata": {
+    "backend": "e2b",
+    "sandbox_id": "ixgyeimjgurcn2yntm1pd",
+    "timeout_sec": 3600,
+    "template": "openai-codex"
+  },
+  "sudo_diagnostics": {
+    "enabled": true,
+    "probe_rc": 0,
+    "available": true,
+    "used": true
+  }
+}

@@ -2,19 +2,19 @@ from __future__ import annotations
 
 from typing import Any
 
-from p2c.agents.align_evidence import AlignEvidenceAgent
-from p2c.agents.audit_report import AuditReportAgent
-from p2c.agents.build_claims_ir import BuildClaimsIRAgent
-from p2c.agents.collect_codex_outputs import CollectCodexOutputsAgent
-from p2c.agents.compile_task_spec import CompileTaskSpecAgent
-from p2c.agents.extract_fingerprint_atomic import ExtractFingerprintAtomicAgent
-from p2c.agents.extract_fingerprint_filter import ExtractFingerprintFilterAgent
-from p2c.agents.extract_fingerprint_guide import ExtractFingerprintGuideAgent
-from p2c.agents.ingest_paper import IngestPaperAgent
-from p2c.agents.observe_metrics import ObserveMetricsAgent
-from p2c.agents.prepare_sandbox import PrepareSandboxAgent
-from p2c.agents.run_codex_exec import RunCodexExecAgent
-from p2c.agents.verify_claims import VerifyClaimsAgent
+from p2c.agents.phase3.align_evidence import AlignEvidenceAgent
+from p2c.agents.phase3.audit_report import AuditReportAgent
+from p2c.agents.phase1.build_claims_ir import BuildClaimsIRAgent
+from p2c.agents.phase2.collect_codex_outputs import CollectCodexOutputsAgent
+from p2c.agents.phase1.compile_task_spec import CompileTaskSpecAgent
+from p2c.agents.phase1.extract_fingerprint_atomic import ExtractFingerprintAtomicAgent
+from p2c.agents.phase1.extract_fingerprint_filter import ExtractFingerprintFilterAgent
+from p2c.agents.phase1.extract_fingerprint_guide import ExtractFingerprintGuideAgent
+from p2c.agents.phase1.ingest_paper import IngestPaperAgent
+from p2c.agents.phase3.observe_metrics import ObserveMetricsAgent
+from p2c.agents.phase2.prepare_sandbox import PrepareSandboxAgent
+from p2c.agents.phase2.run_codex_exec import RunCodexExecAgent
+from p2c.agents.phase3.verify_claims import VerifyClaimsAgent
 
 
 def run_phase_1(ctx: dict[str, Any], agents: dict[str, Any]) -> None:

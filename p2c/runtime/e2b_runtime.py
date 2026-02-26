@@ -19,10 +19,11 @@ class E2BRuntimeError(RuntimeError):
 class E2BRuntime:
     backend_name = "e2b"
 
-    def __init__(self, timeout_sec: int = 3600) -> None:
+    def __init__(self, timeout_sec: int = 3600, template: str | None = None) -> None:
         self._timeout_sec = timeout_sec
         self._sandbox = None
         self._sandbox_id: str | None = None
+        self._template = (template or os.getenv("P2C_E2B_TEMPLATE") or "openai-codex").strip() or "openai-codex"
 
     def ensure_started(self) -> None:
         if self._sandbox is not None:
@@ -56,10 +57,10 @@ class E2BRuntime:
         os.environ.setdefault("E2B_API_KEY", api_key)
         envs = {"OPENAI_API_KEY": openai_key} if openai_key else {}
         attempts: list[dict[str, Any]] = [
-            {"template": "openai-codex", "envs": envs, "timeout": self._timeout_sec},
-            {"template": "openai-codex", "envs": envs},
-            {"template": "openai-codex", "timeout": self._timeout_sec},
-            {"template": "openai-codex"},
+            {"template": self._template, "envs": envs, "timeout": self._timeout_sec},
+            {"template": self._template, "envs": envs},
+            {"template": self._template, "timeout": self._timeout_sec},
+            {"template": self._template},
         ]
         type_errors: list[str] = []
 
@@ -86,7 +87,7 @@ class E2BRuntime:
         if self._sandbox is None:
             detail = "; ".join(type_errors[-6:]) if type_errors else "no constructor/factory attempts executed"
             raise E2BRuntimeError(
-                "Unable to initialize E2B sandbox with required template 'openai-codex' "
+                f"Unable to initialize E2B sandbox with required template '{self._template}' "
                 f"from {sandbox_cls_ref}: {detail}"
             )
 
@@ -369,4 +370,5 @@ class E2BRuntime:
             "backend": self.backend_name,
             "sandbox_id": self._sandbox_id,
             "timeout_sec": self._timeout_sec,
+            "template": self._template,
         }
