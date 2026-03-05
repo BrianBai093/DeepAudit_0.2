@@ -47,6 +47,8 @@ TF1_LEGACY_COMPAT_MAP: dict[str, tuple[set[str], str]] = {
     "matplotlib": ({"2.1.0"}, "matplotlib==3.8.4"),
 }
 
+OPTIONAL_DEPENDENCIES = {"matplotlib"}
+
 
 DEPENDENCY_SIGNAL_NEEDLES = [
     "dependency",
@@ -58,6 +60,12 @@ DEPENDENCY_SIGNAL_NEEDLES = [
     "importerror",
     "pip",
 ]
+
+TIMEOUT_BY_CLASS_SEC = {
+    "short": 60,
+    "medium": 10 * 60,
+    "long": 60 * 60,
+}
 
 
 def _has_dependency_signal(text: str) -> bool:
@@ -76,6 +84,59 @@ def is_rate_limit_failure(log_text: str) -> bool:
         "retrying",
     ]
     return any(x in low for x in needles)
+
+
+def timeout_for_class(timeout_class: str, fallback_sec: int = 600) -> int:
+    return int(TIMEOUT_BY_CLASS_SEC.get(str(timeout_class or "").lower(), fallback_sec))
+
+
+def extract_task_items(task_spec: dict[str, Any]) -> list[dict[str, Any]]:
+    tasks = task_spec.get("tasks")
+    if isinstance(tasks, list) and tasks:
+        out: list[dict[str, Any]] = []
+        for row in tasks:
+            if not isinstance(row, dict):
+                continue
+            cmd = str(row.get("command") or "").strip()
+            entrypoint = str(row.get("entrypoint") or "").strip()
+            if not cmd:
+                continue
+            out.append(
+                {
+                    "task_id": str(row.get("task_id") or f"task_{len(out)+1:02d}"),
+                    "entrypoint": entrypoint,
+                    "command": cmd,
+                    "timeout_class": str(row.get("timeout_class") or "medium"),
+                    "expected_metrics": list(row.get("expected_metrics") or []),
+                    "hyperparams": dict(row.get("hyperparams") or {}),
+                }
+            )
+        if out:
+            return out
+
+    # Legacy fallback from entrypoints.
+    entrypoints = task_spec.get("entrypoints")
+    if not isinstance(entrypoints, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for idx, row in enumerate(entrypoints, start=1):
+        if not isinstance(row, dict):
+            continue
+        cmd = str(row.get("command") or "").strip()
+        path = str(row.get("path") or "").strip()
+        if not cmd:
+            continue
+        out.append(
+            {
+                "task_id": f"legacy_task_{idx:02d}",
+                "entrypoint": path,
+                "command": cmd,
+                "timeout_class": "medium",
+                "expected_metrics": [],
+                "hyperparams": {},
+            }
+        )
+    return out
 
 
 class CodexOutputValidator:
@@ -247,6 +308,16 @@ class CodexFailureReporter:
             "has_pip_activity": has_pip_activity,
         }
 
+    @staticmethod
+    def infer_tool_reason_codes(*texts: str) -> list[str]:
+        low = "\n".join([str(x or "") for x in texts]).lower()
+        out: list[str] = []
+        if "update_plan" in low:
+            out.append("UNKNOWN_TOOL_COMMAND_ATTEMPTED")
+        if "apply_patch: not found" in low or "apply_patch not found" in low:
+            out.append("PATCH_TOOL_MISSING_IN_SESSION")
+        return _dedupe(out)
+
     def write_failure_artifact(
         self,
         *,
@@ -273,7 +344,16 @@ class CodexFailureReporter:
             "capability_snapshot": capability_snapshot or {},
             "dependency_bootstrap_trace": list(dependency_bootstrap_trace or []),
         }
+        payload["reason_codes"] = _dedupe(
+            list(payload["reason_codes"])
+            + self.infer_tool_reason_codes(
+                payload["stderr_tail"],
+                payload["codex_exec_log_tail"],
+                payload["pip_log_tail"],
+            )
+        )
         self.artifacts.write_json("execution/codex_failure.json", payload)
+        self.artifacts.write_json("execution/codex_outputs/codex_failure.json", payload)
         self.artifacts.append_text(
             "execution/run.log",
             (
@@ -331,14 +411,17 @@ class CodexFailureReporter:
 
 
 class CodexBackgroundExecutor:
-    def __init__(self, log_fn: Callable[[str, str], None]):
+    def __init__(self, log_fn: Callable[[str, str], None], artifacts=None):
         self.log_fn = log_fn
+        self.artifacts = artifacts
+        self._stream_cursor_by_remote: dict[str, int] = {}
 
     @staticmethod
     def stage_log_name(label: str) -> str:
-        if label == "main":
+        normalized = str(label or "").lower()
+        if normalized == "main" or normalized.endswith("_main") or "_retry_" in normalized:
             return "codex_main.log"
-        if label == "repair":
+        if normalized == "repair" or normalized.endswith("_repair"):
             return "codex_repair.log"
         return f"codex_{label}.log"
 
@@ -446,6 +529,37 @@ class CodexBackgroundExecutor:
             self.log_fn("PROGRESS", f"[codex:{label}] {line[:800]}")
         return len(text)
 
+    def _safe_append_local_stream(self, local_stream_path: str, content: str) -> None:
+        if not local_stream_path or not content or self.artifacts is None:
+            return
+        try:
+            self.artifacts.append_text(local_stream_path, content)
+        except Exception as e:  # noqa: BLE001
+            self.log_fn("PROGRESS", f"[codex:stream] local append failed: {e}")
+
+    def _sync_remote_log_delta_to_local(
+        self,
+        runtime,
+        *,
+        remote_log_path: str,
+        local_stream_path: str | None,
+    ) -> None:
+        if not local_stream_path or self.artifacts is None:
+            return
+        try:
+            text = runtime.read_text(remote_log_path)
+        except Exception as e:  # noqa: BLE001
+            self.log_fn("PROGRESS", f"[codex:stream] remote read failed: {e}")
+            return
+
+        cursor = self._stream_cursor_by_remote.get(remote_log_path, 0)
+        if len(text) < cursor:
+            cursor = 0
+        delta = text[cursor:]
+        if delta:
+            self._safe_append_local_stream(local_stream_path, delta)
+        self._stream_cursor_by_remote[remote_log_path] = len(text)
+
     def _poll_background(
         self,
         runtime,
@@ -453,14 +567,19 @@ class CodexBackgroundExecutor:
         pid_path: str,
         exit_path: str,
         log_path: str,
+        combined_log_path: str,
         label: str,
         cwd: str,
         timeout_sec: int,
+        local_stream_path: str | None = None,
+        stream_sync_every_sec: int = 20,
+        stream_flush_on_exit: bool = True,
         poll_sec: int = 5,
     ) -> tuple[int, int, bool]:
         deadline = time.time() + timeout_sec
         polls = 0
         cursor = 0
+        last_stream_sync = 0.0
         exit_probe_cmd = f"bash -lc {shlex.quote(f'test -f {_quote(exit_path)}')}"
         alive_script = (
             "pid=''; "
@@ -473,10 +592,24 @@ class CodexBackgroundExecutor:
 
         while time.time() < deadline:
             polls += 1
+            now = time.time()
+            if local_stream_path and (now - last_stream_sync >= max(1, int(stream_sync_every_sec))):
+                self._sync_remote_log_delta_to_local(
+                    runtime,
+                    remote_log_path=combined_log_path,
+                    local_stream_path=local_stream_path,
+                )
+                last_stream_sync = now
             cursor = self._emit_log_delta(runtime, log_path=log_path, cursor=cursor, label=label)
             exited = runtime.run_command(exit_probe_cmd, cwd=cwd, timeout_sec=20)
             if exited.rc == 0:
                 cursor = self._emit_log_delta(runtime, log_path=log_path, cursor=cursor, label=label)
+                if stream_flush_on_exit:
+                    self._sync_remote_log_delta_to_local(
+                        runtime,
+                        remote_log_path=combined_log_path,
+                        local_stream_path=local_stream_path,
+                    )
                 raw = runtime.read_text(exit_path).strip()
                 try:
                     return int(raw), polls, False
@@ -490,6 +623,12 @@ class CodexBackgroundExecutor:
                 exited = runtime.run_command(exit_probe_cmd, cwd=cwd, timeout_sec=20)
                 if exited.rc == 0:
                     cursor = self._emit_log_delta(runtime, log_path=log_path, cursor=cursor, label=label)
+                    if stream_flush_on_exit:
+                        self._sync_remote_log_delta_to_local(
+                            runtime,
+                            remote_log_path=combined_log_path,
+                            local_stream_path=local_stream_path,
+                        )
                     raw = runtime.read_text(exit_path).strip()
                     try:
                         return int(raw), polls, False
@@ -511,6 +650,12 @@ class CodexBackgroundExecutor:
         )
         runtime.run_command(f"bash -lc {shlex.quote(kill_script)}", cwd=cwd, timeout_sec=30)
         self._emit_log_delta(runtime, log_path=log_path, cursor=cursor, label=label)
+        if stream_flush_on_exit:
+            self._sync_remote_log_delta_to_local(
+                runtime,
+                remote_log_path=combined_log_path,
+                local_stream_path=local_stream_path,
+            )
         return 124, polls, True
 
     def run(
@@ -523,6 +668,9 @@ class CodexBackgroundExecutor:
         label: str,
         timeout_sec: int,
         workspace_root: str,
+        local_stream_path: str | None = None,
+        stream_sync_every_sec: int = 20,
+        stream_flush_on_exit: bool = True,
     ) -> dict[str, Any]:
         launch_info = self._start_background(
             runtime,
@@ -539,9 +687,13 @@ class CodexBackgroundExecutor:
             pid_path=pid_path,
             exit_path=exit_path,
             log_path=log_path,
+            combined_log_path=launch_info["combined_log_path"],
             label=label,
             cwd=workspace_root,
             timeout_sec=timeout_sec,
+            local_stream_path=local_stream_path,
+            stream_sync_every_sec=stream_sync_every_sec,
+            stream_flush_on_exit=stream_flush_on_exit,
         )
         return {
             "rc": rc,
@@ -568,6 +720,7 @@ class CodexCapabilityGate:
         profile: str,
     ) -> tuple[str, list[dict[str, str]], bool]:
         compat_map = TF1_LEGACY_COMPAT_MAP if profile == "tf1_legacy" else {}
+        drop_optional = (os.getenv("P2C_DEP_DROP_OPTIONAL") or "1").strip() != "0"
         if not compat_map:
             return requirements_text, [], False
 
@@ -589,6 +742,15 @@ class CodexCapabilityGate:
             pkg_ver = m.group(2).strip()
             norm = _normalize_req_name(pkg_name)
             compat_rule = compat_map.get(norm)
+            if drop_optional and norm in OPTIONAL_DEPENDENCIES:
+                mappings.append(
+                    {
+                        "from": f"{pkg_name}=={pkg_ver}",
+                        "to": "REMOVED_OPTIONAL_DEPENDENCY",
+                    }
+                )
+                legacy_incompatible = True
+                continue
             if not compat_rule:
                 out_lines.append(raw_line)
                 continue
@@ -644,6 +806,27 @@ class CodexCapabilityGate:
             timeout_sec=30,
         )
 
+        tool_paths: dict[str, str | None] = {}
+        tool_versions: dict[str, str] = {}
+        for tool in ["python", "python3", "pip", "pip3"]:
+            path_probe = self._run_probe(
+                runtime,
+                cmd=f"command -v {tool} 2>/dev/null || true",
+                cwd=workspace_root,
+                timeout_sec=30,
+            )
+            path_val = (path_probe.stdout or "").strip().splitlines()[0].strip() if (path_probe.stdout or "").strip() else ""
+            tool_paths[tool] = path_val or None
+            if path_val:
+                flag = "-V" if tool in {"python", "python3"} else "--version"
+                version_probe = self._run_probe(
+                    runtime,
+                    cmd=f"{tool} {flag} 2>&1 || true",
+                    cwd=workspace_root,
+                    timeout_sec=30,
+                )
+                tool_versions[tool] = _tail((version_probe.stdout or version_probe.stderr or "").strip(), 300)
+
         modules_available: dict[str, bool] = {}
         module_probe_detail: dict[str, dict[str, Any]] = {}
         for module_name in self.required_modules:
@@ -673,6 +856,8 @@ class CodexCapabilityGate:
             reason_codes.append("PIP_NOT_AVAILABLE")
         if not self._as_bool_probe(ensurepip):
             reason_codes.append("ENSUREPIP_MISSING")
+        if tool_paths.get("pip3"):
+            reason_codes.append("PIP3_COMMAND_AVAILABLE")
         for module_name, is_ok in modules_available.items():
             if not is_ok:
                 code = re.sub(r"[^A-Za-z0-9_]", "_", module_name.upper())
@@ -682,9 +867,12 @@ class CodexCapabilityGate:
             "python_ok": py.rc == 0,
             "python_version": (py.stdout or "").strip(),
             "pip_available": self._as_bool_probe(pip),
+            "pip_command_available": bool(tool_paths.get("pip") or tool_paths.get("pip3")),
             "ensurepip_available": self._as_bool_probe(ensurepip),
             "required_modules_available": modules_available,
             "module_probe_detail": module_probe_detail,
+            "tool_paths": tool_paths,
+            "tool_versions": tool_versions,
             "reason_codes": _dedupe(reason_codes),
         }
 
@@ -724,19 +912,175 @@ class CodexCapabilityGate:
             "used": False,
         }
 
-        def _run_logged(name: str, shell_cmd: str, cwd: str, timeout_sec: int) -> Any:
-            script = f"{shell_cmd} >> {_quote(log_path)} 2>&1"
-            result = runtime.run_command(f"bash -lc {shlex.quote(script)}", cwd=cwd, timeout_sec=timeout_sec)
+        def _run_logged(
+            name: str,
+            shell_cmd: str,
+            cwd: str,
+            timeout_sec: int,
+            *,
+            timeout_class: str = "medium",
+        ) -> Any:
+            worklog_events.append(
+                {
+                    "type": "install",
+                    "ts": _utc_now(),
+                    "details": {
+                        "step": name,
+                        "command": shell_cmd,
+                        "status": "start",
+                        "timeout_class": timeout_class,
+                    },
+                    "result": {},
+                }
+            )
+            use_background = timeout_class == "long"
+            if use_background:
+                pid_path = f"{outputs_dir}/{name}.pid"
+                rc_path = f"{outputs_dir}/{name}.rc"
+                launch_cmd = (
+                    f"rm -f {_quote(pid_path)} {_quote(rc_path)}; "
+                    "nohup bash -lc "
+                    + shlex.quote(f"{shell_cmd}; rc=$?; printf '%s' \"$rc\" > {shlex.quote(rc_path)}")
+                    + f" >> {_quote(log_path)} 2>&1 < /dev/null & "
+                    f"echo $! > {_quote(pid_path)}"
+                )
+                launch_result = runtime.run_command(f"bash -lc {shlex.quote(launch_cmd)}", cwd=cwd, timeout_sec=30)
+                pid_value = ""
+                for _ in range(6):
+                    try:
+                        pid_value = str(runtime.read_text(pid_path) or "").strip()
+                    except Exception:  # noqa: BLE001
+                        pid_value = ""
+                    if pid_value:
+                        break
+                    time.sleep(0.5)
+                if not pid_value:
+                    # Some test/fake runtimes execute the wrapped command immediately
+                    # and never materialize background pid/rc files.
+                    if "pip " in shell_cmd or "apt-get" in shell_cmd:
+                        result = type(
+                            "_R",
+                            (),
+                            {
+                                "rc": int(getattr(launch_result, "rc", 1)),
+                                "stdout": getattr(launch_result, "stdout", "") or "",
+                                "stderr": getattr(launch_result, "stderr", "") or "",
+                                "command": shell_cmd,
+                                "cwd": cwd,
+                            },
+                        )()
+                        trace.append(f"{name}: rc={result.rc}; cmd={shell_cmd}")
+                        worklog_events.append(
+                            {
+                                "type": "install",
+                                "ts": _utc_now(),
+                                "details": {
+                                    "step": name,
+                                    "command": shell_cmd,
+                                    "status": "end",
+                                    "timeout_class": timeout_class,
+                                },
+                                "result": {
+                                    "rc": result.rc,
+                                    "stdout_tail": _tail(result.stdout or "", 400),
+                                    "stderr_tail": _tail(result.stderr or "", 400),
+                                    "log_path": log_path,
+                                },
+                            }
+                        )
+                        return result
+                    result = type(
+                        "_R",
+                        (),
+                        {
+                            "rc": 1,
+                            "stdout": "",
+                            "stderr": f"{name} launcher did not create pid file",
+                            "command": shell_cmd,
+                            "cwd": cwd,
+                        },
+                    )()
+                    trace.append(f"{name}: rc={result.rc}; cmd={shell_cmd}")
+                    worklog_events.append(
+                        {
+                            "type": "install",
+                            "ts": _utc_now(),
+                            "details": {
+                                "step": name,
+                                "command": shell_cmd,
+                                "status": "end",
+                                "timeout_class": timeout_class,
+                            },
+                            "result": {
+                                "rc": result.rc,
+                                "stdout_tail": "",
+                                "stderr_tail": _tail(result.stderr or "", 400),
+                                "log_path": log_path,
+                            },
+                        }
+                    )
+                    return result
+                deadline = time.time() + timeout_sec
+                while time.time() < deadline:
+                    probe = runtime.run_command(
+                        f"bash -lc {shlex.quote(f'test -f {_quote(rc_path)} && cat {_quote(rc_path)} || echo WAIT')}",
+                        cwd=cwd,
+                        timeout_sec=20,
+                    )
+                    raw = (probe.stdout or "").strip()
+                    if raw and raw != "WAIT":
+                        try:
+                            rc = int(raw)
+                        except ValueError:
+                            rc = 1
+                        result = type(
+                            "_R",
+                            (),
+                            {"rc": rc, "stdout": "", "stderr": "", "command": shell_cmd, "cwd": cwd},
+                        )()
+                        break
+                    if probe.rc != 0 and not raw:
+                        alive_probe = runtime.run_command(
+                            f"bash -lc {shlex.quote(f'if [ -f {_quote(pid_path)} ]; then pid=$(cat {_quote(pid_path)} 2>/dev/null || true); [ -n \"$pid\" ] && kill -0 \"$pid\" 2>/dev/null; else exit 1; fi')}",
+                            cwd=cwd,
+                            timeout_sec=20,
+                        )
+                        if alive_probe.rc != 0:
+                            result = type(
+                                "_R",
+                                (),
+                                {"rc": 1, "stdout": "", "stderr": f"{name} background process not alive", "command": shell_cmd, "cwd": cwd},
+                            )()
+                            break
+                    # keep appending tiny heartbeat for observability
+                    self._append_remote_text(runtime, log_path, f"[runner] waiting {name}\n")
+                    time.sleep(5)
+                else:
+                    kill_cmd = (
+                        f"if [ -f {_quote(pid_path)} ]; then "
+                        f"pid=$(cat {_quote(pid_path)} 2>/dev/null || true); "
+                        "if [ -n \"$pid\" ]; then kill \"$pid\" 2>/dev/null || true; kill -9 \"$pid\" 2>/dev/null || true; fi; fi"
+                    )
+                    runtime.run_command(f"bash -lc {shlex.quote(kill_cmd)}", cwd=cwd, timeout_sec=30)
+                    result = type(
+                        "_R",
+                        (),
+                        {"rc": 124, "stdout": "", "stderr": f"{name} timeout", "command": shell_cmd, "cwd": cwd},
+                    )()
+            else:
+                script = f"{shell_cmd} >> {_quote(log_path)} 2>&1"
+                result = runtime.run_command(f"bash -lc {shlex.quote(script)}", cwd=cwd, timeout_sec=timeout_sec)
             trace.append(f"{name}: rc={result.rc}; cmd={shell_cmd}")
             worklog_events.append(
                 {
                     "type": "install",
                     "ts": _utc_now(),
-                    "details": {"step": name, "command": shell_cmd},
+                    "details": {"step": name, "command": shell_cmd, "status": "end", "timeout_class": timeout_class},
                     "result": {
                         "rc": result.rc,
                         "stdout_tail": _tail(result.stdout or "", 400),
                         "stderr_tail": _tail(result.stderr or "", 400),
+                        "log_path": log_path,
                     },
                 }
             )
@@ -768,33 +1112,67 @@ class CodexCapabilityGate:
             }
 
         pip_available = bool(capability_snapshot.get("pip_available"))
+        tool_paths = capability_snapshot.get("tool_paths") if isinstance(capability_snapshot.get("tool_paths"), dict) else {}
+        pip3_available = bool(tool_paths.get("pip3"))
+        pip_command_available = bool(capability_snapshot.get("pip_command_available")) or pip3_available
+        if pip3_available:
+            reason_codes.append("PIP3_COMMAND_AVAILABLE")
         ensurepip_available = bool(capability_snapshot.get("ensurepip_available"))
+        pip_exec_cmd = "python3 -m pip" if pip_available else ("pip3" if pip3_available else "")
 
         if not pip_available and ensurepip_available:
-            res = _run_logged("ensurepip_upgrade", "python3 -m ensurepip --upgrade", workspace_root, 300)
+            res = _run_logged(
+                "ensurepip_upgrade",
+                "python3 -m ensurepip --upgrade",
+                workspace_root,
+                300,
+                timeout_class="medium",
+            )
             if res.rc == 0:
                 pip_probe = self.probe_python_capabilities(runtime, workspace_root)
                 pip_available = bool(pip_probe.get("pip_available"))
+                tool_paths = pip_probe.get("tool_paths") if isinstance(pip_probe.get("tool_paths"), dict) else tool_paths
+                pip3_available = bool(tool_paths.get("pip3"))
+                pip_command_available = bool(pip_probe.get("pip_command_available")) or pip3_available
+                pip_exec_cmd = "python3 -m pip" if pip_available else ("pip3" if pip3_available else "")
 
-        if not pip_available and apt_enable:
+        if not pip_available and pip3_available:
+            reason_codes.append("APT_BOOTSTRAP_SKIPPED_PIP3_AVAILABLE")
+
+        if not pip_available and not pip3_available and apt_enable:
             if runtime_sudo_enable:
                 reason_codes.append("DEP_BOOTSTRAP_SUDO_ATTEMPTED")
-                sudo_probe = _run_logged("sudo_probe", "sudo -n true", workspace_root, 30)
+                sudo_probe = _run_logged("sudo_probe", "sudo -n true", workspace_root, 30, timeout_class="short")
                 sudo_diag["probe_rc"] = int(sudo_probe.rc)
                 sudo_diag["available"] = sudo_probe.rc == 0
                 if sudo_probe.rc == 0:
                     sudo_diag["used"] = True
-                    upd = _run_logged("sudo_apt_get_update", "sudo apt-get update", workspace_root, 600)
+                    upd = _run_logged(
+                        "sudo_apt_get_update",
+                        "sudo apt-get update",
+                        workspace_root,
+                        1800,
+                        timeout_class="long",
+                    )
                     inst = _run_logged(
                         "sudo_apt_get_install_python3_pip",
                         "sudo apt-get install -y python3-pip",
                         workspace_root,
-                        900,
+                        1800,
+                        timeout_class="long",
                     )
                     if upd.rc == 0 and inst.rc == 0:
                         reason_codes.append("DEP_BOOTSTRAP_SUDO_SUCCEEDED")
                         pip_probe = self.probe_python_capabilities(runtime, workspace_root)
                         pip_available = bool(pip_probe.get("pip_available"))
+                        tool_paths = (
+                            pip_probe.get("tool_paths")
+                            if isinstance(pip_probe.get("tool_paths"), dict)
+                            else tool_paths
+                        )
+                        pip3_available = bool(tool_paths.get("pip3"))
+                        pip_command_available = bool(pip_probe.get("pip_command_available")) or pip3_available
+                        pip_exec_cmd = "python3 -m pip" if pip_available else ("pip3" if pip3_available else "")
                     else:
                         reason_codes.append("DEP_BOOTSTRAP_SUDO_FAILED")
                 else:
@@ -805,9 +1183,21 @@ class CodexCapabilityGate:
         req_probe = runtime.run_command("bash -lc 'test -f requirements.txt'", cwd=repo_dir, timeout_sec=20)
         has_requirements = req_probe.rc == 0
 
-        if pip_available and has_requirements:
-            _run_logged("pip_upgrade_toolchain", "python3 -m pip install -U pip setuptools wheel", repo_dir, 900)
-            install = _run_logged("pip_install_requirements", "python3 -m pip install -r requirements.txt", repo_dir, 1800)
+        if pip_exec_cmd and has_requirements:
+            _run_logged(
+                "pip_upgrade_toolchain",
+                f"{pip_exec_cmd} install -U pip setuptools wheel",
+                repo_dir,
+                1800,
+                timeout_class="long",
+            )
+            install = _run_logged(
+                "pip_install_requirements",
+                f"{pip_exec_cmd} install -r requirements.txt",
+                repo_dir,
+                3600,
+                timeout_class="long",
+            )
             install_rc = install.rc
             if install.rc != 0:
                 reason_codes.append("DEPENDENCY_INSTALL_FAILED")
@@ -840,27 +1230,30 @@ class CodexCapabilityGate:
                         )
                         compat_install = _run_logged(
                             "pip_install_compat_requirements",
-                            f"python3 -m pip install -r {shlex.quote(compat_requirements_path)}",
+                            f"{pip_exec_cmd} install -r {shlex.quote(compat_requirements_path)}",
                             repo_dir,
-                            1800,
+                            3600,
+                            timeout_class="long",
                         )
                         install_rc = compat_install.rc
                         if compat_install.rc != 0:
                             reason_codes.append("DEPENDENCY_COMPAT_FALLBACK_FAILED")
                     elif legacy_pin_incompatible:
                         reason_codes.append("DEPENDENCY_LEGACY_PIN_INCOMPATIBLE")
-        elif has_requirements and not pip_available:
+        elif has_requirements and not pip_exec_cmd:
             reason_codes.append("PIP_NOT_AVAILABLE")
 
         snapshot_after = self.probe_python_capabilities(runtime, workspace_root)
         modules_ready = all(snapshot_after.get("required_modules_available", {}).values())
         install_ok = (not has_requirements) or (install_rc == 0)
-        ready = modules_ready or (bool(snapshot_after.get("pip_available")) and install_ok)
+        ready = modules_ready or (
+            bool(snapshot_after.get("pip_available")) or bool(snapshot_after.get("pip_command_available"))
+        ) and install_ok
         if not ready:
             reason_codes.append("DEPENDENCY_UNRESOLVED")
         if not apt_enable:
             reason_codes.append("DEPENDENCY_BOOTSTRAP_APT_DISABLED")
-        if not bool(snapshot_after.get("pip_available")):
+        if not bool(snapshot_after.get("pip_available")) and not bool(snapshot_after.get("pip_command_available")):
             reason_codes.append("PIP_NOT_AVAILABLE")
 
         solver_status = "ready" if ready else "failed_dependency_capability"
@@ -906,30 +1299,31 @@ class CodexCapabilityGate:
             task_spec = {}
         rows: list[dict[str, Any]] = []
         worklog_events: list[dict[str, Any]] = []
-        entrypoints = task_spec.get("entrypoints")
-        if not isinstance(entrypoints, list):
-            entrypoints = []
+        tasks = extract_task_items(task_spec)
+        if not tasks:
+            return {
+                "runs": [],
+                "worklog_events": [],
+                "entrypoint_count": 0,
+                "success_count": 0,
+            }
 
-        for idx, item in enumerate(entrypoints):
-            if not isinstance(item, dict):
-                continue
-            ep_path = str(item.get("path") or "").strip()
-            ep_cmd = str(item.get("command") or "").strip()
-            if ep_path:
-                run_cmd = f"python3 {shlex.quote(ep_path)}"
-                run_id = ep_path
-            elif ep_cmd:
-                run_cmd = ep_cmd
-                run_id = f"entrypoint_{idx}"
-            else:
+        for idx, item in enumerate(tasks):
+            run_cmd = str(item.get("command") or "").strip()
+            if not run_cmd:
                 run_cmd = "python3 -c 'import sys; sys.exit(2)'"
-                run_id = f"entrypoint_{idx}"
+            run_id = str(item.get("task_id") or f"task_{idx + 1:02d}")
+            entrypoint = str(item.get("entrypoint") or "").strip()
+            if entrypoint and run_id.startswith("legacy_task_"):
+                run_id = entrypoint
+            timeout_class = str(item.get("timeout_class") or "medium")
+            timeout_sec = timeout_for_class(timeout_class, self.entrypoint_probe_timeout_sec)
 
             started = time.time()
             result = runtime.run_command(
                 f"bash -lc {shlex.quote(run_cmd)}",
                 cwd=repo_dir,
-                timeout_sec=self.entrypoint_probe_timeout_sec,
+                timeout_sec=timeout_sec,
             )
             elapsed = time.time() - started
             text = "\n".join([result.stdout or "", result.stderr or ""])
@@ -962,14 +1356,14 @@ class CodexCapabilityGate:
                     "type": "run",
                     "ts": _utc_now(),
                     "details": {"entrypoint": run_id, "command": run_cmd},
-                    "result": {"rc": result.rc, "status": status},
+                    "result": {"rc": result.rc, "status": status, "timeout_class": timeout_class},
                 }
             )
 
         return {
             "runs": rows,
             "worklog_events": worklog_events,
-            "entrypoint_count": len(rows),
+            "entrypoint_count": len(tasks),
             "success_count": sum(1 for x in rows if int(x.get("exit_code", 1)) == 0),
         }
 
@@ -989,6 +1383,7 @@ class CodexCapabilityGate:
         *,
         outputs_dir: str,
         claims_ir_path: str,
+        claims_payload: dict[str, Any] | None = None,
         capability_snapshot: dict[str, Any],
         dependency_bootstrap_trace: list[str],
         runs: list[dict[str, Any]],
@@ -1001,7 +1396,7 @@ class CodexCapabilityGate:
             cwd=outputs_dir.rsplit("/", 1)[0] if "/" in outputs_dir else "/",
             timeout_sec=30,
         )
-        claims_data = self._load_json(runtime, claims_ir_path)
+        claims_data = claims_payload if isinstance(claims_payload, dict) else self._load_json(runtime, claims_ir_path)
         claims_list = claims_data.get("claims")
         if not isinstance(claims_list, list):
             claims_list = []

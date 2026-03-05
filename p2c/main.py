@@ -32,9 +32,11 @@ def ensure_phase_prereq(phase: int, artifacts: ArtifactManager) -> None:
                 "Phase 2 requires a valid phase 1 task_spec.json. "
                 "Run: python -m p2c.main --phase 1 ..."
             ) from e
-        if not payload.get("entrypoints"):
+        tasks = payload.get("tasks") if isinstance(payload.get("tasks"), list) else []
+        entrypoints = payload.get("entrypoints") if isinstance(payload.get("entrypoints"), list) else []
+        if not tasks and not entrypoints:
             raise RuntimeError(
-                "Phase 2 requires phase 1 outputs with non-empty entrypoints. "
+                "Phase 2 requires phase 1 outputs with non-empty tasks (or legacy entrypoints). "
                 "Run: python -m p2c.main --phase 1 ..."
             )
     if phase == 3:

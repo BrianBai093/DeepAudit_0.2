@@ -68,8 +68,18 @@ class AuditReportAgent(BaseAgent):
         report.append("")
         report.append("## Task Spec Snapshot")
         report.append("")
-        for ep in task_spec.get("entrypoints", []):
-            report.append(f"- `{ep.get('command')}` from `{ep.get('path')}`")
+        tasks = task_spec.get("tasks", [])
+        if isinstance(tasks, list) and tasks:
+            for task in tasks:
+                if not isinstance(task, dict):
+                    continue
+                report.append(
+                    f"- `{task.get('task_id')}`: `{task.get('command')}` "
+                    f"(entrypoint `{task.get('entrypoint')}`, timeout `{task.get('timeout_class')}`)"
+                )
+        else:
+            for ep in task_spec.get("entrypoints", []):
+                report.append(f"- `{ep.get('command')}` from `{ep.get('path')}`")
         report.append("")
         report.append("## Uncertainty")
         report.append("")

@@ -56,6 +56,7 @@ class BuildClaimsIRAgent(BaseAgent):
                     aggregation="average",
                     evidence_set=["paper_text"],
                     tolerance_policy={"abs_eps": 0.02, "rel_eps": 0.03},
+                    code_verifiable=True,
                 )
             )
         if "federated" in text.lower():
@@ -72,6 +73,7 @@ class BuildClaimsIRAgent(BaseAgent):
                     evidence_set=["paper_text"],
                     tolerance_policy={"abs_eps": 0.02, "rel_eps": 0.03},
                     unverifiable_from_paper=False,
+                    code_verifiable=True,
                 )
             )
         if not claims:
@@ -88,10 +90,27 @@ class BuildClaimsIRAgent(BaseAgent):
                     evidence_set=[],
                     tolerance_policy={"abs_eps": 0.02, "rel_eps": 0.03},
                     unverifiable_from_paper=True,
+                    code_verifiable=False,
                     reason_codes=["NO_NUMERIC_CLAIMS_FOUND"],
                 )
             )
         return claims
+
+    @staticmethod
+    def _infer_code_verifiable(
+        *,
+        mapped_type: str,
+        metric: str | None,
+        target: float | None,
+        scope: str,
+        predicate: str,
+    ) -> bool:
+        if mapped_type in {"absolute", "relative"} and metric and target is not None:
+            return True
+        text = f"{scope} {predicate}".lower()
+        if any(k in text for k in EXECUTABLE_METHOD_KEYS):
+            return True
+        return False
 
     @staticmethod
     def _extract_metric_and_target(text: str) -> tuple[str | None, float | None]:
@@ -181,6 +200,13 @@ class BuildClaimsIRAgent(BaseAgent):
                         "rel_eps": float(tol.get("rel", 0.03) or 0.03),
                     },
                     unverifiable_from_paper=(target is None and mapped_type != "other"),
+                    code_verifiable=self._infer_code_verifiable(
+                        mapped_type=mapped_type,
+                        metric=metric,
+                        target=target,
+                        scope=scope,
+                        predicate=fact,
+                    ),
                     reason_codes=[str(x) for x in row.get("reason_codes", [])],
                     notes=str(fingerprint.get("notes") or "") or None,
                 )

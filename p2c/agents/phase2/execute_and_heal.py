@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import re
 from pathlib import Path
 
@@ -50,29 +49,6 @@ class ExecuteAndHealAgent(BaseAgent):
     def _default_runtime_root(runtime) -> str:
         backend = (getattr(runtime, "backend_name", "") or "").strip().lower()
         return "/home/user/p2c_sandbox" if backend == "e2b" else "/tmp/p2c_sandbox"
-
-    def _maybe_run_mini_swe(self, runtime, task_instruction: str, mini_dir: str) -> tuple[bool, str]:
-        if os.getenv("P2C_SKIP_MINI_SWE", "").strip() == "1":
-            return False, "MINI_SWE_SKIPPED"
-
-        model = (Path.cwd().joinpath("mini-swe-agent").exists() and "openai/gpt-5-mini") or "openai/gpt-5-mini"
-        mini_cmd = (
-            "python3 -m minisweagent.run.hello_world "
-            f"-t {task_instruction!r} -m {model!r}"
-        )
-        try:
-            proc = runtime.run_command(mini_cmd, cwd=mini_dir, timeout_sec=180)
-            self._record_command(mini_dir, mini_cmd, proc.rc, proc.stdout, proc.stderr)
-            self.artifacts.append_text(
-                "execution/run.log",
-                f"\n# mini-swe\n$ {mini_cmd}\n{proc.stdout}\n{proc.stderr}\n",
-            )
-            if proc.rc == 0:
-                return True, "MINI_SWE_OK"
-            return False, f"MINI_SWE_FAILED_RC_{proc.rc}"
-        except Exception as e:  # noqa: BLE001
-            self.artifacts.append_text("execution/run.log", f"\nmini-swe invocation error: {e}\n")
-            return False, "MINI_SWE_EXCEPTION"
 
     def _capture_repo_state(self, runtime, repo_dir: str) -> None:
         head = None
@@ -139,13 +115,10 @@ class ExecuteAndHealAgent(BaseAgent):
         runtime = ensure_runtime(ctx, self.artifacts)
         default_root = self._default_runtime_root(runtime)
         runtime_repo_dir = ctx.get("runtime_repo_dir", f"{default_root}/repo")
-        runtime_mini_dir = ctx.get("runtime_mini_dir", f"{default_root}/mini-swe-agent")
         repo_dir_local = Path(ctx.get("repo_dir", ""))
         if not ctx.get("runtime_repo_dir") and repo_dir_local.exists():
             runtime.upload_dir(local_dir=repo_dir_local, remote_dir=runtime_repo_dir)
             ctx["runtime_repo_dir"] = runtime_repo_dir
-        if not ctx.get("runtime_mini_dir"):
-            ctx["runtime_mini_dir"] = runtime_mini_dir
 
         task_spec = self.artifacts.read_json("task/task_spec.json")
         run_matrix = task_spec.get("run_matrix", [])
@@ -153,14 +126,6 @@ class ExecuteAndHealAgent(BaseAgent):
 
         entrypoints = task_spec.get("entrypoints", [])
         reason_codes: list[str] = []
-
-        task_instruction = (
-            "Run the repository's likely benchmark entrypoint and report accuracy metrics. "
-            "Stop after first executable result."
-        )
-        mini_ok, mini_reason = self._maybe_run_mini_swe(runtime, task_instruction, runtime_mini_dir)
-        if not mini_ok:
-            reason_codes.append(mini_reason)
 
         output_blob = ""
         if entrypoints:

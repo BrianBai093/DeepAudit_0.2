@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import time
 from typing import Any
 
 from p2c.io_artifacts import ArtifactManager
@@ -27,6 +28,7 @@ def ensure_runtime(ctx: dict[str, Any], artifacts: ArtifactManager) -> Execution
         rt = _make_runtime()
         rt.ensure_started()
         ctx[CTX_KEY] = rt
+        ctx["_runtime_started_at"] = time.time()
         artifacts.append_text("execution/run.log", f"[runtime] backend={rt.metadata()}\n")
     return rt
 

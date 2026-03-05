@@ -46,7 +46,7 @@ def _approval_args(help_text: str) -> list[str]:
 
 
 def _build_codex_cmd(*, prompt: str, help_text: str) -> str:
-    model = (os.getenv("P2C_CODEX_MODEL") or "gpt-5.1-codex-mini").strip()
+    model = (os.getenv("P2C_CODEX_MODEL") or "gpt-5.1").strip()
     # Default: do not pass --sandbox in this live test; allow CLI native defaults.
     # Optional override: set P2C_CODEX_SANDBOX_MODE (e.g. workspace-write).
     sandbox_mode = (os.getenv("P2C_CODEX_SANDBOX_MODE") or "").strip()

@@ -3,7 +3,7 @@
     {
       "unit_id": "s_1",
       "raw": {
-        "criterion": "<fact>The study uses the UCI dataset.</fact><scope>study.dataset</scope>"
+        "criterion": "<fact>The study uses the UCI heart disease dataset.</fact><scope>Scope is the source and identity of the dataset used in the experiments.</scope>"
       },
       "reason_codes": [
         "NON_ACTIONABLE_DATASET_FACT"
@@ -12,7 +12,7 @@
     {
       "unit_id": "s_1",
       "raw": {
-        "criterion": "<fact>The UCI dataset includes 920 patient records.</fact><scope>dataset</scope>"
+        "criterion": "<fact>The UCI heart disease dataset used in this study includes 920 patient records.</fact><scope>Scope is the size of the dataset instance employed in the experiments.</scope>"
       },
       "reason_codes": [
         "NON_ACTIONABLE_DATASET_FACT"
@@ -21,7 +21,7 @@
     {
       "unit_id": "s_1",
       "raw": {
-        "criterion": "<fact>The records in the dataset are patient records.</fact><scope>dataset.records.type</scope>"
+        "criterion": "<fact>The 920 patient records in the dataset come from four hospitals.</fact><scope>Scope is the institutional distribution of the data sources.</scope>"
       },
       "reason_codes": [
         "NON_ACTIONABLE_DATASET_FACT"
@@ -30,34 +30,52 @@
     {
       "unit_id": "s_1",
       "raw": {
-        "criterion": "<fact>The dataset's records originate from four hospitals.</fact><scope>dataset.sources</scope>"
+        "criterion": "<fact>The hospitals providing the patient records are located in the USA, Hungary, and Switzerland.</fact><scope>Scope is the geographical distribution of the data sources.</scope>"
+      },
+      "reason_codes": [
+        "NON_ACTIONABLE_FACET"
+      ]
+    },
+    {
+      "unit_id": "s_100",
+      "raw": {
+        "criterion": "<fact>The dataset is named the Long Beach VA dataset.</fact><scope>Long Beach VA dataset</scope>"
       },
       "reason_codes": [
         "NON_ACTIONABLE_DATASET_FACT"
       ]
     },
     {
-      "unit_id": "s_1",
+      "unit_id": "s_100",
       "raw": {
-        "criterion": "<fact>At least one of the hospitals is located in the USA.</fact><scope>dataset.sources.countries</scope>"
+        "criterion": "<fact>The Long Beach VA dataset consists of patients who underwent cardiac catheterization.</fact><scope>Long Beach VA dataset patient inclusion criteria</scope>"
       },
       "reason_codes": [
         "NON_ACTIONABLE_DATASET_FACT"
       ]
     },
     {
-      "unit_id": "s_1",
+      "unit_id": "s_100",
       "raw": {
-        "criterion": "<fact>At least one of the hospitals is located in Hungary.</fact><scope>dataset.sources.countries</scope>"
+        "criterion": "<fact>The cardiac catheterizations in the Long Beach VA dataset were performed at the Long Beach Veterans Administration Medical Center.</fact><scope>Long Beach VA dataset patient inclusion criteria</scope>"
       },
       "reason_codes": [
         "NON_ACTIONABLE_DATASET_FACT"
       ]
     },
     {
-      "unit_id": "s_1",
+      "unit_id": "s_100",
       "raw": {
-        "criterion": "<fact>At least one of the hospitals is located in Switzerland.</fact><scope>dataset.sources.countries</scope>"
+        "criterion": "<fact>The cardiac catheterizations in the Long Beach VA dataset were performed between 1984 and 1987.</fact><scope>Long Beach VA dataset temporal scope</scope>"
+      },
+      "reason_codes": [
+        "NON_ACTIONABLE_DATASET_FACT"
+      ]
+    },
+    {
+      "unit_id": "s_100",
+      "raw": {
+        "criterion": "<fact>The Long Beach VA dataset includes all individuals who underwent cardiac catheterization at the Long Beach Veterans Administration Medical Center between 1984 and 1987.</fact><scope>Long Beach VA dataset inclusion completeness</scope>"
       },
       "reason_codes": [
         "NON_ACTIONABLE_DATASET_FACT"
@@ -66,7 +84,7 @@
     {
       "unit_id": "s_101",
       "raw": {
-        "criterion": "<fact>All entries with a documented prior infarction were excluded from the dataset.</fact><scope>The dataset referenced in the input.</scope>"
+        "criterion": "<fact>Patients with prior infarction were excluded from the dataset.</fact><scope>Full patient cohort prior to any exclusions.</scope>"
       },
       "reason_codes": [
         "NON_ACTIONABLE_DATASET_FACT"
@@ -75,7 +93,7 @@
     {
       "unit_id": "s_101",
       "raw": {
-        "criterion": "<fact>All entries with documented valvular disease were excluded from the dataset.</fact><scope>The dataset referenced in the input.</scope>"
+        "criterion": "<fact>Patients with valvular disease were excluded from the dataset.</fact><scope>Full patient cohort prior to any exclusions.</scope>"
       },
       "reason_codes": [
         "NON_ACTIONABLE_DATASET_FACT"
@@ -84,7 +102,7 @@
     {
       "unit_id": "s_101",
       "raw": {
-        "criterion": "<fact>All entries with a history of prior catheterization were excluded from the dataset.</fact><scope>The dataset referenced in the input.</scope>"
+        "criterion": "<fact>Patients with prior catheterization were excluded from the dataset.</fact><scope>Full patient cohort prior to any exclusions.</scope>"
       },
       "reason_codes": [
         "NON_ACTIONABLE_DATASET_FACT"
@@ -93,7 +111,124 @@
     {
       "unit_id": "s_101",
       "raw": {
-        "criterion": "<fact>After excluding entries with prior infarction, valvular disease, and prior catheterization, 200 patient data points remained in the dataset.</fact><scope>The dataset referenced in the input after those exclusions.</scope>"
+        "criterion": "<fact>After applying all specified exclusions, there were 200 patient data points remaining in the dataset.</fact><scope>Dataset after exclusion of patients with prior infarction, valvular disease, and prior catheterization.</scope>"
+      },
+      "reason_codes": [
+        "NON_ACTIONABLE_DATASET_FACT"
+      ]
+    },
+    {
+      "unit_id": "s_103",
+      "raw": {
+        "criterion": "<fact>The Hungary dataset is comprised of patients.</fact><scope>Hungary dataset; patient composition</scope>"
+      },
+      "reason_codes": [
+        "NON_ACTIONABLE_DATASET_FACT"
+      ]
+    },
+    {
+      "unit_id": "s_103",
+      "raw": {
+        "criterion": "<fact>The patients in the Hungary dataset underwent catheterization.</fact><scope>Hungary dataset; patient procedures</scope>"
+      },
+      "reason_codes": [
+        "NON_ACTIONABLE_DATASET_FACT"
+      ]
+    },
+    {
+      "unit_id": "s_103",
+      "raw": {
+        "criterion": "<fact>The patients in the Hungary dataset were treated at the Hungarian Institute of Cardiology.</fact><scope>Hungary dataset; healthcare facility</scope>"
+      },
+      "reason_codes": [
+        "NON_ACTIONABLE_DATASET_FACT"
+      ]
+    },
+    {
+      "unit_id": "s_103",
+      "raw": {
+        "criterion": "<fact>The Hungarian Institute of Cardiology is located in Budapest.</fact><scope>Hungarian Institute of Cardiology; location</scope>"
+      },
+      "reason_codes": [
+        "NON_ACTIONABLE_FACET"
+      ]
+    },
+    {
+      "unit_id": "s_103",
+      "raw": {
+        "criterion": "<fact>The patients in the Hungary dataset underwent catheterization between 1983 and 1987 inclusive.</fact><scope>Hungary dataset; data collection time range</scope>"
+      },
+      "reason_codes": [
+        "NON_ACTIONABLE_DATASET_FACT"
+      ]
+    },
+    {
+      "unit_id": "s_106",
+      "raw": {
+        "criterion": "<fact>The Switzerland dataset is a distinct dataset.</fact><scope>Switzerland dataset definition</scope>"
+      },
+      "reason_codes": [
+        "NON_ACTIONABLE_DATASET_FACT"
+      ]
+    },
+    {
+      "unit_id": "s_106",
+      "raw": {
+        "criterion": "<fact>The Switzerland dataset uses data collected from individuals.</fact><scope>Switzerland dataset population source</scope>"
+      },
+      "reason_codes": [
+        "NON_ACTIONABLE_DATASET_FACT"
+      ]
+    },
+    {
+      "unit_id": "s_106",
+      "raw": {
+        "criterion": "<fact>The individuals in the Switzerland dataset underwent cardiac catheterization.</fact><scope>Switzerland dataset population clinical procedure</scope>"
+      },
+      "reason_codes": [
+        "NON_ACTIONABLE_DATASET_FACT"
+      ]
+    },
+    {
+      "unit_id": "s_106",
+      "raw": {
+        "criterion": "<fact>The individuals in the Switzerland dataset were treated at university hospitals.</fact><scope>Switzerland dataset clinical setting</scope>"
+      },
+      "reason_codes": [
+        "NON_ACTIONABLE_DATASET_FACT"
+      ]
+    },
+    {
+      "unit_id": "s_106",
+      "raw": {
+        "criterion": "<fact>The Switzerland dataset includes individuals from the university hospital in Zurich, Switzerland.</fact><scope>Switzerland dataset geographic and institutional source</scope>"
+      },
+      "reason_codes": [
+        "NON_ACTIONABLE_DATASET_FACT"
+      ]
+    },
+    {
+      "unit_id": "s_106",
+      "raw": {
+        "criterion": "<fact>The Switzerland dataset includes individuals from the university hospital in Basel, Switzerland.</fact><scope>Switzerland dataset geographic and institutional source</scope>"
+      },
+      "reason_codes": [
+        "NON_ACTIONABLE_DATASET_FACT"
+      ]
+    },
+    {
+      "unit_id": "s_106",
+      "raw": {
+        "criterion": "<fact>The data for the Switzerland dataset was collected in 1985.</fact><scope>Switzerland dataset data collection time frame</scope>"
+      },
+      "reason_codes": [
+        "NON_ACTIONABLE_DATASET_FACT"
+      ]
+    },
+    {
+      "unit_id": "s_106",
+      "raw": {
+        "criterion": "<fact>The Switzerland dataset excludes patients similar to those excluded in the Long Beach VA dataset.</fact><scope>Switzerland dataset exclusion criteria</scope>"
       },
       "reason_codes": [
         "NON_ACTIONABLE_DATASET_FACT"
@@ -102,277 +237,7 @@
     {
       "unit_id": "s_110",
       "raw": {
-        "criterion": "<fact>Feature number 3 has the name 'age'.</fact><scope>TABLE I</scope>"
-      },
-      "reason_codes": [
-        "NON_ACTIONABLE_FACET"
-      ]
-    },
-    {
-      "unit_id": "s_110",
-      "raw": {
-        "criterion": "<fact>The feature named 'age' represents age in years.</fact><scope>TABLE I</scope>"
-      },
-      "reason_codes": [
-        "NON_ACTIONABLE_FACET"
-      ]
-    },
-    {
-      "unit_id": "s_110",
-      "raw": {
-        "criterion": "<fact>Feature number 4 has the name 'sex'.</fact><scope>TABLE I</scope>"
-      },
-      "reason_codes": [
-        "NON_ACTIONABLE_FACET"
-      ]
-    },
-    {
-      "unit_id": "s_110",
-      "raw": {
-        "criterion": "<fact>The feature named 'sex' is coded such that 1 = male.</fact><scope>TABLE I</scope>"
-      },
-      "reason_codes": [
-        "NON_ACTIONABLE_FACET"
-      ]
-    },
-    {
-      "unit_id": "s_110",
-      "raw": {
-        "criterion": "<fact>The feature named 'sex' is coded such that 0 = female.</fact><scope>TABLE I</scope>"
-      },
-      "reason_codes": [
-        "NON_ACTIONABLE_FACET"
-      ]
-    },
-    {
-      "unit_id": "s_110",
-      "raw": {
-        "criterion": "<fact>Feature number 9 has the name 'cp'.</fact><scope>TABLE I</scope>"
-      },
-      "reason_codes": [
-        "NON_ACTIONABLE_FACET"
-      ]
-    },
-    {
-      "unit_id": "s_110",
-      "raw": {
-        "criterion": "<fact>The feature named 'cp' represents chest pain type.</fact><scope>TABLE I</scope>"
-      },
-      "reason_codes": [
-        "NON_ACTIONABLE_FACET"
-      ]
-    },
-    {
-      "unit_id": "s_110",
-      "raw": {
-        "criterion": "<fact>Feature number 10 has the name 'trestbps'.</fact><scope>TABLE I</scope>"
-      },
-      "reason_codes": [
-        "NON_ACTIONABLE_FACET"
-      ]
-    },
-    {
-      "unit_id": "s_110",
-      "raw": {
-        "criterion": "<fact>The feature named 'trestbps' represents resting blood pressure.</fact><scope>TABLE I</scope>"
-      },
-      "reason_codes": [
-        "NON_ACTIONABLE_FACET"
-      ]
-    },
-    {
-      "unit_id": "s_110",
-      "raw": {
-        "criterion": "<fact>Feature number 12 has the name 'chol'.</fact><scope>TABLE I</scope>"
-      },
-      "reason_codes": [
-        "NON_ACTIONABLE_FACET"
-      ]
-    },
-    {
-      "unit_id": "s_110",
-      "raw": {
-        "criterion": "<fact>The feature named 'chol' represents serum cholesterol.</fact><scope>TABLE I</scope>"
-      },
-      "reason_codes": [
-        "NON_ACTIONABLE_FACET"
-      ]
-    },
-    {
-      "unit_id": "s_110",
-      "raw": {
-        "criterion": "<fact>Feature number 16 has the name 'fbs'.</fact><scope>TABLE I</scope>"
-      },
-      "reason_codes": [
-        "NON_ACTIONABLE_FACET"
-      ]
-    },
-    {
-      "unit_id": "s_110",
-      "raw": {
-        "criterion": "<fact>The feature named 'fbs' represents fasting blood sugar.</fact><scope>TABLE I</scope>"
-      },
-      "reason_codes": [
-        "NON_ACTIONABLE_FACET"
-      ]
-    },
-    {
-      "unit_id": "s_110",
-      "raw": {
-        "criterion": "<fact>Feature number 19 has the name 'restecg'.</fact><scope>TABLE I</scope>"
-      },
-      "reason_codes": [
-        "NON_ACTIONABLE_FACET"
-      ]
-    },
-    {
-      "unit_id": "s_110",
-      "raw": {
-        "criterion": "<fact>The feature named 'restecg' represents resting ECG results.</fact><scope>TABLE I</scope>"
-      },
-      "reason_codes": [
-        "NON_ACTIONABLE_FACET"
-      ]
-    },
-    {
-      "unit_id": "s_110",
-      "raw": {
-        "criterion": "<fact>Feature number 32 has the name 'thalach'.</fact><scope>TABLE I</scope>"
-      },
-      "reason_codes": [
-        "NON_ACTIONABLE_FACET"
-      ]
-    },
-    {
-      "unit_id": "s_110",
-      "raw": {
-        "criterion": "<fact>The feature named 'thalach' represents maximum heart rate achieved ('max heart rate').</fact><scope>TABLE I</scope>"
-      },
-      "reason_codes": [
-        "NON_ACTIONABLE_FACET"
-      ]
-    },
-    {
-      "unit_id": "s_110",
-      "raw": {
-        "criterion": "<fact>Feature number 38 has the name 'exang'.</fact><scope>TABLE I</scope>"
-      },
-      "reason_codes": [
-        "NON_ACTIONABLE_FACET"
-      ]
-    },
-    {
-      "unit_id": "s_110",
-      "raw": {
-        "criterion": "<fact>The feature named 'exang' represents exercise induced angina.</fact><scope>TABLE I</scope>"
-      },
-      "reason_codes": [
-        "NON_ACTIONABLE_FACET"
-      ]
-    },
-    {
-      "unit_id": "s_110",
-      "raw": {
-        "criterion": "<fact>Feature number 40 has the name 'oldpeak'.</fact><scope>TABLE I</scope>"
-      },
-      "reason_codes": [
-        "NON_ACTIONABLE_FACET"
-      ]
-    },
-    {
-      "unit_id": "s_110",
-      "raw": {
-        "criterion": "<fact>The feature named 'oldpeak' represents ST depression due to exercise.</fact><scope>TABLE I</scope>"
-      },
-      "reason_codes": [
-        "NON_ACTIONABLE_FACET"
-      ]
-    },
-    {
-      "unit_id": "s_110",
-      "raw": {
-        "criterion": "<fact>Feature number 41 has the name 'slope'.</fact><scope>TABLE I</scope>"
-      },
-      "reason_codes": [
-        "NON_ACTIONABLE_FACET"
-      ]
-    },
-    {
-      "unit_id": "s_110",
-      "raw": {
-        "criterion": "<fact>The feature named 'slope' represents the slope of the exercise ST segment.</fact><scope>TABLE I</scope>"
-      },
-      "reason_codes": [
-        "NON_ACTIONABLE_FACET"
-      ]
-    },
-    {
-      "unit_id": "s_110",
-      "raw": {
-        "criterion": "<fact>Feature number 44 has the name 'ca'.</fact><scope>TABLE I</scope>"
-      },
-      "reason_codes": [
-        "NON_ACTIONABLE_FACET"
-      ]
-    },
-    {
-      "unit_id": "s_110",
-      "raw": {
-        "criterion": "<fact>The feature named 'ca' represents the number of major vessels.</fact><scope>TABLE I</scope>"
-      },
-      "reason_codes": [
-        "NON_ACTIONABLE_FACET"
-      ]
-    },
-    {
-      "unit_id": "s_110",
-      "raw": {
-        "criterion": "<fact>Feature number 51 has the name 'thal'.</fact><scope>TABLE I</scope>"
-      },
-      "reason_codes": [
-        "NON_ACTIONABLE_FACET"
-      ]
-    },
-    {
-      "unit_id": "s_110",
-      "raw": {
-        "criterion": "<fact>The feature named 'thal' indicates presence of a Thalassemia disorder.</fact><scope>TABLE I</scope>"
-      },
-      "reason_codes": [
-        "NON_ACTIONABLE_FACET"
-      ]
-    },
-    {
-      "unit_id": "s_110",
-      "raw": {
-        "criterion": "<fact>Feature number 58 has the name 'num'.</fact><scope>TABLE I</scope>"
-      },
-      "reason_codes": [
-        "NON_ACTIONABLE_FACET"
-      ]
-    },
-    {
-      "unit_id": "s_110",
-      "raw": {
-        "criterion": "<fact>The feature named 'num' is the predicted attribute (the target variable).</fact><scope>TABLE I</scope>"
-      },
-      "reason_codes": [
-        "NON_ACTIONABLE_FACET"
-      ]
-    },
-    {
-      "unit_id": "s_110",
-      "raw": {
-        "criterion": "<fact>Table I lists 14 features.</fact><scope>TABLE I</scope>"
-      },
-      "reason_codes": [
-        "NON_ACTIONABLE_FACET"
-      ]
-    },
-    {
-      "unit_id": "s_110",
-      "raw": {
-        "criterion": "<fact>The dataset contains 76 total attributes.</fact><scope>Dataset</scope>"
+        "criterion": "<fact>There are 76 total attributes in the dataset.</fact><scope>Global description of the dataset's schema.</scope>"
       },
       "reason_codes": [
         "NON_ACTIONABLE_DATASET_FACT"
@@ -381,88 +246,277 @@
     {
       "unit_id": "s_110",
       "raw": {
-        "criterion": "<fact>All research conducted on the dataset used only the 14 features indicated in Table I.</fact><scope>Dataset</scope>"
+        "criterion": "<fact>All research conducted on the dataset used only the 14 features indicated in Table I.</fact><scope>Usage of dataset attributes in prior research.</scope>"
       },
       "reason_codes": [
         "NON_ACTIONABLE_DATASET_FACT"
       ]
     },
     {
-      "unit_id": "s_113",
+      "unit_id": "s_110",
       "raw": {
-        "criterion": "<fact>\"NN\" is used as the abbreviation for the fully-connected neural network.</fact><scope>Terminology used in this study's experimental descriptions.</scope>"
+        "criterion": "<fact>Table I lists 14 features.</fact><scope>Structure of Table I.</scope>"
       },
       "reason_codes": [
         "NON_ACTIONABLE_FACET"
       ]
     },
     {
-      "unit_id": "s_113",
+      "unit_id": "s_110",
       "raw": {
-        "criterion": "<fact>\"SVM\" is used as the abbreviation for support vector machine.</fact><scope>Terminology used in this study's experimental descriptions.</scope>"
+        "criterion": "<fact>In Table I, the feature with Feature Number 3 is named 'age'.</fact><scope>Mapping between feature numbers and names in Table I.</scope>"
       },
       "reason_codes": [
         "NON_ACTIONABLE_FACET"
       ]
     },
     {
-      "unit_id": "s_113",
+      "unit_id": "s_110",
       "raw": {
-        "criterion": "<fact>\"KNN\" is used as the abbreviation for k-nearest neighbor.</fact><scope>Terminology used in this study's experimental descriptions.</scope>"
+        "criterion": "<fact>In Table I, the feature 'age' is described as 'age in years'.</fact><scope>Semantic description of the 'age' feature.</scope>"
       },
       "reason_codes": [
         "NON_ACTIONABLE_FACET"
       ]
     },
     {
-      "unit_id": "s_113",
+      "unit_id": "s_110",
       "raw": {
-        "criterion": "<fact>\"NB\" is used as the abbreviation for Naïve Bayes.</fact><scope>Terminology used in this study's experimental descriptions.</scope>"
+        "criterion": "<fact>In Table I, the feature with Feature Number 4 is named 'sex'.</fact><scope>Mapping between feature numbers and names in Table I.</scope>"
       },
       "reason_codes": [
         "NON_ACTIONABLE_FACET"
       ]
     },
     {
-      "unit_id": "s_113",
+      "unit_id": "s_110",
       "raw": {
-        "criterion": "<fact>\"DT\" is used as the abbreviation for decision tree.</fact><scope>Terminology used in this study's experimental descriptions.</scope>"
+        "criterion": "<fact>In Table I, the feature 'sex' uses the encoding 1 = male.</fact><scope>Value encoding for the 'sex' feature.</scope>"
       },
       "reason_codes": [
         "NON_ACTIONABLE_FACET"
       ]
     },
     {
-      "unit_id": "s_113",
+      "unit_id": "s_110",
       "raw": {
-        "criterion": "<fact>\"RF\" is used as the abbreviation for random forests.</fact><scope>Terminology used in this study's experimental descriptions.</scope>"
+        "criterion": "<fact>In Table I, the feature 'sex' uses the encoding 0 = female.</fact><scope>Value encoding for the 'sex' feature.</scope>"
       },
       "reason_codes": [
         "NON_ACTIONABLE_FACET"
       ]
     },
     {
-      "unit_id": "s_115",
+      "unit_id": "s_110",
       "raw": {
-        "criterion": "<fact>This protocol applies to other models and hyperparameter combinations.</fact><scope>Other models and hyperparameter combinations in the experiment.</scope>"
+        "criterion": "<fact>In Table I, the feature with Feature Number 9 is named 'cp'.</fact><scope>Mapping between feature numbers and names in Table I.</scope>"
       },
       "reason_codes": [
         "NON_ACTIONABLE_FACET"
       ]
     },
     {
-      "unit_id": "s_116",
+      "unit_id": "s_110",
       "raw": {
-        "criterion": "<fact>The provided Input Facts state that hyperparameters were tuned.</fact><scope>Input Facts (user-provided line)</scope>"
+        "criterion": "<fact>In Table I, the feature 'cp' is described as 'chest pain type'.</fact><scope>Semantic description of the 'cp' feature.</scope>"
       },
       "reason_codes": [
         "NON_ACTIONABLE_FACET"
       ]
     },
     {
-      "unit_id": "s_118",
+      "unit_id": "s_110",
       "raw": {
-        "criterion": "<fact>SVM regularization strength C is a real number strictly greater than 0.</fact><scope>Model: support vector machine regularization parameter C.</scope>"
+        "criterion": "<fact>In Table I, the feature with Feature Number 10 is named 'trestbps'.</fact><scope>Mapping between feature numbers and names in Table I.</scope>"
+      },
+      "reason_codes": [
+        "NON_ACTIONABLE_FACET"
+      ]
+    },
+    {
+      "unit_id": "s_110",
+      "raw": {
+        "criterion": "<fact>In Table I, the feature 'trestbps' is described as 'resting blood pressure'.</fact><scope>Semantic description of the 'trestbps' feature.</scope>"
+      },
+      "reason_codes": [
+        "NON_ACTIONABLE_FACET"
+      ]
+    },
+    {
+      "unit_id": "s_110",
+      "raw": {
+        "criterion": "<fact>In Table I, the feature with Feature Number 12 is named 'chol'.</fact><scope>Mapping between feature numbers and names in Table I.</scope>"
+      },
+      "reason_codes": [
+        "NON_ACTIONABLE_FACET"
+      ]
+    },
+    {
+      "unit_id": "s_110",
+      "raw": {
+        "criterion": "<fact>In Table I, the feature 'chol' is described as 'serum cholesterol'.</fact><scope>Semantic description of the 'chol' feature.</scope>"
+      },
+      "reason_codes": [
+        "NON_ACTIONABLE_FACET"
+      ]
+    },
+    {
+      "unit_id": "s_110",
+      "raw": {
+        "criterion": "<fact>In Table I, the feature with Feature Number 16 is named 'fbs'.</fact><scope>Mapping between feature numbers and names in Table I.</scope>"
+      },
+      "reason_codes": [
+        "NON_ACTIONABLE_FACET"
+      ]
+    },
+    {
+      "unit_id": "s_110",
+      "raw": {
+        "criterion": "<fact>In Table I, the feature 'fbs' is described as 'fasting blood sugar'.</fact><scope>Semantic description of the 'fbs' feature.</scope>"
+      },
+      "reason_codes": [
+        "NON_ACTIONABLE_FACET"
+      ]
+    },
+    {
+      "unit_id": "s_110",
+      "raw": {
+        "criterion": "<fact>In Table I, the feature with Feature Number 19 is named 'restecg'.</fact><scope>Mapping between feature numbers and names in Table I.</scope>"
+      },
+      "reason_codes": [
+        "NON_ACTIONABLE_FACET"
+      ]
+    },
+    {
+      "unit_id": "s_110",
+      "raw": {
+        "criterion": "<fact>In Table I, the feature 'restecg' is described as 'resting ECG results'.</fact><scope>Semantic description of the 'restecg' feature.</scope>"
+      },
+      "reason_codes": [
+        "NON_ACTIONABLE_FACET"
+      ]
+    },
+    {
+      "unit_id": "s_110",
+      "raw": {
+        "criterion": "<fact>In Table I, the feature with Feature Number 32 is named 'thalach'.</fact><scope>Mapping between feature numbers and names in Table I.</scope>"
+      },
+      "reason_codes": [
+        "NON_ACTIONABLE_FACET"
+      ]
+    },
+    {
+      "unit_id": "s_110",
+      "raw": {
+        "criterion": "<fact>In Table I, the feature 'thalach' is described as 'max heart rate'.</fact><scope>Semantic description of the 'thalach' feature.</scope>"
+      },
+      "reason_codes": [
+        "NON_ACTIONABLE_FACET"
+      ]
+    },
+    {
+      "unit_id": "s_110",
+      "raw": {
+        "criterion": "<fact>In Table I, the feature with Feature Number 38 is named 'exang'.</fact><scope>Mapping between feature numbers and names in Table I.</scope>"
+      },
+      "reason_codes": [
+        "NON_ACTIONABLE_FACET"
+      ]
+    },
+    {
+      "unit_id": "s_110",
+      "raw": {
+        "criterion": "<fact>In Table I, the feature 'exang' is described as 'exercise induced angina'.</fact><scope>Semantic description of the 'exang' feature.</scope>"
+      },
+      "reason_codes": [
+        "NON_ACTIONABLE_FACET"
+      ]
+    },
+    {
+      "unit_id": "s_110",
+      "raw": {
+        "criterion": "<fact>In Table I, the feature with Feature Number 40 is named 'oldpeak'.</fact><scope>Mapping between feature numbers and names in Table I.</scope>"
+      },
+      "reason_codes": [
+        "NON_ACTIONABLE_FACET"
+      ]
+    },
+    {
+      "unit_id": "s_110",
+      "raw": {
+        "criterion": "<fact>In Table I, the feature 'oldpeak' is described as 'ST depression due to exercise'.</fact><scope>Semantic description of the 'oldpeak' feature.</scope>"
+      },
+      "reason_codes": [
+        "NON_ACTIONABLE_FACET"
+      ]
+    },
+    {
+      "unit_id": "s_110",
+      "raw": {
+        "criterion": "<fact>In Table I, the feature with Feature Number 41 is named 'slope'.</fact><scope>Mapping between feature numbers and names in Table I.</scope>"
+      },
+      "reason_codes": [
+        "NON_ACTIONABLE_FACET"
+      ]
+    },
+    {
+      "unit_id": "s_110",
+      "raw": {
+        "criterion": "<fact>In Table I, the feature 'slope' is described as 'slope of exercise ST segment'.</fact><scope>Semantic description of the 'slope' feature.</scope>"
+      },
+      "reason_codes": [
+        "NON_ACTIONABLE_FACET"
+      ]
+    },
+    {
+      "unit_id": "s_110",
+      "raw": {
+        "criterion": "<fact>In Table I, the feature with Feature Number 44 is named 'ca'.</fact><scope>Mapping between feature numbers and names in Table I.</scope>"
+      },
+      "reason_codes": [
+        "NON_ACTIONABLE_FACET"
+      ]
+    },
+    {
+      "unit_id": "s_110",
+      "raw": {
+        "criterion": "<fact>In Table I, the feature 'ca' is described as '# of major vessels'.</fact><scope>Semantic description of the 'ca' feature.</scope>"
+      },
+      "reason_codes": [
+        "NON_ACTIONABLE_FACET"
+      ]
+    },
+    {
+      "unit_id": "s_110",
+      "raw": {
+        "criterion": "<fact>In Table I, the feature with Feature Number 51 is named 'thal'.</fact><scope>Mapping between feature numbers and names in Table I.</scope>"
+      },
+      "reason_codes": [
+        "NON_ACTIONABLE_FACET"
+      ]
+    },
+    {
+      "unit_id": "s_110",
+      "raw": {
+        "criterion": "<fact>In Table I, the feature 'thal' is described as 'Thalassemia disorder presence'.</fact><scope>Semantic description of the 'thal' feature.</scope>"
+      },
+      "reason_codes": [
+        "NON_ACTIONABLE_FACET"
+      ]
+    },
+    {
+      "unit_id": "s_110",
+      "raw": {
+        "criterion": "<fact>In Table I, the feature with Feature Number 58 is named 'num'.</fact><scope>Mapping between feature numbers and names in Table I.</scope>"
+      },
+      "reason_codes": [
+        "NON_ACTIONABLE_FACET"
+      ]
+    },
+    {
+      "unit_id": "s_110",
+      "raw": {
+        "criterion": "<fact>In Table I, the feature 'num' is described as 'the predicted attribute'.</fact><scope>Semantic description of the 'num' feature.</scope>"
       },
       "reason_codes": [
         "NON_ACTIONABLE_FACET"
@@ -517,27 +571,27 @@
       ]
     },
     {
-      "unit_id": "s_153",
+      "unit_id": "s_159",
       "raw": {
-        "criterion": "<fact>By dynamically adjusting # Algorithm 1 Local classifier Require: Dataset $D$ (920 points) 1: Set hyperparameter values for chosen model 2: Remove points with missing values from $D$ 3: Split $D$ into $66 \\%$ training set $T$ and $34 \\%$ test set $E$ 4: Normalize $T$ (e.g., scale features to have zero mean and unit variance) 5: Initialize model parameters $\\theta$ 6: for $t = 1$ to 50 epochs do 7: Update model parameters $\\theta$ by training on $T$ 8: end for 9: Evaluate final model on test set $E$ 10: Compute testing accuracy Acc 11: Output Acc as the final testing accuracy # Algorithm 2 Federated aggregation Require: Dataset D from 4 clients $( D _ { 1 } , D _ { 2 } , D _ { 3 } , D _ { 4 } )$ 1: Set hyperparameter values for chosen model 2: Initialize global model parameters $\\theta$ 3: for each client $k \\in \\{ 1 , 2 , 3 , 4 \\}$ do 4: Preprocess data similar to Local Classifier 5: for $t = 1$ to 50 epochs do 6: Local Classifier 7: Send $\\theta _ { k }$ to the server 8: Receive updated global model parameters $\\theta$ from the server 9: end for 10: Evaluate local model on test set $E _ { k }$ 11: Compute local testing accuracy $A c c _ { k }$ 12: end for 13: Aggregate local testing accuracies $A c c _ { 1 } , A c c _ { 2 } , A c c _ { 3 } , A c c _ { 4 }$ 14: PCompute average testing accuracy4k=1 nkn Acck $\\begin{array} { r l } { \\operatorname { A c c } _ { \\mathrm { a v g } } \\quad } & { { } = } \\end{array}$ -nAcck 15: Output $\\mathbf { A c c _ { a v g } }$ as the final testing accuracy learning rates based on the magnitude and direction of gradients, ADAM optimizes the training process for each client individually, contributing to more accurate model updates.</fact> <scope>dataset</scope>",
-        "fact": "By dynamically adjusting # Algorithm 1 Local classifier Require: Dataset $D$ (920 points) 1: Set hyperparameter values for chosen model 2: Remove points with missing values from $D$ 3: Split $D$ into $66 \\%$ training set $T$ and $34 \\%$ test set $E$ 4: Normalize $T$ (e.g., scale features to have zero mean and unit variance) 5: Initialize model parameters $\\theta$ 6: for $t = 1$ to 50 epochs do 7: Update model parameters $\\theta$ by training on $T$ 8: end for 9: Evaluate final model on test set $E$ 10: Compute testing accuracy Acc 11: Output Acc as the final testing accuracy # Algorithm 2 Federated aggregation Require: Dataset D from 4 clients $( D _ { 1 } , D _ { 2 } , D _ { 3 } , D _ { 4 } )$ 1: Set hyperparameter values for chosen model 2: Initialize global model parameters $\\theta$ 3: for each client $k \\in \\{ 1 , 2 , 3 , 4 \\}$ do 4: Preprocess data similar to Local Classifier 5: for $t = 1$ to 50 epochs do 6: Local Classifier 7: Send $\\theta _ { k }$ to the server 8: Receive updated global model parameters $\\theta$ from the server 9: end for 10: Evaluate local model on test set $E _ { k }$ 11: Compute local testing accuracy $A c c _ { k }$ 12: end for 13: Aggregate local testing accuracies $A c c _ { 1 } , A c c _ { 2 } , A c c _ { 3 } , A c c _ { 4 }$ 14: PCompute average testing accuracy4k=1 nkn Acck $\\begin{array} { r l } { \\operatorname { A c c } _ { \\mathrm { a v g } } \\quad } & { { } = } \\end{array}$ -nAcck 15: Output $\\mathbf { A c c _ { a v g } }$ as the final testing accuracy learning rates based on the magnitude and direction of gradients, ADAM optimizes the training process for each client individually, contributing to more accurate model updates.",
-        "scope": "dataset",
-        "facet": "metric",
-        "source_type": "text_metric",
-        "metric_name": "accuracy",
+        "criterion": "<fact>FedYogi [16] is designed to be a more adaptive and efficient variant of FedAvg, leveraging techniques to handle non-IID data distributions and optimize communication for improved federated aggregation.</fact> <scope>from paper context</scope>",
+        "fact": "FedYogi [16] is designed to be a more adaptive and efficient variant of FedAvg, leveraging techniques to handle non-IID data distributions and optimize communication for improved federated aggregation.",
+        "scope": "from paper context",
+        "facet": "algorithm",
+        "source_type": "text_statement",
+        "metric_name": null,
         "metric_value": null,
         "metric_unit": null,
         "entity": null,
         "comparator": null,
-        "dataset_scope": "dataset",
+        "dataset_scope": null,
         "table_anchor": null,
-        "input_unit_id": "s_153",
+        "input_unit_id": "s_159",
         "reason_codes": [
           "HEURISTIC_FALLBACK"
         ]
       },
       "reason_codes": [
-        "MALFORMED_NUMERIC"
+        "SUBJECTIVE_UNVERIFIABLE"
       ]
     },
     {
@@ -562,30 +616,6 @@
       },
       "reason_codes": [
         "NON_ACTIONABLE_DATASET_FACT"
-      ]
-    },
-    {
-      "unit_id": "s_247",
-      "raw": {
-        "criterion": "<fact>CONCLUSION In this work, we established a benchmark for binary classification models for heart disease using the UCI heart disease dataset, evaluated in both centralized (pooled) and federated settings, and conducted interpretability analysis using Shapley values to understand the features influencing model predictions.</fact> <scope>uci</scope>",
-        "fact": "CONCLUSION In this work, we established a benchmark for binary classification models for heart disease using the UCI heart disease dataset, evaluated in both centralized (pooled) and federated settings, and conducted interpretability analysis using Shapley values to understand the features influencing model predictions.",
-        "scope": "uci",
-        "facet": "algorithm",
-        "source_type": "text_statement",
-        "metric_name": null,
-        "metric_value": null,
-        "metric_unit": null,
-        "entity": null,
-        "comparator": null,
-        "dataset_scope": "uci",
-        "table_anchor": null,
-        "input_unit_id": "s_247",
-        "reason_codes": [
-          "HEURISTIC_FALLBACK"
-        ]
-      },
-      "reason_codes": [
-        "OVERLONG_NON_ATOMIC_FACT"
       ]
     },
     {
@@ -628,6 +658,54 @@
         "dataset_scope": "dataset",
         "table_anchor": null,
         "input_unit_id": "s_551",
+        "reason_codes": [
+          "HEURISTIC_FALLBACK"
+        ]
+      },
+      "reason_codes": [
+        "NON_ACTIONABLE_DATASET_FACT"
+      ]
+    },
+    {
+      "unit_id": "s_7",
+      "raw": {
+        "criterion": "<fact>Federated SVM, an uncommon approach in the literature, achieves a top testing accuracy of $7 3 .</fact> <scope>from paper context</scope>",
+        "fact": "Federated SVM, an uncommon approach in the literature, achieves a top testing accuracy of $7 3 .",
+        "scope": "from paper context",
+        "facet": "metric",
+        "source_type": "text_metric",
+        "metric_name": "accuracy",
+        "metric_value": null,
+        "metric_unit": null,
+        "entity": "SVM",
+        "comparator": null,
+        "dataset_scope": null,
+        "table_anchor": null,
+        "input_unit_id": "s_7",
+        "reason_codes": [
+          "HEURISTIC_FALLBACK"
+        ]
+      },
+      "reason_codes": [
+        "SUBJECTIVE_UNVERIFIABLE"
+      ]
+    },
+    {
+      "unit_id": "s_82",
+      "raw": {
+        "criterion": "<fact>Our work enhances the benchmark for the UCI heart disease dataset included in FLamby.</fact> <scope>uci</scope>",
+        "fact": "Our work enhances the benchmark for the UCI heart disease dataset included in FLamby.",
+        "scope": "uci",
+        "facet": "dataset_task",
+        "source_type": "text_statement",
+        "metric_name": null,
+        "metric_value": null,
+        "metric_unit": null,
+        "entity": null,
+        "comparator": null,
+        "dataset_scope": "uci",
+        "table_anchor": null,
+        "input_unit_id": "s_82",
         "reason_codes": [
           "HEURISTIC_FALLBACK"
         ]

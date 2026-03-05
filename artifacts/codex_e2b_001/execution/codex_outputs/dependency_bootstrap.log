@@ -1,22 +1,25 @@
+[runner] waiting sudo_apt_get_update
 Get:1 https://deb.nodesource.com/node_24.x nodistro InRelease [12.1 kB]
-Get:2 http://security.ubuntu.com/ubuntu jammy-security InRelease [129 kB]
-Get:3 https://deb.nodesource.com/node_24.x nodistro/main amd64 Packages [5208 B]
-Hit:4 http://archive.ubuntu.com/ubuntu jammy InRelease
-Get:5 http://archive.ubuntu.com/ubuntu jammy-updates InRelease [128 kB]
-Get:6 http://security.ubuntu.com/ubuntu jammy-security/main amd64 Packages [3767 kB]
-Get:7 http://archive.ubuntu.com/ubuntu jammy-backports InRelease [127 kB]
+Hit:2 http://archive.ubuntu.com/ubuntu jammy InRelease
+Get:3 http://archive.ubuntu.com/ubuntu jammy-updates InRelease [128 kB]
+Get:4 https://deb.nodesource.com/node_24.x nodistro/main amd64 Packages [5208 B]
+Get:5 http://security.ubuntu.com/ubuntu jammy-security InRelease [129 kB]
+Get:6 http://archive.ubuntu.com/ubuntu jammy-backports InRelease [127 kB]
+Get:7 http://archive.ubuntu.com/ubuntu jammy-updates/multiverse amd64 Packages [70.9 kB]
 Get:8 http://archive.ubuntu.com/ubuntu jammy-updates/universe amd64 Packages [1613 kB]
-Get:9 http://security.ubuntu.com/ubuntu jammy-security/universe amd64 Packages [1302 kB]
-Get:10 http://security.ubuntu.com/ubuntu jammy-security/restricted amd64 Packages [6626 kB]
-Get:11 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages [4107 kB]
-Get:12 http://security.ubuntu.com/ubuntu jammy-security/multiverse amd64 Packages [62.6 kB]
-Get:13 http://archive.ubuntu.com/ubuntu jammy-updates/multiverse amd64 Packages [70.9 kB]
-Get:14 http://archive.ubuntu.com/ubuntu jammy-updates/restricted amd64 Packages [6861 kB]
-Get:15 http://archive.ubuntu.com/ubuntu jammy-backports/main amd64 Packages [83.9 kB]
-Get:16 http://archive.ubuntu.com/ubuntu jammy-backports/universe amd64 Packages [37.2 kB]
-Fetched 24.9 MB in 3s (7424 kB/s)
-Reading package lists...
-Reading package lists...
+Get:9 http://security.ubuntu.com/ubuntu jammy-security/main amd64 Packages [3780 kB]
+Get:10 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages [4120 kB]
+Get:11 http://archive.ubuntu.com/ubuntu jammy-updates/restricted amd64 Packages [6877 kB]
+Get:12 http://security.ubuntu.com/ubuntu jammy-security/universe amd64 Packages [1301 kB]
+Get:13 http://security.ubuntu.com/ubuntu jammy-security/multiverse amd64 Packages [62.6 kB]
+Get:14 http://security.ubuntu.com/ubuntu jammy-security/restricted amd64 Packages [6652 kB]
+Get:15 http://archive.ubuntu.com/ubuntu jammy-backports/universe amd64 Packages [37.2 kB]
+Get:16 http://archive.ubuntu.com/ubuntu jammy-backports/main amd64 Packages [83.9 kB]
+Fetched 25.0 MB in 4s (6661 kB/s)
+Reading package lists...[runner] waiting sudo_apt_get_update
+
+Reading package lists...[runner] waiting sudo_apt_get_install_python3_pip
+
 Building dependency tree...
 Reading state information...
 The following additional packages will be installed:
@@ -146,8 +149,8 @@ Get:79 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 python3-dev amd
 Get:80 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 python3-setuptools all 59.6.0-1.2ubuntu0.22.04.3 [340 kB]
 Get:81 http://archive.ubuntu.com/ubuntu jammy-updates/universe amd64 python3-wheel all 0.37.1-2ubuntu0.22.04.1 [32.0 kB]
 Get:82 http://archive.ubuntu.com/ubuntu jammy-updates/universe amd64 python3-pip all 22.0.2+dfsg-1ubuntu0.7 [1306 kB]
-debconf: delaying package configuration, since apt-utils is not installed
-Fetched 88.9 MB in 2s (38.2 MB/s)
+[runner] waiting sudo_apt_get_install_python3_pip
+Fetched 88.9 MB in 2s (37.1 MB/s)
 (Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 26217 files and directories currently installed.)
 Preparing to unpack .../gcc-12-base_12.3.0-1ubuntu1~22.04.3_amd64.deb ...
 Unpacking gcc-12-base:amd64 (12.3.0-1ubuntu1~22.04.3) over (12.3.0-1ubuntu1~22.04) ...
@@ -289,15 +292,7 @@ Unpacking libstdc++-11-dev:amd64 (11.4.0-1ubuntu1~22.04.3) ...
 Selecting previously unselected package g++-11.
 Preparing to unpack .../40-g++-11_11.4.0-1ubuntu1~22.04.3_amd64.deb ...
 Unpacking g++-11 (11.4.0-1ubuntu1~22.04.3) ...
-Selecting previously unselected package g++.
-Preparing to unpack .../41-g++_4%3a11.2.0-1ubuntu1_amd64.deb ...
-Unpacking g++ (4:11.2.0-1ubuntu1) ...
-Selecting previously unselected package make.
-Preparing to unpack .../42-make_4.3-4.1build1_amd64.deb ...
-Unpacking make (4.3-4.1build1) ...
-Selecting previously unselected package libdpkg-perl.
-Preparing to unpack .../43-libdpkg-perl_1.21.1ubuntu2.6_all.deb ...
-Unpacking libdpkg-perl (1.21.1ubuntu2.6) ...
+[runner] waiting sudo_apt_get_install_python3_pip
 Selecting previously unselected package lto-disabled-list.
 Preparing to unpack .../44-lto-disabled-list_24_all.deb ...
 Unpacking lto-disabled-list (24) ...
@@ -465,6 +460,7 @@ Setting up python3.10-minimal (3.10.12-1~22.04.14) ...
 Setting up python3-wheel (0.37.1-2ubuntu0.22.04.1) ...
 Setting up libpython3.10-stdlib:amd64 (3.10.12-1~22.04.14) ...
 Setting up python3-pip (22.0.2+dfsg-1ubuntu0.7) ...
+[runner] waiting sudo_apt_get_install_python3_pip
 Setting up libjs-sphinxdoc (4.3.2-1) ...
 Setting up libgcc-11-dev:amd64 (11.4.0-1ubuntu1~22.04.3) ...
 Setting up cpp (4:11.2.0-1ubuntu1) ...
@@ -493,14 +489,15 @@ Setting up libpython3-dev:amd64 (3.10.6-1~22.04.1) ...
 Setting up python3-dev (3.10.6-1~22.04.1) ...
 Processing triggers for libc-bin (2.35-0ubuntu3.10) ...
 Processing triggers for mailcap (3.70+nmu1ubuntu1) ...
+[runner] waiting pip_upgrade_toolchain
 Requirement already satisfied: pip in /usr/lib/python3/dist-packages (22.0.2)
 Collecting pip
   Downloading pip-26.0.1-py3-none-any.whl (1.8 MB)
-     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.8/1.8 MB 3.7 MB/s eta 0:00:00
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.8/1.8 MB 44.3 MB/s eta 0:00:00
 Requirement already satisfied: setuptools in /usr/lib/python3/dist-packages (59.6.0)
 Collecting setuptools
   Downloading setuptools-82.0.0-py3-none-any.whl (1.0 MB)
-     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.0/1.0 MB 66.3 MB/s eta 0:00:00
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.0/1.0 MB 92.2 MB/s eta 0:00:00
 Requirement already satisfied: wheel in /usr/lib/python3/dist-packages (0.37.1)
 Collecting wheel
   Downloading wheel-0.46.3-py3-none-any.whl (30 kB)
@@ -521,9 +518,10 @@ Installing collected packages: setuptools, pip, packaging, wheel
     Not uninstalling wheel at /usr/lib/python3/dist-packages, outside environment /usr
     Can't uninstall 'wheel'. No files were found to uninstall.
 Successfully installed packaging-26.0 pip-26.0.1 setuptools-82.0.0 wheel-0.46.3
+[runner] waiting pip_install_requirements
 Collecting matplotlib==2.1.0 (from -r requirements.txt (line 1))
   Downloading matplotlib-2.1.0.tar.gz (35.7 MB)
-     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 35.7/35.7 MB 89.0 MB/s  0:00:00
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 35.7/35.7 MB 60.8 MB/s  0:00:00
   Installing build dependencies: started
   Installing build dependencies: finished with status 'done'
   Getting requirements to build wheel: started
@@ -535,7 +533,7 @@ Collecting matplotlib==2.1.0 (from -r requirements.txt (line 1))
   ╰─> [43 lines of output]
       Downloading http://pypi.python.org/packages/source/d/distribute/distribute-0.6.28.tar.gz
       Traceback (most recent call last):
-        File "/tmp/pip-install-6npdh7vq/matplotlib_f1a41c6912c544fa97bea158b7436730/distribute_setup.py", line 147, in use_setuptools
+        File "/tmp/pip-install-92o3buxd/matplotlib_83034861e2e84f6084d06be4e2c0b790/distribute_setup.py", line 147, in use_setuptools
           import pkg_resources
       ModuleNotFoundError: No module named 'pkg_resources'
       
@@ -548,20 +546,20 @@ Collecting matplotlib==2.1.0 (from -r requirements.txt (line 1))
           json_out["return_val"] = hook(**hook_input["kwargs"])
         File "/usr/local/lib/python3.10/dist-packages/pip/_vendor/pyproject_hooks/_in_process/_in_process.py", line 143, in get_requires_for_build_wheel
           return hook(config_settings)
-        File "/tmp/pip-build-env-c4mu_3xr/overlay/local/lib/python3.10/dist-packages/setuptools/build_meta.py", line 333, in get_requires_for_build_wheel
+        File "/tmp/pip-build-env-1lb_6sb6/overlay/local/lib/python3.10/dist-packages/setuptools/build_meta.py", line 333, in get_requires_for_build_wheel
           return self._get_build_requires(config_settings, requirements=[])
-        File "/tmp/pip-build-env-c4mu_3xr/overlay/local/lib/python3.10/dist-packages/setuptools/build_meta.py", line 301, in _get_build_requires
+        File "/tmp/pip-build-env-1lb_6sb6/overlay/local/lib/python3.10/dist-packages/setuptools/build_meta.py", line 301, in _get_build_requires
           self.run_setup()
-        File "/tmp/pip-build-env-c4mu_3xr/overlay/local/lib/python3.10/dist-packages/setuptools/build_meta.py", line 520, in run_setup
+        File "/tmp/pip-build-env-1lb_6sb6/overlay/local/lib/python3.10/dist-packages/setuptools/build_meta.py", line 520, in run_setup
           super().run_setup(setup_script=setup_script)
-        File "/tmp/pip-build-env-c4mu_3xr/overlay/local/lib/python3.10/dist-packages/setuptools/build_meta.py", line 317, in run_setup
+        File "/tmp/pip-build-env-1lb_6sb6/overlay/local/lib/python3.10/dist-packages/setuptools/build_meta.py", line 317, in run_setup
           exec(code, locals())
         File "<string>", line 10, in <module>
-        File "/tmp/pip-install-6npdh7vq/matplotlib_f1a41c6912c544fa97bea158b7436730/distribute_setup.py", line 163, in use_setuptools
+        File "/tmp/pip-install-92o3buxd/matplotlib_83034861e2e84f6084d06be4e2c0b790/distribute_setup.py", line 163, in use_setuptools
           return _do_download(version, download_base, to_dir, download_delay)
-        File "/tmp/pip-install-6npdh7vq/matplotlib_f1a41c6912c544fa97bea158b7436730/distribute_setup.py", line 131, in _do_download
+        File "/tmp/pip-install-92o3buxd/matplotlib_83034861e2e84f6084d06be4e2c0b790/distribute_setup.py", line 131, in _do_download
           tarball = download_setuptools(version, download_base,
-        File "/tmp/pip-install-6npdh7vq/matplotlib_f1a41c6912c544fa97bea158b7436730/distribute_setup.py", line 212, in download_setuptools
+        File "/tmp/pip-install-92o3buxd/matplotlib_83034861e2e84f6084d06be4e2c0b790/distribute_setup.py", line 212, in download_setuptools
           src = urlopen(url)
         File "/usr/lib/python3.10/urllib/request.py", line 216, in urlopen
           return opener.open(url, data, timeout)
@@ -579,139 +577,125 @@ Collecting matplotlib==2.1.0 (from -r requirements.txt (line 1))
       [end of output]
   
   note: This error originates from a subprocess, and is likely not a problem with pip.
+[runner] waiting pip_install_requirements
 ERROR: Failed to build 'matplotlib' when getting requirements to build wheel
-Collecting matplotlib==3.8.4 (from -r /home/user/workspace/outputs/requirements.compat.txt (line 1))
-  Downloading matplotlib-3.8.4-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (5.8 kB)
-Collecting tensorflow==2.15.1 (from -r /home/user/workspace/outputs/requirements.compat.txt (line 2))
+[runner] waiting pip_install_compat_requirements
+Collecting tensorflow==2.15.1 (from -r /home/user/workspace/outputs/requirements.compat.txt (line 1))
   Downloading tensorflow-2.15.1-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (4.2 kB)
-Collecting numpy==1.26.4 (from -r /home/user/workspace/outputs/requirements.compat.txt (line 3))
+Collecting numpy==1.26.4 (from -r /home/user/workspace/outputs/requirements.compat.txt (line 2))
   Downloading numpy-1.26.4-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (61 kB)
-Collecting scikit-learn==1.3.2 (from -r /home/user/workspace/outputs/requirements.compat.txt (line 4))
+Collecting scikit-learn==1.3.2 (from -r /home/user/workspace/outputs/requirements.compat.txt (line 3))
   Downloading scikit_learn-1.3.2-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (11 kB)
-Collecting contourpy>=1.0.1 (from matplotlib==3.8.4->-r /home/user/workspace/outputs/requirements.compat.txt (line 1))
-  Downloading contourpy-1.3.2-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (5.5 kB)
-Collecting cycler>=0.10 (from matplotlib==3.8.4->-r /home/user/workspace/outputs/requirements.compat.txt (line 1))
-  Downloading cycler-0.12.1-py3-none-any.whl.metadata (3.8 kB)
-Collecting fonttools>=4.22.0 (from matplotlib==3.8.4->-r /home/user/workspace/outputs/requirements.compat.txt (line 1))
-  Downloading fonttools-4.61.1-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (114 kB)
-Collecting kiwisolver>=1.3.1 (from matplotlib==3.8.4->-r /home/user/workspace/outputs/requirements.compat.txt (line 1))
-  Downloading kiwisolver-1.4.9-cp310-cp310-manylinux_2_12_x86_64.manylinux2010_x86_64.whl.metadata (6.3 kB)
-Requirement already satisfied: packaging>=20.0 in /usr/local/lib/python3.10/dist-packages (from matplotlib==3.8.4->-r /home/user/workspace/outputs/requirements.compat.txt (line 1)) (26.0)
-Collecting pillow>=8 (from matplotlib==3.8.4->-r /home/user/workspace/outputs/requirements.compat.txt (line 1))
-  Downloading pillow-12.1.1-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (8.8 kB)
-Collecting pyparsing>=2.3.1 (from matplotlib==3.8.4->-r /home/user/workspace/outputs/requirements.compat.txt (line 1))
-  Downloading pyparsing-3.3.2-py3-none-any.whl.metadata (5.8 kB)
-Collecting python-dateutil>=2.7 (from matplotlib==3.8.4->-r /home/user/workspace/outputs/requirements.compat.txt (line 1))
-  Downloading python_dateutil-2.9.0.post0-py2.py3-none-any.whl.metadata (8.4 kB)
-Collecting absl-py>=1.0.0 (from tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 2))
+Collecting absl-py>=1.0.0 (from tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 1))
   Downloading absl_py-2.4.0-py3-none-any.whl.metadata (3.3 kB)
-Collecting astunparse>=1.6.0 (from tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 2))
+Collecting astunparse>=1.6.0 (from tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 1))
   Downloading astunparse-1.6.3-py2.py3-none-any.whl.metadata (4.4 kB)
-Collecting flatbuffers>=23.5.26 (from tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 2))
+Collecting flatbuffers>=23.5.26 (from tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 1))
   Downloading flatbuffers-25.12.19-py2.py3-none-any.whl.metadata (1.0 kB)
-Collecting gast!=0.5.0,!=0.5.1,!=0.5.2,>=0.2.1 (from tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 2))
+Collecting gast!=0.5.0,!=0.5.1,!=0.5.2,>=0.2.1 (from tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 1))
   Downloading gast-0.7.0-py3-none-any.whl.metadata (1.5 kB)
-Collecting google-pasta>=0.1.1 (from tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 2))
+Collecting google-pasta>=0.1.1 (from tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 1))
   Downloading google_pasta-0.2.0-py3-none-any.whl.metadata (814 bytes)
-Collecting h5py>=2.9.0 (from tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 2))
+Collecting h5py>=2.9.0 (from tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 1))
   Downloading h5py-3.15.1-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (3.0 kB)
-Collecting libclang>=13.0.0 (from tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 2))
+Collecting libclang>=13.0.0 (from tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 1))
   Downloading libclang-18.1.1-py2.py3-none-manylinux2010_x86_64.whl.metadata (5.2 kB)
-Collecting ml-dtypes~=0.3.1 (from tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 2))
+Collecting ml-dtypes~=0.3.1 (from tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 1))
   Downloading ml_dtypes-0.3.2-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (20 kB)
-Collecting opt-einsum>=2.3.2 (from tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 2))
+Collecting opt-einsum>=2.3.2 (from tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 1))
   Downloading opt_einsum-3.4.0-py3-none-any.whl.metadata (6.3 kB)
-Collecting protobuf!=4.21.0,!=4.21.1,!=4.21.2,!=4.21.3,!=4.21.4,!=4.21.5,<5.0.0dev,>=3.20.3 (from tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 2))
+Requirement already satisfied: packaging in /usr/local/lib/python3.10/dist-packages (from tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 1)) (26.0)
+Collecting protobuf!=4.21.0,!=4.21.1,!=4.21.2,!=4.21.3,!=4.21.4,!=4.21.5,<5.0.0dev,>=3.20.3 (from tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 1))
   Downloading protobuf-4.25.8-cp37-abi3-manylinux2014_x86_64.whl.metadata (541 bytes)
-Requirement already satisfied: setuptools in /usr/local/lib/python3.10/dist-packages (from tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 2)) (82.0.0)
-Collecting six>=1.12.0 (from tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 2))
+Requirement already satisfied: setuptools in /usr/local/lib/python3.10/dist-packages (from tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 1)) (82.0.0)
+Collecting six>=1.12.0 (from tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 1))
   Downloading six-1.17.0-py2.py3-none-any.whl.metadata (1.7 kB)
-Collecting termcolor>=1.1.0 (from tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 2))
+Collecting termcolor>=1.1.0 (from tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 1))
   Downloading termcolor-3.3.0-py3-none-any.whl.metadata (6.5 kB)
-Collecting typing-extensions>=3.6.6 (from tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 2))
+Collecting typing-extensions>=3.6.6 (from tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 1))
   Downloading typing_extensions-4.15.0-py3-none-any.whl.metadata (3.3 kB)
-Collecting wrapt<1.15,>=1.11.0 (from tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 2))
+Collecting wrapt<1.15,>=1.11.0 (from tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 1))
   Downloading wrapt-1.14.2-cp310-cp310-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl.metadata (6.5 kB)
-Collecting tensorflow-io-gcs-filesystem>=0.23.1 (from tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 2))
+Collecting tensorflow-io-gcs-filesystem>=0.23.1 (from tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 1))
   Downloading tensorflow_io_gcs_filesystem-0.37.1-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (14 kB)
-Collecting grpcio<2.0,>=1.24.3 (from tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 2))
-  Downloading grpcio-1.78.1-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (3.8 kB)
-Collecting tensorboard<2.16,>=2.15 (from tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 2))
+Collecting grpcio<2.0,>=1.24.3 (from tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 1))
+  Downloading grpcio-1.78.0-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (3.8 kB)
+Collecting tensorboard<2.16,>=2.15 (from tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 1))
   Downloading tensorboard-2.15.2-py3-none-any.whl.metadata (1.7 kB)
-Collecting tensorflow-estimator<2.16,>=2.15.0 (from tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 2))
+Collecting tensorflow-estimator<2.16,>=2.15.0 (from tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 1))
   Downloading tensorflow_estimator-2.15.0-py2.py3-none-any.whl.metadata (1.3 kB)
-Collecting keras<2.16,>=2.15.0 (from tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 2))
+Collecting keras<2.16,>=2.15.0 (from tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 1))
   Downloading keras-2.15.0-py3-none-any.whl.metadata (2.4 kB)
-Collecting scipy>=1.5.0 (from scikit-learn==1.3.2->-r /home/user/workspace/outputs/requirements.compat.txt (line 4))
+Collecting scipy>=1.5.0 (from scikit-learn==1.3.2->-r /home/user/workspace/outputs/requirements.compat.txt (line 3))
   Downloading scipy-1.15.3-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (61 kB)
-Collecting joblib>=1.1.1 (from scikit-learn==1.3.2->-r /home/user/workspace/outputs/requirements.compat.txt (line 4))
+Collecting joblib>=1.1.1 (from scikit-learn==1.3.2->-r /home/user/workspace/outputs/requirements.compat.txt (line 3))
   Downloading joblib-1.5.3-py3-none-any.whl.metadata (5.5 kB)
-Collecting threadpoolctl>=2.0.0 (from scikit-learn==1.3.2->-r /home/user/workspace/outputs/requirements.compat.txt (line 4))
+Collecting threadpoolctl>=2.0.0 (from scikit-learn==1.3.2->-r /home/user/workspace/outputs/requirements.compat.txt (line 3))
   Downloading threadpoolctl-3.6.0-py3-none-any.whl.metadata (13 kB)
-Collecting google-auth<3,>=1.6.3 (from tensorboard<2.16,>=2.15->tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 2))
+Collecting google-auth<3,>=1.6.3 (from tensorboard<2.16,>=2.15->tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 1))
   Downloading google_auth-2.48.0-py3-none-any.whl.metadata (6.2 kB)
-Collecting google-auth-oauthlib<2,>=0.5 (from tensorboard<2.16,>=2.15->tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 2))
-  Downloading google_auth_oauthlib-1.2.4-py3-none-any.whl.metadata (3.1 kB)
-Collecting markdown>=2.6.8 (from tensorboard<2.16,>=2.15->tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 2))
+Collecting google-auth-oauthlib<2,>=0.5 (from tensorboard<2.16,>=2.15->tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 1))
+  Downloading google_auth_oauthlib-1.3.0-py3-none-any.whl.metadata (2.9 kB)
+Collecting markdown>=2.6.8 (from tensorboard<2.16,>=2.15->tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 1))
   Downloading markdown-3.10.2-py3-none-any.whl.metadata (5.1 kB)
-Collecting requests<3,>=2.21.0 (from tensorboard<2.16,>=2.15->tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 2))
+Collecting requests<3,>=2.21.0 (from tensorboard<2.16,>=2.15->tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 1))
   Downloading requests-2.32.5-py3-none-any.whl.metadata (4.9 kB)
-Collecting tensorboard-data-server<0.8.0,>=0.7.0 (from tensorboard<2.16,>=2.15->tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 2))
+Collecting tensorboard-data-server<0.8.0,>=0.7.0 (from tensorboard<2.16,>=2.15->tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 1))
   Downloading tensorboard_data_server-0.7.2-py3-none-manylinux_2_31_x86_64.whl.metadata (1.1 kB)
-Collecting werkzeug>=1.0.1 (from tensorboard<2.16,>=2.15->tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 2))
+Collecting werkzeug>=1.0.1 (from tensorboard<2.16,>=2.15->tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 1))
   Downloading werkzeug-3.1.6-py3-none-any.whl.metadata (4.0 kB)
-Collecting pyasn1-modules>=0.2.1 (from google-auth<3,>=1.6.3->tensorboard<2.16,>=2.15->tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 2))
+Collecting pyasn1-modules>=0.2.1 (from google-auth<3,>=1.6.3->tensorboard<2.16,>=2.15->tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 1))
   Downloading pyasn1_modules-0.4.2-py3-none-any.whl.metadata (3.5 kB)
-Collecting cryptography>=38.0.3 (from google-auth<3,>=1.6.3->tensorboard<2.16,>=2.15->tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 2))
+Collecting cryptography>=38.0.3 (from google-auth<3,>=1.6.3->tensorboard<2.16,>=2.15->tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 1))
   Downloading cryptography-46.0.5-cp38-abi3-manylinux_2_34_x86_64.whl.metadata (5.7 kB)
-Collecting rsa<5,>=3.1.4 (from google-auth<3,>=1.6.3->tensorboard<2.16,>=2.15->tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 2))
+Collecting rsa<5,>=3.1.4 (from google-auth<3,>=1.6.3->tensorboard<2.16,>=2.15->tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 1))
   Downloading rsa-4.9.1-py3-none-any.whl.metadata (5.6 kB)
-Collecting requests-oauthlib>=0.7.0 (from google-auth-oauthlib<2,>=0.5->tensorboard<2.16,>=2.15->tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 2))
+Collecting requests-oauthlib>=0.7.0 (from google-auth-oauthlib<2,>=0.5->tensorboard<2.16,>=2.15->tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 1))
   Downloading requests_oauthlib-2.0.0-py2.py3-none-any.whl.metadata (11 kB)
-Collecting charset_normalizer<4,>=2 (from requests<3,>=2.21.0->tensorboard<2.16,>=2.15->tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 2))
+Collecting charset_normalizer<4,>=2 (from requests<3,>=2.21.0->tensorboard<2.16,>=2.15->tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 1))
   Downloading charset_normalizer-3.4.4-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (37 kB)
-Collecting idna<4,>=2.5 (from requests<3,>=2.21.0->tensorboard<2.16,>=2.15->tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 2))
+Collecting idna<4,>=2.5 (from requests<3,>=2.21.0->tensorboard<2.16,>=2.15->tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 1))
   Downloading idna-3.11-py3-none-any.whl.metadata (8.4 kB)
-Collecting urllib3<3,>=1.21.1 (from requests<3,>=2.21.0->tensorboard<2.16,>=2.15->tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 2))
+Collecting urllib3<3,>=1.21.1 (from requests<3,>=2.21.0->tensorboard<2.16,>=2.15->tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 1))
   Downloading urllib3-2.6.3-py3-none-any.whl.metadata (6.9 kB)
-Collecting certifi>=2017.4.17 (from requests<3,>=2.21.0->tensorboard<2.16,>=2.15->tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 2))
+Collecting certifi>=2017.4.17 (from requests<3,>=2.21.0->tensorboard<2.16,>=2.15->tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 1))
   Downloading certifi-2026.2.25-py3-none-any.whl.metadata (2.5 kB)
-Collecting pyasn1>=0.1.3 (from rsa<5,>=3.1.4->google-auth<3,>=1.6.3->tensorboard<2.16,>=2.15->tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 2))
+Collecting pyasn1>=0.1.3 (from rsa<5,>=3.1.4->google-auth<3,>=1.6.3->tensorboard<2.16,>=2.15->tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 1))
   Downloading pyasn1-0.6.2-py3-none-any.whl.metadata (8.4 kB)
-Requirement already satisfied: wheel<1.0,>=0.23.0 in /usr/local/lib/python3.10/dist-packages (from astunparse>=1.6.0->tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 2)) (0.46.3)
-Collecting cffi>=2.0.0 (from cryptography>=38.0.3->google-auth<3,>=1.6.3->tensorboard<2.16,>=2.15->tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 2))
+Requirement already satisfied: wheel<1.0,>=0.23.0 in /usr/local/lib/python3.10/dist-packages (from astunparse>=1.6.0->tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 1)) (0.46.3)
+[runner] waiting pip_install_compat_requirements
+Collecting cffi>=2.0.0 (from cryptography>=38.0.3->google-auth<3,>=1.6.3->tensorboard<2.16,>=2.15->tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 1))
   Downloading cffi-2.0.0-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (2.6 kB)
-Collecting pycparser (from cffi>=2.0.0->cryptography>=38.0.3->google-auth<3,>=1.6.3->tensorboard<2.16,>=2.15->tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 2))
+Collecting pycparser (from cffi>=2.0.0->cryptography>=38.0.3->google-auth<3,>=1.6.3->tensorboard<2.16,>=2.15->tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 1))
   Downloading pycparser-3.0-py3-none-any.whl.metadata (8.2 kB)
-Collecting oauthlib>=3.0.0 (from requests-oauthlib>=0.7.0->google-auth-oauthlib<2,>=0.5->tensorboard<2.16,>=2.15->tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 2))
+Collecting oauthlib>=3.0.0 (from requests-oauthlib>=0.7.0->google-auth-oauthlib<2,>=0.5->tensorboard<2.16,>=2.15->tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 1))
   Downloading oauthlib-3.3.1-py3-none-any.whl.metadata (7.9 kB)
-Collecting markupsafe>=2.1.1 (from werkzeug>=1.0.1->tensorboard<2.16,>=2.15->tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 2))
+Collecting markupsafe>=2.1.1 (from werkzeug>=1.0.1->tensorboard<2.16,>=2.15->tensorflow==2.15.1->-r /home/user/workspace/outputs/requirements.compat.txt (line 1))
   Downloading markupsafe-3.0.3-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (2.7 kB)
-Downloading matplotlib-3.8.4-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (11.6 MB)
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 11.6/11.6 MB 122.0 MB/s  0:00:00
 Downloading tensorflow-2.15.1-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (475.2 MB)
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 475.2/475.2 MB 64.8 MB/s  0:00:05
+[runner] waiting pip_install_compat_requirements
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 475.2/475.2 MB 71.3 MB/s  0:00:06
 Downloading numpy-1.26.4-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (18.2 MB)
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 18.2/18.2 MB 56.3 MB/s  0:00:00
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 18.2/18.2 MB 79.7 MB/s  0:00:00
 Downloading scikit_learn-1.3.2-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (10.8 MB)
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 10.8/10.8 MB 56.5 MB/s  0:00:00
-Downloading grpcio-1.78.1-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (6.7 MB)
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 6.7/6.7 MB 57.7 MB/s  0:00:00
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 10.8/10.8 MB 86.9 MB/s  0:00:00
+Downloading grpcio-1.78.0-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (6.7 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 6.7/6.7 MB 83.9 MB/s  0:00:00
 Downloading keras-2.15.0-py3-none-any.whl (1.7 MB)
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.7/1.7 MB 46.3 MB/s  0:00:00
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.7/1.7 MB 73.7 MB/s  0:00:00
 Downloading ml_dtypes-0.3.2-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (2.2 MB)
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2.2/2.2 MB 53.0 MB/s  0:00:00
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2.2/2.2 MB 84.6 MB/s  0:00:00
 Downloading protobuf-4.25.8-cp37-abi3-manylinux2014_x86_64.whl (294 kB)
 Downloading tensorboard-2.15.2-py3-none-any.whl (5.5 MB)
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 5.5/5.5 MB 62.5 MB/s  0:00:00
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 5.5/5.5 MB 81.0 MB/s  0:00:00
 Downloading google_auth-2.48.0-py3-none-any.whl (236 kB)
-Downloading google_auth_oauthlib-1.2.4-py3-none-any.whl (19 kB)
+Downloading google_auth_oauthlib-1.3.0-py3-none-any.whl (19 kB)
 Downloading requests-2.32.5-py3-none-any.whl (64 kB)
 Downloading charset_normalizer-3.4.4-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (153 kB)
 Downloading idna-3.11-py3-none-any.whl (71 kB)
 Downloading rsa-4.9.1-py3-none-any.whl (34 kB)
 Downloading tensorboard_data_server-0.7.2-py3-none-manylinux_2_31_x86_64.whl (6.6 MB)
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 6.6/6.6 MB 62.1 MB/s  0:00:00
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 6.6/6.6 MB 90.9 MB/s  0:00:00
 Downloading tensorflow_estimator-2.15.0-py2.py3-none-any.whl (441 kB)
 Downloading typing_extensions-4.15.0-py3-none-any.whl (44 kB)
 Downloading urllib3-2.6.3-py3-none-any.whl (131 kB)
@@ -720,42 +704,39 @@ Downloading absl_py-2.4.0-py3-none-any.whl (135 kB)
 Downloading astunparse-1.6.3-py2.py3-none-any.whl (12 kB)
 Downloading six-1.17.0-py2.py3-none-any.whl (11 kB)
 Downloading certifi-2026.2.25-py3-none-any.whl (153 kB)
-Downloading contourpy-1.3.2-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (325 kB)
 Downloading cryptography-46.0.5-cp38-abi3-manylinux_2_34_x86_64.whl (4.5 MB)
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.5/4.5 MB 58.0 MB/s  0:00:00
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.5/4.5 MB 81.9 MB/s  0:00:00
 Downloading cffi-2.0.0-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (216 kB)
-Downloading cycler-0.12.1-py3-none-any.whl (8.3 kB)
 Downloading flatbuffers-25.12.19-py2.py3-none-any.whl (26 kB)
-Downloading fonttools-4.61.1-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (4.9 MB)
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.9/4.9 MB 59.1 MB/s  0:00:00
 Downloading gast-0.7.0-py3-none-any.whl (22 kB)
 Downloading google_pasta-0.2.0-py3-none-any.whl (57 kB)
 Downloading h5py-3.15.1-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (4.7 MB)
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.7/4.7 MB 50.9 MB/s  0:00:00
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.7/4.7 MB 89.2 MB/s  0:00:00
 Downloading joblib-1.5.3-py3-none-any.whl (309 kB)
-Downloading kiwisolver-1.4.9-cp310-cp310-manylinux_2_12_x86_64.manylinux2010_x86_64.whl (1.6 MB)
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.6/1.6 MB 31.0 MB/s  0:00:00
 Downloading libclang-18.1.1-py2.py3-none-manylinux2010_x86_64.whl (24.5 MB)
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 24.5/24.5 MB 41.7 MB/s  0:00:00
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 24.5/24.5 MB 92.1 MB/s  0:00:00
 Downloading markdown-3.10.2-py3-none-any.whl (108 kB)
 Downloading opt_einsum-3.4.0-py3-none-any.whl (71 kB)
-Downloading pillow-12.1.1-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (7.0 MB)
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 7.0/7.0 MB 42.9 MB/s  0:00:00
 Downloading pyasn1-0.6.2-py3-none-any.whl (83 kB)
 Downloading pyasn1_modules-0.4.2-py3-none-any.whl (181 kB)
-Downloading pyparsing-3.3.2-py3-none-any.whl (122 kB)
-Downloading python_dateutil-2.9.0.post0-py2.py3-none-any.whl (229 kB)
 Downloading requests_oauthlib-2.0.0-py2.py3-none-any.whl (24 kB)
 Downloading oauthlib-3.3.1-py3-none-any.whl (160 kB)
 Downloading scipy-1.15.3-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (37.7 MB)
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 37.7/37.7 MB 52.7 MB/s  0:00:00
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 37.7/37.7 MB 79.1 MB/s  0:00:00
 Downloading tensorflow_io_gcs_filesystem-0.37.1-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (5.1 MB)
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 5.1/5.1 MB 55.3 MB/s  0:00:00
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 5.1/5.1 MB 68.3 MB/s  0:00:00
 Downloading termcolor-3.3.0-py3-none-any.whl (7.7 kB)
 Downloading threadpoolctl-3.6.0-py3-none-any.whl (18 kB)
 Downloading werkzeug-3.1.6-py3-none-any.whl (225 kB)
 Downloading markupsafe-3.0.3-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (20 kB)
 Downloading pycparser-3.0-py3-none-any.whl (48 kB)
-Installing collected packages: libclang, flatbuffers, wrapt, urllib3, typing-extensions, threadpoolctl, termcolor, tensorflow-io-gcs-filesystem, tensorflow-estimator, tensorboard-data-server, six, pyparsing, pycparser, pyasn1, protobuf, pillow, opt-einsum, oauthlib, numpy, markupsafe, markdown, kiwisolver, keras, joblib, idna, gast, fonttools, cycler, charset_normalizer, certifi, absl-py, werkzeug, scipy, rsa, requests, python-dateutil, pyasn1-modules, ml-dtypes, h5py, grpcio, google-pasta, contourpy, cffi, astunparse, scikit-learn, requests-oauthlib, matplotlib, cryptography, google-auth, google-auth-oauthlib, tensorboard, tensorflow
+[runner] waiting pip_install_compat_requirements
+Installing collected packages: libclang, flatbuffers, wrapt, urllib3, typing-extensions, threadpoolctl, termcolor, tensorflow-io-gcs-filesystem, tensorflow-estimator, tensorboard-data-server, six, pycparser, pyasn1, protobuf, opt-einsum, oauthlib, numpy, markupsafe, markdown, keras, joblib, idna, gast, charset_normalizer, certifi, absl-py, werkzeug, scipy, rsa, requests, pyasn1-modules, ml-dtypes, h5py, grpcio, google-pasta, cffi, astunparse, scikit-learn, requests-oauthlib, cryptography, google-auth, google-auth-oauthlib, tensorboard, tensorflow
+[runner] waiting pip_install_compat_requirements
+[runner] waiting pip_install_compat_requirements
+[runner] waiting pip_install_compat_requirements
+[runner] waiting pip_install_compat_requirements
+[runner] waiting pip_install_compat_requirements
 
-Successfully installed absl-py-2.4.0 astunparse-1.6.3 certifi-2026.2.25 cffi-2.0.0 charset_normalizer-3.4.4 contourpy-1.3.2 cryptography-46.0.5 cycler-0.12.1 flatbuffers-25.12.19 fonttools-4.61.1 gast-0.7.0 google-auth-2.48.0 google-auth-oauthlib-1.2.4 google-pasta-0.2.0 grpcio-1.78.1 h5py-3.15.1 idna-3.11 joblib-1.5.3 keras-2.15.0 kiwisolver-1.4.9 libclang-18.1.1 markdown-3.10.2 markupsafe-3.0.3 matplotlib-3.8.4 ml-dtypes-0.3.2 numpy-1.26.4 oauthlib-3.3.1 opt-einsum-3.4.0 pillow-12.1.1 protobuf-4.25.8 pyasn1-0.6.2 pyasn1-modules-0.4.2 pycparser-3.0 pyparsing-3.3.2 python-dateutil-2.9.0.post0 requests-2.32.5 requests-oauthlib-2.0.0 rsa-4.9.1 scikit-learn-1.3.2 scipy-1.15.3 six-1.17.0 tensorboard-2.15.2 tensorboard-data-server-0.7.2 tensorflow-2.15.1 tensorflow-estimator-2.15.0 tensorflow-io-gcs-filesystem-0.37.1 termcolor-3.3.0 threadpoolctl-3.6.0 typing-extensions-4.15.0 urllib3-2.6.3 werkzeug-3.1.6 wrapt-1.14.2
+Successfully installed absl-py-2.4.0 astunparse-1.6.3 certifi-2026.2.25 cffi-2.0.0 charset_normalizer-3.4.4 cryptography-46.0.5 flatbuffers-25.12.19 gast-0.7.0 google-auth-2.48.0 google-auth-oauthlib-1.3.0 google-pasta-0.2.0 grpcio-1.78.0 h5py-3.15.1 idna-3.11 joblib-1.5.3 keras-2.15.0 libclang-18.1.1 markdown-3.10.2 markupsafe-3.0.3 ml-dtypes-0.3.2 numpy-1.26.4 oauthlib-3.3.1 opt-einsum-3.4.0 protobuf-4.25.8 pyasn1-0.6.2 pyasn1-modules-0.4.2 pycparser-3.0 requests-2.32.5 requests-oauthlib-2.0.0 rsa-4.9.1 scikit-learn-1.3.2 scipy-1.15.3 six-1.17.0 tensorboard-2.15.2 tensorboard-data-server-0.7.2 tensorflow-2.15.1 tensorflow-estimator-2.15.0 tensorflow-io-gcs-filesystem-0.37.1 termcolor-3.3.0 threadpoolctl-3.6.0 typing-extensions-4.15.0 urllib3-2.6.3 werkzeug-3.1.6 wrapt-1.14.2
+[runner] waiting pip_install_compat_requirements

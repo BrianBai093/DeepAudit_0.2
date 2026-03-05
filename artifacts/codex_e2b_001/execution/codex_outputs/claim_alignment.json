@@ -1,6 +1,259 @@
 {
-  "claims": [],
+  "claims": [
+    {
+      "claim_id": "claim_09",
+      "required_metrics": [],
+      "source": [
+        "execution/codex_outputs/run_manifest.json"
+      ],
+      "evaluable": "partial",
+      "reason": "claim has no metric mapping"
+    },
+    {
+      "claim_id": "claim_10",
+      "required_metrics": [],
+      "source": [
+        "execution/codex_outputs/run_manifest.json"
+      ],
+      "evaluable": "partial",
+      "reason": "claim has no metric mapping"
+    },
+    {
+      "claim_id": "claim_11",
+      "required_metrics": [],
+      "source": [
+        "execution/codex_outputs/run_manifest.json"
+      ],
+      "evaluable": "partial",
+      "reason": "claim has no metric mapping"
+    },
+    {
+      "claim_id": "claim_12",
+      "required_metrics": [],
+      "source": [
+        "execution/codex_outputs/run_manifest.json"
+      ],
+      "evaluable": "partial",
+      "reason": "claim has no metric mapping"
+    },
+    {
+      "claim_id": "claim_13",
+      "required_metrics": [],
+      "source": [
+        "execution/codex_outputs/run_manifest.json"
+      ],
+      "evaluable": "partial",
+      "reason": "claim has no metric mapping"
+    },
+    {
+      "claim_id": "claim_15",
+      "required_metrics": [],
+      "source": [
+        "execution/codex_outputs/run_manifest.json"
+      ],
+      "evaluable": "partial",
+      "reason": "claim has no metric mapping"
+    },
+    {
+      "claim_id": "claim_16",
+      "required_metrics": [],
+      "source": [
+        "execution/codex_outputs/run_manifest.json"
+      ],
+      "evaluable": "partial",
+      "reason": "claim has no metric mapping"
+    },
+    {
+      "claim_id": "claim_17",
+      "required_metrics": [],
+      "source": [
+        "execution/codex_outputs/run_manifest.json"
+      ],
+      "evaluable": "partial",
+      "reason": "claim has no metric mapping"
+    },
+    {
+      "claim_id": "claim_19",
+      "required_metrics": [
+        "accuracy"
+      ],
+      "source": [
+        "execution/codex_outputs/run_manifest.json:task_02",
+        "execution/codex_outputs/run_manifest.json:task_03"
+      ],
+      "evaluable": "yes",
+      "reason": "metric observed in task runs"
+    },
+    {
+      "claim_id": "claim_20",
+      "required_metrics": [],
+      "source": [
+        "execution/codex_outputs/run_manifest.json"
+      ],
+      "evaluable": "partial",
+      "reason": "claim has no metric mapping"
+    },
+    {
+      "claim_id": "claim_21",
+      "required_metrics": [],
+      "source": [
+        "execution/codex_outputs/run_manifest.json"
+      ],
+      "evaluable": "partial",
+      "reason": "claim has no metric mapping"
+    },
+    {
+      "claim_id": "claim_22",
+      "required_metrics": [
+        "accuracy"
+      ],
+      "source": [
+        "execution/codex_outputs/run_manifest.json:task_02",
+        "execution/codex_outputs/run_manifest.json:task_03"
+      ],
+      "evaluable": "yes",
+      "reason": "metric observed in task runs"
+    },
+    {
+      "claim_id": "claim_24",
+      "required_metrics": [
+        "accuracy"
+      ],
+      "source": [
+        "execution/codex_outputs/run_manifest.json:task_02",
+        "execution/codex_outputs/run_manifest.json:task_03"
+      ],
+      "evaluable": "yes",
+      "reason": "metric observed in task runs"
+    },
+    {
+      "claim_id": "claim_25",
+      "required_metrics": [],
+      "source": [
+        "execution/codex_outputs/run_manifest.json"
+      ],
+      "evaluable": "partial",
+      "reason": "claim has no metric mapping"
+    },
+    {
+      "claim_id": "claim_26",
+      "required_metrics": [
+        "accuracy"
+      ],
+      "source": [],
+      "evaluable": "no",
+      "reason": "claim marked non-code-verifiable in phase1"
+    },
+    {
+      "claim_id": "claim_28",
+      "required_metrics": [],
+      "source": [
+        "execution/codex_outputs/run_manifest.json"
+      ],
+      "evaluable": "partial",
+      "reason": "claim has no metric mapping"
+    },
+    {
+      "claim_id": "claim_30",
+      "required_metrics": [
+        "accuracy"
+      ],
+      "source": [],
+      "evaluable": "no",
+      "reason": "claim marked non-code-verifiable in phase1"
+    },
+    {
+      "claim_id": "claim_31",
+      "required_metrics": [
+        "accuracy"
+      ],
+      "source": [],
+      "evaluable": "no",
+      "reason": "claim marked non-code-verifiable in phase1"
+    },
+    {
+      "claim_id": "claim_32",
+      "required_metrics": [
+        "accuracy"
+      ],
+      "source": [
+        "execution/codex_outputs/run_manifest.json:task_02",
+        "execution/codex_outputs/run_manifest.json:task_03"
+      ],
+      "evaluable": "yes",
+      "reason": "metric observed in task runs"
+    },
+    {
+      "claim_id": "claim_33",
+      "required_metrics": [
+        "accuracy"
+      ],
+      "source": [],
+      "evaluable": "no",
+      "reason": "claim marked non-code-verifiable in phase1"
+    },
+    {
+      "claim_id": "claim_34",
+      "required_metrics": [
+        "accuracy"
+      ],
+      "source": [],
+      "evaluable": "no",
+      "reason": "claim marked non-code-verifiable in phase1"
+    },
+    {
+      "claim_id": "claim_35",
+      "required_metrics": [
+        "accuracy"
+      ],
+      "source": [],
+      "evaluable": "no",
+      "reason": "claim marked non-code-verifiable in phase1"
+    },
+    {
+      "claim_id": "claim_36",
+      "required_metrics": [
+        "accuracy"
+      ],
+      "source": [],
+      "evaluable": "no",
+      "reason": "claim marked non-code-verifiable in phase1"
+    },
+    {
+      "claim_id": "claim_37",
+      "required_metrics": [
+        "accuracy"
+      ],
+      "source": [],
+      "evaluable": "no",
+      "reason": "claim marked non-code-verifiable in phase1"
+    },
+    {
+      "claim_id": "claim_38",
+      "required_metrics": [
+        "accuracy"
+      ],
+      "source": [],
+      "evaluable": "no",
+      "reason": "claim marked non-code-verifiable in phase1"
+    }
+  ],
   "reason_codes": [
-    "INITIALIZED_PLACEHOLDER"
+    "RUNNER_TASK_ONLY_MODE",
+    "CLAIMS_LOCAL_ONLY",
+    "DEPENDENCY_SOLVER_STARTED",
+    "CODEX_SKIP_GIT_FLAG_USED",
+    "CODEX_DANGEROUS_BYPASS_USED",
+    "P2C_TASK_SERIAL_MODE",
+    "TOOL_MISSING_PIP3",
+    "STREAM_SYNC_ENABLED",
+    "PIP_NOT_AVAILABLE",
+    "ENSUREPIP_MISSING",
+    "REQUIRED_MODULE_MISSING_NUMPY",
+    "DEP_BOOTSTRAP_SUDO_ATTEMPTED",
+    "DEP_BOOTSTRAP_SUDO_SUCCEEDED",
+    "DEPENDENCY_INSTALL_FAILED",
+    "DEPENDENCY_COMPAT_FALLBACK_USED",
+    "DEPENDENCY_LEGACY_PIN_INCOMPATIBLE"
   ]
 }

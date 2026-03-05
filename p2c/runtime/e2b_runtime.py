@@ -123,10 +123,40 @@ class E2BRuntime:
     def _write_file_with_fallback(self, filename: str, content: str) -> str:
         files = self._files_api()
         safe_name = PurePosixPath(filename).name
-        candidates = [
-            f"/tmp/{safe_name}",
-            f"/var/tmp/{safe_name}",
-        ]
+        candidates: list[str] = []
+        preferred_dirs: list[str] = []
+
+        upload_tmp_dir = (os.getenv("P2C_E2B_UPLOAD_TMP_DIR") or "").strip()
+        if upload_tmp_dir:
+            preferred_dirs.append(upload_tmp_dir)
+
+        workspace_root = (os.getenv("P2C_WORKSPACE_ROOT") or "").strip()
+        if workspace_root:
+            preferred_dirs.append(workspace_root)
+
+        preferred_dirs.extend(
+            [
+                "/workspace",
+                "/home/user/workspace",
+                "/home/sandbox/workspace",
+                "/home/user",
+                "/home/sandbox",
+                "/tmp",
+                "/var/tmp",
+            ]
+        )
+
+        seen: set[str] = set()
+        for base in preferred_dirs:
+            base_norm = str(base or "").strip().replace("\\", "/")
+            if not base_norm:
+                continue
+            candidate = f"{base_norm.rstrip('/')}/{safe_name}"
+            if candidate in seen:
+                continue
+            seen.add(candidate)
+            candidates.append(candidate)
+
         errors: list[str] = []
         for path in candidates:
             path = self._normalize_remote_path(path)

@@ -6,6 +6,8 @@
   "stderr_tail": "",
   "codex_exec_log_tail": "",
   "pip_log_tail": "",
+  "capability_snapshot": {},
+  "dependency_bootstrap_trace": [],
   "reason_codes": [
     "INITIALIZED_PLACEHOLDER"
   ]

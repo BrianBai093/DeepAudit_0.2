@@ -1,9 +1,9 @@
 {
   "criteria": [
     {
-      "criterion": "<fact>The study benchmarks centralized machine learning algorithms for heart disease classification.</fact><scope>study</scope>",
-      "fact": "The study benchmarks centralized machine learning algorithms for heart disease classification.",
-      "scope": "study",
+      "criterion": "<fact>This study benchmarks machine learning algorithms for heart disease classification.</fact><scope>Scope is the overall purpose of the study, independent of data distribution or learning paradigm.</scope>",
+      "fact": "This study benchmarks machine learning algorithms for heart disease classification.",
+      "scope": "Scope is the overall purpose of the study, independent of data distribution or learning paradigm.",
       "facet": "algorithm",
       "source_type": "text_statement",
       "metric_name": null,
@@ -17,9 +17,9 @@
       "reason_codes": []
     },
     {
-      "criterion": "<fact>The study benchmarks federated machine learning algorithms for heart disease classification.</fact><scope>study</scope>",
-      "fact": "The study benchmarks federated machine learning algorithms for heart disease classification.",
-      "scope": "study",
+      "criterion": "<fact>The machine learning algorithms benchmarked in this study include centralized learning algorithms.</fact><scope>Scope is the set of training paradigms considered in the benchmarking.</scope>",
+      "fact": "The machine learning algorithms benchmarked in this study include centralized learning algorithms.",
+      "scope": "Scope is the set of training paradigms considered in the benchmarking.",
       "facet": "algorithm",
       "source_type": "text_statement",
       "metric_name": null,
@@ -33,10 +33,10 @@
       "reason_codes": []
     },
     {
-      "criterion": "<fact>The classification task in the study is heart disease classification.</fact><scope>study.task</scope>",
-      "fact": "The classification task in the study is heart disease classification.",
-      "scope": "study.task",
-      "facet": "dataset_task",
+      "criterion": "<fact>The machine learning algorithms benchmarked in this study include federated learning algorithms.</fact><scope>Scope is the set of training paradigms considered in the benchmarking.</scope>",
+      "fact": "The machine learning algorithms benchmarked in this study include federated learning algorithms.",
+      "scope": "Scope is the set of training paradigms considered in the benchmarking.",
+      "facet": "algorithm",
       "source_type": "text_statement",
       "metric_name": null,
       "metric_value": null,
@@ -49,9 +49,9 @@
       "reason_codes": []
     },
     {
-      "criterion": "<fact>The dataset used for training is the combined (pooled) data.</fact><scope>Training experiments in this study.</scope>",
-      "fact": "The dataset used for training is the combined (pooled) data.",
-      "scope": "Training experiments in this study.",
+      "criterion": "<fact>The task is binary classification.</fact><scope>All described model training activities on the combined (pooled) dataset.</scope>",
+      "fact": "The task is binary classification.",
+      "scope": "All described model training activities on the combined (pooled) dataset.",
       "facet": "dataset_task",
       "source_type": "text_statement",
       "metric_name": null,
@@ -65,9 +65,9 @@
       "reason_codes": []
     },
     {
-      "criterion": "<fact>The models were trained to perform a binary classification task.</fact><scope>Training experiments on the combined (pooled) dataset used in this study.</scope>",
-      "fact": "The models were trained to perform a binary classification task.",
-      "scope": "Training experiments on the combined (pooled) dataset used in this study.",
+      "criterion": "<fact>The training data from different sources are combined into a single pooled dataset.</fact><scope>Preparation of data before training any listed model.</scope>",
+      "fact": "The training data from different sources are combined into a single pooled dataset.",
+      "scope": "Preparation of data before training any listed model.",
       "facet": "dataset_task",
       "source_type": "text_statement",
       "metric_name": null,
@@ -81,9 +81,9 @@
       "reason_codes": []
     },
     {
-      "criterion": "<fact>A logistic regression (LR) model was trained on the combined (pooled) data.</fact><scope>Training experiments on the combined (pooled) dataset used in this study.</scope>",
-      "fact": "A logistic regression (LR) model was trained on the combined (pooled) data.",
-      "scope": "Training experiments on the combined (pooled) dataset used in this study.",
+      "criterion": "<fact>Logistic regression (LR) is trained on the pooled dataset.</fact><scope>Model training configuration for binary classification on the pooled data.</scope>",
+      "fact": "Logistic regression (LR) is trained on the pooled dataset.",
+      "scope": "Model training configuration for binary classification on the pooled data.",
       "facet": "hyperparameter",
       "source_type": "text_statement",
       "metric_name": null,
@@ -97,9 +97,9 @@
       "reason_codes": []
     },
     {
-      "criterion": "<fact>A fully-connected neural network (NN) with one hidden layer was trained on the combined (pooled) data.</fact><scope>Training experiments on the combined (pooled) dataset used in this study.</scope>",
-      "fact": "A fully-connected neural network (NN) with one hidden layer was trained on the combined (pooled) data.",
-      "scope": "Training experiments on the combined (pooled) dataset used in this study.",
+      "criterion": "<fact>A fully-connected neural network (NN) with one hidden layer is trained on the pooled dataset.</fact><scope>Model training configuration for binary classification on the pooled data.</scope>",
+      "fact": "A fully-connected neural network (NN) with one hidden layer is trained on the pooled dataset.",
+      "scope": "Model training configuration for binary classification on the pooled data.",
       "facet": "architecture",
       "source_type": "text_statement",
       "metric_name": null,
@@ -113,9 +113,9 @@
       "reason_codes": []
     },
     {
-      "criterion": "<fact>A support vector machine (SVM) was trained on the combined (pooled) data.</fact><scope>Training experiments on the combined (pooled) dataset used in this study.</scope>",
-      "fact": "A support vector machine (SVM) was trained on the combined (pooled) data.",
-      "scope": "Training experiments on the combined (pooled) dataset used in this study.",
+      "criterion": "<fact>A support vector machine (SVM) is trained on the pooled dataset.</fact><scope>Model training configuration for binary classification on the pooled data.</scope>",
+      "fact": "A support vector machine (SVM) is trained on the pooled dataset.",
+      "scope": "Model training configuration for binary classification on the pooled data.",
       "facet": "dataset_task",
       "source_type": "text_statement",
       "metric_name": null,
@@ -129,9 +129,9 @@
       "reason_codes": []
     },
     {
-      "criterion": "<fact>A k-nearest neighbor (KNN) classifier was trained on the combined (pooled) data.</fact><scope>Training experiments on the combined (pooled) dataset used in this study.</scope>",
-      "fact": "A k-nearest neighbor (KNN) classifier was trained on the combined (pooled) data.",
-      "scope": "Training experiments on the combined (pooled) dataset used in this study.",
+      "criterion": "<fact>A k-nearest neighbor (KNN) classifier is trained on the pooled dataset.</fact><scope>Model training configuration for binary classification on the pooled data.</scope>",
+      "fact": "A k-nearest neighbor (KNN) classifier is trained on the pooled dataset.",
+      "scope": "Model training configuration for binary classification on the pooled data.",
       "facet": "dataset_task",
       "source_type": "text_statement",
       "metric_name": null,
@@ -145,9 +145,9 @@
       "reason_codes": []
     },
     {
-      "criterion": "<fact>A Naïve Bayes (NB) classifier was trained on the combined (pooled) data.</fact><scope>Training experiments on the combined (pooled) dataset used in this study.</scope>",
-      "fact": "A Naïve Bayes (NB) classifier was trained on the combined (pooled) data.",
-      "scope": "Training experiments on the combined (pooled) dataset used in this study.",
+      "criterion": "<fact>A Naïve Bayes (NB) classifier is trained on the pooled dataset.</fact><scope>Model training configuration for binary classification on the pooled data.</scope>",
+      "fact": "A Naïve Bayes (NB) classifier is trained on the pooled dataset.",
+      "scope": "Model training configuration for binary classification on the pooled data.",
       "facet": "dataset_task",
       "source_type": "text_statement",
       "metric_name": null,
@@ -161,9 +161,9 @@
       "reason_codes": []
     },
     {
-      "criterion": "<fact>A decision tree (DT) classifier was trained on the combined (pooled) data.</fact><scope>Training experiments on the combined (pooled) dataset used in this study.</scope>",
-      "fact": "A decision tree (DT) classifier was trained on the combined (pooled) data.",
-      "scope": "Training experiments on the combined (pooled) dataset used in this study.",
+      "criterion": "<fact>A decision tree (DT) classifier is trained on the pooled dataset.</fact><scope>Model training configuration for binary classification on the pooled data.</scope>",
+      "fact": "A decision tree (DT) classifier is trained on the pooled dataset.",
+      "scope": "Model training configuration for binary classification on the pooled data.",
       "facet": "dataset_task",
       "source_type": "text_statement",
       "metric_name": null,
@@ -177,9 +177,9 @@
       "reason_codes": []
     },
     {
-      "criterion": "<fact>A random forests (RF) model was trained on the combined (pooled) data.</fact><scope>Training experiments on the combined (pooled) dataset used in this study.</scope>",
-      "fact": "A random forests (RF) model was trained on the combined (pooled) data.",
-      "scope": "Training experiments on the combined (pooled) dataset used in this study.",
+      "criterion": "<fact>A random forest (RF) classifier is trained on the pooled dataset.</fact><scope>Model training configuration for binary classification on the pooled data.</scope>",
+      "fact": "A random forest (RF) classifier is trained on the pooled dataset.",
+      "scope": "Model training configuration for binary classification on the pooled data.",
       "facet": "dataset_task",
       "source_type": "text_statement",
       "metric_name": null,
@@ -193,25 +193,9 @@
       "reason_codes": []
     },
     {
-      "criterion": "<fact>\"LR\" is used as the abbreviation for logistic regression.</fact><scope>Terminology used in this study's experimental descriptions.</scope>",
-      "fact": "\"LR\" is used as the abbreviation for logistic regression.",
-      "scope": "Terminology used in this study's experimental descriptions.",
-      "facet": "hyperparameter",
-      "source_type": "text_statement",
-      "metric_name": null,
-      "metric_value": null,
-      "metric_unit": null,
-      "entity": "LR",
-      "comparator": null,
-      "dataset_scope": null,
-      "table_anchor": null,
-      "input_unit_id": "s_113",
-      "reason_codes": []
-    },
-    {
-      "criterion": "<fact>The model trained is the logistic regression model described in reference [7].</fact><scope>Experimental training procedure in this study.</scope>",
-      "fact": "The model trained is the logistic regression model described in reference [7].",
-      "scope": "Experimental training procedure in this study.",
+      "criterion": "<fact>The model being trained is the logistic regression model described in reference [7].</fact><scope>Full training configuration for the referenced logistic regression model.</scope>",
+      "fact": "The model being trained is the logistic regression model described in reference [7].",
+      "scope": "Full training configuration for the referenced logistic regression model.",
       "facet": "dataset_task",
       "source_type": "text_statement",
       "metric_name": null,
@@ -225,25 +209,9 @@
       "reason_codes": []
     },
     {
-      "criterion": "<fact>The logistic regression model from reference [7] is trained as the first step in the procedure.</fact><scope>Order of operations within the experimental protocol of this study.</scope>",
-      "fact": "The logistic regression model from reference [7] is trained as the first step in the procedure.",
-      "scope": "Order of operations within the experimental protocol of this study.",
-      "facet": "dataset_task",
-      "source_type": "text_statement",
-      "metric_name": null,
-      "metric_value": null,
-      "metric_unit": null,
-      "entity": null,
-      "comparator": null,
-      "dataset_scope": null,
-      "table_anchor": null,
-      "input_unit_id": "s_114",
-      "reason_codes": []
-    },
-    {
-      "criterion": "<fact>The training uses a learning rate of 0.001.</fact><scope>Hyperparameter settings for training the logistic regression model in this study.</scope>",
-      "fact": "The training uses a learning rate of 0.001.",
-      "scope": "Hyperparameter settings for training the logistic regression model in this study.",
+      "criterion": "<fact>The learning rate used to train the logistic regression model in [7] is 0.001.</fact><scope>Hyperparameter settings for the training process of the logistic regression model in [7].</scope>",
+      "fact": "The learning rate used to train the logistic regression model in [7] is 0.001.",
+      "scope": "Hyperparameter settings for the training process of the logistic regression model in [7].",
       "facet": "hyperparameter",
       "source_type": "text_statement",
       "metric_name": null,
@@ -257,9 +225,9 @@
       "reason_codes": []
     },
     {
-      "criterion": "<fact>The training uses a batch size of 4.</fact><scope>Hyperparameter settings for training the logistic regression model in this study.</scope>",
-      "fact": "The training uses a batch size of 4.",
-      "scope": "Hyperparameter settings for training the logistic regression model in this study.",
+      "criterion": "<fact>The batch size used to train the logistic regression model in [7] is 4.</fact><scope>Hyperparameter settings for the training process of the logistic regression model in [7].</scope>",
+      "fact": "The batch size used to train the logistic regression model in [7] is 4.",
+      "scope": "Hyperparameter settings for the training process of the logistic regression model in [7].",
       "facet": "hyperparameter",
       "source_type": "text_statement",
       "metric_name": null,
@@ -273,9 +241,9 @@
       "reason_codes": []
     },
     {
-      "criterion": "<fact>The training runs for 30 epochs.</fact><scope>Hyperparameter settings for training the logistic regression model in this study.</scope>",
-      "fact": "The training runs for 30 epochs.",
-      "scope": "Hyperparameter settings for training the logistic regression model in this study.",
+      "criterion": "<fact>The number of training epochs for the logistic regression model in [7] is 30.</fact><scope>Hyperparameter settings for the training process of the logistic regression model in [7].</scope>",
+      "fact": "The number of training epochs for the logistic regression model in [7] is 30.",
+      "scope": "Hyperparameter settings for the training process of the logistic regression model in [7].",
       "facet": "hyperparameter",
       "source_type": "text_statement",
       "metric_name": null,
@@ -289,41 +257,9 @@
       "reason_codes": []
     },
     {
-      "criterion": "<fact>Each model is trained using 10 different random seeds.</fact><scope>Other models and hyperparameter combinations in the experiment.</scope>",
-      "fact": "Each model is trained using 10 different random seeds.",
-      "scope": "Other models and hyperparameter combinations in the experiment.",
-      "facet": "hyperparameter",
-      "source_type": "text_statement",
-      "metric_name": null,
-      "metric_value": null,
-      "metric_unit": null,
-      "entity": null,
-      "comparator": null,
-      "dataset_scope": null,
-      "table_anchor": null,
-      "input_unit_id": "s_115",
-      "reason_codes": []
-    },
-    {
-      "criterion": "<fact>The 10 random seeds are used to produce different data splits.</fact><scope>Other models and hyperparameter combinations in the experiment.</scope>",
-      "fact": "The 10 random seeds are used to produce different data splits.",
-      "scope": "Other models and hyperparameter combinations in the experiment.",
-      "facet": "hyperparameter",
-      "source_type": "text_statement",
-      "metric_name": null,
-      "metric_value": null,
-      "metric_unit": null,
-      "entity": null,
-      "comparator": null,
-      "dataset_scope": null,
-      "table_anchor": null,
-      "input_unit_id": "s_115",
-      "reason_codes": []
-    },
-    {
-      "criterion": "<fact>For each training run (each seed) accuracy is measured.</fact><scope>Each model and hyperparameter combination, per seed.</scope>",
-      "fact": "For each training run (each seed) accuracy is measured.",
-      "scope": "Each model and hyperparameter combination, per seed.",
+      "criterion": "<fact>For other models and hyperparameter combinations, each model is trained on 10 different seeds for data splits and average accuracy is computed.</fact> <scope>from paper context</scope>",
+      "fact": "For other models and hyperparameter combinations, each model is trained on 10 different seeds for data splits and average accuracy is computed.",
+      "scope": "from paper context",
       "facet": "metric",
       "source_type": "text_metric",
       "metric_name": "accuracy",
@@ -334,28 +270,14 @@
       "dataset_scope": null,
       "table_anchor": null,
       "input_unit_id": "s_115",
-      "reason_codes": []
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
     },
     {
-      "criterion": "<fact>The accuracies from the 10 seeds are averaged to produce a single average accuracy for each model and hyperparameter combination.</fact><scope>Each model and hyperparameter combination in the experiment.</scope>",
-      "fact": "The accuracies from the 10 seeds are averaged to produce a single average accuracy for each model and hyperparameter combination.",
-      "scope": "Each model and hyperparameter combination in the experiment.",
-      "facet": "metric",
-      "source_type": "text_metric",
-      "metric_name": "accuracy",
-      "metric_value": null,
-      "metric_unit": null,
-      "entity": null,
-      "comparator": null,
-      "dataset_scope": null,
-      "table_anchor": null,
-      "input_unit_id": "s_115",
-      "reason_codes": []
-    },
-    {
-      "criterion": "<fact>One named hyperparameter in the Input Facts is \"learning rate\".</fact><scope>Input Facts (user-provided line)</scope>",
-      "fact": "One named hyperparameter in the Input Facts is \"learning rate\".",
-      "scope": "Input Facts (user-provided line)",
+      "criterion": "<fact>Hyperparameters tuned include learning rate $( 0 .</fact> <scope>from paper context</scope>",
+      "fact": "Hyperparameters tuned include learning rate $( 0 .",
+      "scope": "from paper context",
       "facet": "hyperparameter",
       "source_type": "text_statement",
       "metric_name": null,
@@ -366,29 +288,33 @@
       "dataset_scope": null,
       "table_anchor": null,
       "input_unit_id": "s_116",
-      "reason_codes": []
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
     },
     {
-      "criterion": "<fact>The numeric value or range for the learning rate is incomplete/truncated in the input; the text ends with the substring \"$( 0 .\".</fact><scope>Input Facts (user-provided line)</scope>",
-      "fact": "The numeric value or range for the learning rate is incomplete/truncated in the input; the text ends with the substring \"$( 0 .\".",
-      "scope": "Input Facts (user-provided line)",
+      "criterion": "<fact>1 )$ , batch size $( 4 - 6 4 )$ , hidden units (4−16) for one-hidden-layer NN, SVM regularization strength $C$ $( 0 .</fact> <scope>from paper context</scope>",
+      "fact": "1 )$ , batch size $( 4 - 6 4 )$ , hidden units (4−16) for one-hidden-layer NN, SVM regularization strength $C$ $( 0 .",
+      "scope": "from paper context",
       "facet": "hyperparameter",
       "source_type": "text_statement",
       "metric_name": null,
       "metric_value": null,
       "metric_unit": null,
-      "entity": null,
+      "entity": "SVM",
       "comparator": null,
       "dataset_scope": null,
       "table_anchor": null,
-      "input_unit_id": "s_116",
-      "reason_codes": []
+      "input_unit_id": "s_118",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
     },
     {
-      "criterion": "<fact>Batch size is an integer in the inclusive range [4,64].</fact><scope>Hyperparameter: batch size for training.</scope>",
-      "fact": "Batch size is an integer in the inclusive range [4,64].",
-      "scope": "Hyperparameter: batch size for training.",
-      "facet": "hyperparameter",
+      "criterion": "<fact>Algorithm 1 outlines the testing process for centralized data, while Algorithm 2 covers the federated setting.</fact> <scope>from paper context</scope>",
+      "fact": "Algorithm 1 outlines the testing process for centralized data, while Algorithm 2 covers the federated setting.",
+      "scope": "from paper context",
+      "facet": "algorithm",
       "source_type": "text_statement",
       "metric_name": null,
       "metric_value": null,
@@ -397,14 +323,16 @@
       "comparator": null,
       "dataset_scope": null,
       "table_anchor": null,
-      "input_unit_id": "s_118",
-      "reason_codes": []
+      "input_unit_id": "s_125",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
     },
     {
-      "criterion": "<fact>Hidden units count for a one-hidden-layer neural network is an integer in the inclusive range [4,16].</fact><scope>Model: one-hidden-layer neural network architecture (hidden units).</scope>",
-      "fact": "Hidden units count for a one-hidden-layer neural network is an integer in the inclusive range [4,16].",
-      "scope": "Model: one-hidden-layer neural network architecture (hidden units).",
-      "facet": "architecture",
+      "criterion": "<fact>The benchmark in [7] provides a code to several federated aggregation algorithms, including FedAvg, FedAdam, Scaffold, and FedProx.</fact> <scope>from paper context</scope>",
+      "fact": "The benchmark in [7] provides a code to several federated aggregation algorithms, including FedAvg, FedAdam, Scaffold, and FedProx.",
+      "scope": "from paper context",
+      "facet": "algorithm",
       "source_type": "text_statement",
       "metric_name": null,
       "metric_value": null,
@@ -413,8 +341,10 @@
       "comparator": null,
       "dataset_scope": null,
       "table_anchor": null,
-      "input_unit_id": "s_118",
-      "reason_codes": []
+      "input_unit_id": "s_134",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
     },
     {
       "criterion": "<fact>In this work, as in [7], local updates in batches are counted rather than local epochs, aligning with theoretical formulations and extending to related strategies based on FedAvg.</fact> <scope>from paper context</scope>",
@@ -430,6 +360,42 @@
       "dataset_scope": null,
       "table_anchor": null,
       "input_unit_id": "s_142",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>This paper offers a comprehensive benchmark study of centralized and federated ML algorithms for heart disease classification using the UCI heart disease dataset [1].</fact> <scope>uci</scope>",
+      "fact": "This paper offers a comprehensive benchmark study of centralized and federated ML algorithms for heart disease classification using the UCI heart disease dataset [1].",
+      "scope": "uci",
+      "facet": "algorithm",
+      "source_type": "text_statement",
+      "metric_name": null,
+      "metric_value": null,
+      "metric_unit": null,
+      "entity": null,
+      "comparator": null,
+      "dataset_scope": "uci",
+      "table_anchor": null,
+      "input_unit_id": "s_15",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>It combines FedAvg’s model aggregation with ADAM’s adaptive learning rate mechanism, allowing FedAdam to handle non-stationary and sparse gradients typically encountered in FL settings.</fact> <scope>from paper context</scope>",
+      "fact": "It combines FedAvg’s model aggregation with ADAM’s adaptive learning rate mechanism, allowing FedAdam to handle non-stationary and sparse gradients typically encountered in FL settings.",
+      "scope": "from paper context",
+      "facet": "hyperparameter",
+      "source_type": "text_statement",
+      "metric_name": null,
+      "metric_value": null,
+      "metric_unit": null,
+      "entity": null,
+      "comparator": null,
+      "dataset_scope": null,
+      "table_anchor": null,
+      "input_unit_id": "s_152",
       "reason_codes": [
         "HEURISTIC_FALLBACK"
       ]
@@ -453,6 +419,24 @@
       ]
     },
     {
+      "criterion": "<fact>Specifically, to address the issue of heterogeneity, FedYogi dynamically adjusts the learning rate based on the gradients’ first and second moments, $m _ { t }$ and $v _ { t }$ , respectively.</fact> <scope>from paper context</scope>",
+      "fact": "Specifically, to address the issue of heterogeneity, FedYogi dynamically adjusts the learning rate based on the gradients’ first and second moments, $m _ { t }$ and $v _ { t }$ , respectively.",
+      "scope": "from paper context",
+      "facet": "hyperparameter",
+      "source_type": "text_statement",
+      "metric_name": null,
+      "metric_value": null,
+      "metric_unit": null,
+      "entity": null,
+      "comparator": null,
+      "dataset_scope": null,
+      "table_anchor": null,
+      "input_unit_id": "s_161",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
       "criterion": "<fact>Updates for the global and local control variables and model parameters are computed as follows: $$ \\begin{array}{l} \\boldsymbol {y} _ {i} \\leftarrow \\boldsymbol {y} _ {i} - \\eta_ {l} \\left(g _ {i} \\left(\\boldsymbol {y} _ {i}\\right) + \\boldsymbol {c} - \\boldsymbol {c} _ {i}\\right) \\\\ c _ {i} ^ {+} \\leftarrow (\\mathrm {i}) g _ {i} (\\boldsymbol {x}), \\text {o r (i i)} \\boldsymbol {c} _ {i} - \\boldsymbol {c} + \\frac {1}{K \\eta_ {l}} (\\boldsymbol {x} - \\boldsymbol {y} _ {i}) \\\\ \\boldsymbol {x} \\leftarrow \\boldsymbol {x} + \\frac {\\eta_ {g}}{| S |} \\sum_ {i \\in S} (\\boldsymbol {y} _ {i} - \\boldsymbol {x}) \\\\ \\boldsymbol {c} \\gets \\boldsymbol {c} + \\frac {1}{N} \\sum_ {i \\in S} (\\boldsymbol {c} _ {\\boldsymbol {i}} ^ {+} - \\boldsymbol {c} _ {\\boldsymbol {i}}) \\\\ \\end{array} $$ where $\\mathbf { { \\mathit { y } } } _ { i }$ is client update performed $K$ times, $\\eta$ is the learning rate, $g _ { i } ( y _ { i } )$ is the mini-batch gradient, and $_ { \\textbf { \\em x } }$ are the server parameters.</fact> <scope>from paper context</scope>",
       "fact": "Updates for the global and local control variables and model parameters are computed as follows: $$ \\begin{array}{l} \\boldsymbol {y} _ {i} \\leftarrow \\boldsymbol {y} _ {i} - \\eta_ {l} \\left(g _ {i} \\left(\\boldsymbol {y} _ {i}\\right) + \\boldsymbol {c} - \\boldsymbol {c} _ {i}\\right) \\\\ c _ {i} ^ {+} \\leftarrow (\\mathrm {i}) g _ {i} (\\boldsymbol {x}), \\text {o r (i i)} \\boldsymbol {c} _ {i} - \\boldsymbol {c} + \\frac {1}{K \\eta_ {l}} (\\boldsymbol {x} - \\boldsymbol {y} _ {i}) \\\\ \\boldsymbol {x} \\leftarrow \\boldsymbol {x} + \\frac {\\eta_ {g}}{| S |} \\sum_ {i \\in S} (\\boldsymbol {y} _ {i} - \\boldsymbol {x}) \\\\ \\boldsymbol {c} \\gets \\boldsymbol {c} + \\frac {1}{N} \\sum_ {i \\in S} (\\boldsymbol {c} _ {\\boldsymbol {i}} ^ {+} - \\boldsymbol {c} _ {\\boldsymbol {i}}) \\\\ \\end{array} $$ where $\\mathbf { { \\mathit { y } } } _ { i }$ is client update performed $K$ times, $\\eta$ is the learning rate, $g _ { i } ( y _ { i } )$ is the mini-batch gradient, and $_ { \\textbf { \\em x } }$ are the server parameters.",
       "scope": "from paper context",
@@ -471,8 +455,8 @@
       ]
     },
     {
-      "criterion": "<fact>TABLE II TEST ACCURACIES FOR POOLED DATA AND VARIOUS LEARNING MODELS.</fact> <scope>from paper context</scope>",
-      "fact": "TABLE II TEST ACCURACIES FOR POOLED DATA AND VARIOUS LEARNING MODELS.",
+      "criterion": "<fact>Results The results for the pooled data are presented in Table II, which highlights the testing accuracies for adopted models.</fact> <scope>from paper context</scope>",
+      "fact": "Results The results for the pooled data are presented in Table II, which highlights the testing accuracies for adopted models.",
       "scope": "from paper context",
       "facet": "dataset_task",
       "source_type": "text_statement",
@@ -483,7 +467,7 @@
       "comparator": null,
       "dataset_scope": null,
       "table_anchor": null,
-      "input_unit_id": "s_173",
+      "input_unit_id": "s_176",
       "reason_codes": [
         "HEURISTIC_FALLBACK"
       ]
@@ -633,78 +617,6 @@
       ]
     },
     {
-      "criterion": "<fact>In the federated setting, we trained various local training algorithms and model aggregation strategies.</fact> <scope>from paper context</scope>",
-      "fact": "In the federated setting, we trained various local training algorithms and model aggregation strategies.",
-      "scope": "from paper context",
-      "facet": "algorithm",
-      "source_type": "text_statement",
-      "metric_name": null,
-      "metric_value": null,
-      "metric_unit": null,
-      "entity": null,
-      "comparator": null,
-      "dataset_scope": null,
-      "table_anchor": null,
-      "input_unit_id": "s_250",
-      "reason_codes": [
-        "HEURISTIC_FALLBACK"
-      ]
-    },
-    {
-      "criterion": "<fact>The best performing model was an SVM local trainer with testing accuracy $7 3 .</fact> <scope>from paper context</scope>",
-      "fact": "The best performing model was an SVM local trainer with testing accuracy $7 3 .",
-      "scope": "from paper context",
-      "facet": "metric",
-      "source_type": "text_metric",
-      "metric_name": "accuracy",
-      "metric_value": null,
-      "metric_unit": null,
-      "entity": "SVM",
-      "comparator": null,
-      "dataset_scope": null,
-      "table_anchor": null,
-      "input_unit_id": "s_251",
-      "reason_codes": [
-        "HEURISTIC_FALLBACK"
-      ]
-    },
-    {
-      "criterion": "<fact>It also provides reliable estimates for test accuracy since it is trained on raw data without duplication, unlike much of the existing literature.</fact> <scope>from paper context</scope>",
-      "fact": "It also provides reliable estimates for test accuracy since it is trained on raw data without duplication, unlike much of the existing literature.",
-      "scope": "from paper context",
-      "facet": "metric",
-      "source_type": "text_metric",
-      "metric_name": "accuracy",
-      "metric_value": null,
-      "metric_unit": null,
-      "entity": null,
-      "comparator": null,
-      "dataset_scope": null,
-      "table_anchor": null,
-      "input_unit_id": "s_254",
-      "reason_codes": [
-        "HEURISTIC_FALLBACK"
-      ]
-    },
-    {
-      "criterion": "<fact>We compared the federated results with local models trained on the individual hospital datasets.</fact> <scope>dataset</scope>",
-      "fact": "We compared the federated results with local models trained on the individual hospital datasets.",
-      "scope": "dataset",
-      "facet": "algorithm",
-      "source_type": "text_statement",
-      "metric_name": null,
-      "metric_value": null,
-      "metric_unit": null,
-      "entity": null,
-      "comparator": null,
-      "dataset_scope": "dataset",
-      "table_anchor": null,
-      "input_unit_id": "s_255",
-      "reason_codes": [
-        "HEURISTIC_FALLBACK"
-      ]
-    },
-    {
       "criterion": "<fact>In the centralized setup, various binary classification algorithms are trained on pooled data, with a support vector machine (SVM) achieving the highest testing accuracy of $8 3 .</fact> <scope>from paper context</scope>",
       "fact": "In the centralized setup, various binary classification algorithms are trained on pooled data, with a support vector machine (SVM) achieving the highest testing accuracy of $8 3 .",
       "scope": "from paper context",
@@ -754,6 +666,24 @@
       "dataset_scope": null,
       "table_anchor": null,
       "input_unit_id": "s_401",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>PMLR, 2020, pp.</fact> <scope>from paper context</scope>",
+      "fact": "PMLR, 2020, pp.",
+      "scope": "from paper context",
+      "facet": "hyperparameter",
+      "source_type": "text_statement",
+      "metric_name": null,
+      "metric_value": null,
+      "metric_unit": null,
+      "entity": null,
+      "comparator": null,
+      "dataset_scope": null,
+      "table_anchor": null,
+      "input_unit_id": "s_411",
       "reason_codes": [
         "HEURISTIC_FALLBACK"
       ]
@@ -849,6 +779,24 @@
       ]
     },
     {
+      "criterion": "<fact>Notably, we achieve centralized accuracy of $8 3 .</fact> <scope>from paper context</scope>",
+      "fact": "Notably, we achieve centralized accuracy of $8 3 .",
+      "scope": "from paper context",
+      "facet": "metric",
+      "source_type": "text_metric",
+      "metric_name": "accuracy",
+      "metric_value": null,
+      "metric_unit": null,
+      "entity": null,
+      "comparator": null,
+      "dataset_scope": null,
+      "table_anchor": null,
+      "input_unit_id": "s_47",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
       "criterion": "<fact>Brown, “Measuring the effects of nonidentical data distribution for federated visual classification,” arXiv preprint arXiv:1909.06335, 2019.</fact> <scope>from paper context</scope>",
       "fact": "Brown, “Measuring the effects of nonidentical data distribution for federated visual classification,” arXiv preprint arXiv:1909.06335, 2019.",
       "scope": "from paper context",
@@ -880,6 +828,24 @@
       "dataset_scope": null,
       "table_anchor": null,
       "input_unit_id": "s_480",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>Federated benchmark: Our federated benchmark for the UCI heart disease dataset improves over the benchmark reported in [7].</fact> <scope>uci</scope>",
+      "fact": "Federated benchmark: Our federated benchmark for the UCI heart disease dataset improves over the benchmark reported in [7].",
+      "scope": "uci",
+      "facet": "algorithm",
+      "source_type": "text_statement",
+      "metric_name": null,
+      "metric_value": null,
+      "metric_unit": null,
+      "entity": null,
+      "comparator": "the benchmark reported in [7]",
+      "dataset_scope": "uci",
+      "table_anchor": null,
+      "input_unit_id": "s_50",
       "reason_codes": [
         "HEURISTIC_FALLBACK"
       ]
@@ -921,6 +887,24 @@
       ]
     },
     {
+      "criterion": "<fact>Once again, SVM is the top-performing model in the federated setting, achieving the highest test accuracy across the four aggregation strategies; the highest being $7 3 .</fact> <scope>from paper context</scope>",
+      "fact": "Once again, SVM is the top-performing model in the federated setting, achieving the highest test accuracy across the four aggregation strategies; the highest being $7 3 .",
+      "scope": "from paper context",
+      "facet": "metric",
+      "source_type": "text_metric",
+      "metric_name": "accuracy",
+      "metric_value": null,
+      "metric_unit": null,
+      "entity": "SVM",
+      "comparator": null,
+      "dataset_scope": null,
+      "table_anchor": null,
+      "input_unit_id": "s_53",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
       "criterion": "<fact>Additionally, federated learning algorithms with four clients (hospitals) are explored, leveraging the dataset’s natural partition to enhance privacy without sacrificing accuracy.</fact> <scope>dataset</scope>",
       "fact": "Additionally, federated learning algorithms with four clients (hospitals) are explored, leveraging the dataset’s natural partition to enhance privacy without sacrificing accuracy.",
       "scope": "dataset",
@@ -934,6 +918,42 @@
       "dataset_scope": "dataset",
       "table_anchor": null,
       "input_unit_id": "s_6",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>FLamby [7] is a recent benchmark suite for cross-silo federated learning (FL) in healthcare.</fact> <scope>from paper context</scope>",
+      "fact": "FLamby [7] is a recent benchmark suite for cross-silo federated learning (FL) in healthcare.",
+      "scope": "from paper context",
+      "facet": "algorithm",
+      "source_type": "text_statement",
+      "metric_name": null,
+      "metric_value": null,
+      "metric_unit": null,
+      "entity": null,
+      "comparator": null,
+      "dataset_scope": null,
+      "table_anchor": null,
+      "input_unit_id": "s_79",
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ]
+    },
+    {
+      "criterion": "<fact>We find that SVM outperforms logistic regression, utilized by Flamby for this dataset, in both centralized and federated settings Several works incorporate interpretability in heart disease classification.</fact> <scope>dataset</scope>",
+      "fact": "We find that SVM outperforms logistic regression, utilized by Flamby for this dataset, in both centralized and federated settings Several works incorporate interpretability in heart disease classification.",
+      "scope": "dataset",
+      "facet": "algorithm",
+      "source_type": "text_statement",
+      "metric_name": null,
+      "metric_value": null,
+      "metric_unit": null,
+      "entity": "SVM",
+      "comparator": "logistic regression",
+      "dataset_scope": "dataset",
+      "table_anchor": null,
+      "input_unit_id": "s_83",
       "reason_codes": [
         "HEURISTIC_FALLBACK"
       ]
@@ -1085,7 +1105,10 @@
   ],
   "selected_unit_ids": [
     "s_1",
+    "s_100",
     "s_101",
+    "s_103",
+    "s_106",
     "s_110",
     "s_113",
     "s_114",
@@ -1093,12 +1116,17 @@
     "s_116",
     "s_118",
     "s_122",
+    "s_125",
+    "s_134",
     "s_139",
     "s_142",
-    "s_153",
+    "s_15",
+    "s_152",
     "s_154",
+    "s_159",
+    "s_161",
     "s_169",
-    "s_173",
+    "s_176",
     "s_177",
     "s_179",
     "s_181",
@@ -1108,26 +1136,29 @@
     "s_195",
     "s_216",
     "s_237",
-    "s_247",
-    "s_250",
-    "s_251",
-    "s_254",
-    "s_255",
     "s_3",
     "s_31",
     "s_401",
+    "s_411",
     "s_432",
     "s_438",
     "s_449",
     "s_455",
     "s_46",
     "s_464",
+    "s_47",
     "s_476",
     "s_480",
+    "s_50",
     "s_51",
     "s_52",
+    "s_53",
     "s_551",
     "s_6",
+    "s_7",
+    "s_79",
+    "s_82",
+    "s_83",
     "s_95",
     "t_0",
     "t_1",

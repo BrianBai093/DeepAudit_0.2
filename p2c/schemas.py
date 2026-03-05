@@ -163,6 +163,7 @@ class ClaimItem(BaseModel):
         default_factory=lambda: {"abs_eps": 0.01, "rel_eps": 0.02}
     )
     unverifiable_from_paper: bool = False
+    code_verifiable: bool = True
     reason_codes: list[str] = Field(default_factory=list)
     notes: str | None = None
 
@@ -191,12 +192,25 @@ class RunConfig(BaseModel):
     budget_minutes: int = 60
 
 
+class TaskItem(BaseModel):
+    task_id: str
+    entrypoint: str
+    command: str
+    timeout_class: Literal["short", "medium", "long"] = "medium"
+    expected_metrics: list[str] = Field(default_factory=list)
+    hyperparams: dict[str, Any] = Field(default_factory=dict)
+    confidence: float = Field(ge=0, le=1, default=0.7)
+    evidence: str = ""
+
+
 class TaskSpec(BaseModel):
-    goal: list[str] = Field(default_factory=list)
+    tasks: list[TaskItem] = Field(default_factory=list)
     constraints: dict[str, Any] = Field(default_factory=dict)
+    # Deprecated compatibility fields; runner uses `tasks` as source of truth.
     entrypoints: list[Entrypoint] = Field(default_factory=list)
     metric_observers: list[MetricObserver] = Field(default_factory=list)
     run_matrix: list[RunConfig] = Field(default_factory=list)
+    selection_notes: list[str] = Field(default_factory=list)
     reason_codes: list[str] = Field(default_factory=list)
 
 

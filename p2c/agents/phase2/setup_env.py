@@ -19,22 +19,18 @@ class SetupEnvAgent(BaseAgent):
         backend = (getattr(runtime, "backend_name", "") or "").strip().lower()
         default_root = "/home/user/p2c_sandbox" if backend == "e2b" else "/tmp/p2c_sandbox"
         runtime_repo_dir = ctx.get("runtime_repo_dir", f"{default_root}/repo")
-        runtime_mini_dir = ctx.get("runtime_mini_dir", f"{default_root}/mini-swe-agent")
         runtime_tmp_dir = ctx.get("runtime_tmp_dir", f"{default_root}/tmp")
 
         runtime_repo_dir_q = shlex.quote(runtime_repo_dir)
-        runtime_mini_dir_q = shlex.quote(runtime_mini_dir)
         runtime_tmp_dir_q = shlex.quote(runtime_tmp_dir)
         pip_upgrade_log_q = shlex.quote(f"{runtime_tmp_dir}/p2c_pip_upgrade.log")
         repo_install_log_q = shlex.quote(f"{runtime_tmp_dir}/p2c_repo_install.log")
-        mini_install_log_q = shlex.quote(f"{runtime_tmp_dir}/p2c_mini_install.log")
 
         reason_codes: list[str] = []
         install_cmds = [
             f"mkdir -p {runtime_tmp_dir_q}",
             f"python3 -m pip install -U pip >{pip_upgrade_log_q} 2>&1 || true",
             f"if [ -f {runtime_repo_dir_q}/requirements.txt ]; then python3 -m pip install -r {runtime_repo_dir_q}/requirements.txt >{repo_install_log_q} 2>&1 || true; fi",
-            f"if [ -f {runtime_mini_dir_q}/pyproject.toml ]; then python3 -m pip install -e {runtime_mini_dir_q} >{mini_install_log_q} 2>&1 || true; fi",
         ]
         for cmd in install_cmds:
             proc = runtime.run_command(cmd, cwd=runtime_repo_dir, timeout_sec=600)

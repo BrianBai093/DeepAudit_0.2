@@ -1,5 +1,11 @@
 {
+  "head": null,
+  "branch": null,
+  "diff_summary": "",
+  "submodules": [],
   "reason_codes": [
-    "INITIALIZED_PLACEHOLDER"
+    "OPTIONAL_RAW_MISSING:codex_repair.log",
+    "STREAM_LOG_REMOTE_MISSING",
+    "NO_GIT_METADATA"
   ]
 }

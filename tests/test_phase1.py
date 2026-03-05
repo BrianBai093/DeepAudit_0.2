@@ -96,7 +96,7 @@ def test_claims_ir_schema_valid(tmp_path: Path) -> None:
     assert parsed.reason_codes == ["SOURCE_FINGERPRINT_CLAIMS"]
 
 
-def test_task_spec_has_entrypoints_and_observers(tmp_path: Path) -> None:
+def test_task_spec_has_tasks_and_observers(tmp_path: Path) -> None:
     artifacts = _mk_artifacts(tmp_path)
     artifacts.write_json(
         "fingerprint/claims_ir.json",
@@ -113,6 +113,7 @@ def test_task_spec_has_entrypoints_and_observers(tmp_path: Path) -> None:
                     "aggregation": "best",
                     "evidence_set": ["paper"],
                     "tolerance_policy": {"abs_eps": 0.02, "rel_eps": 0.03},
+                    "code_verifiable": True,
                     "unverifiable_from_paper": False,
                     "reason_codes": [],
                     "notes": None,
@@ -127,5 +128,93 @@ def test_task_spec_has_entrypoints_and_observers(tmp_path: Path) -> None:
     agent.run({"repo_dir": str(repo_dir), "budget_minutes": 5, "max_self_heal_iters": 2})
 
     task_spec = artifacts.read_json("task/task_spec.json")
-    assert len(task_spec["entrypoints"]) <= 5
+    assert len(task_spec["tasks"]) <= 5
+    assert task_spec["tasks"][0]["expected_metrics"]
     assert len(task_spec["metric_observers"]) >= 1
+    assert "goal" not in task_spec
+
+
+def test_task_spec_breaking_schema_tasks_only(tmp_path: Path) -> None:
+    artifacts = _mk_artifacts(tmp_path)
+    artifacts.write_json(
+        "fingerprint/claims_ir.json",
+        {
+            "claims": [
+                {
+                    "claim_id": "C1",
+                    "type": "absolute",
+                    "predicate": "accuracy claim",
+                    "metric": "accuracy",
+                    "target": 0.8,
+                    "baseline": None,
+                    "conditions": {},
+                    "aggregation": "best",
+                    "evidence_set": ["paper"],
+                    "tolerance_policy": {"abs_eps": 0.02, "rel_eps": 0.03},
+                    "code_verifiable": True,
+                    "unverifiable_from_paper": False,
+                    "reason_codes": [],
+                    "notes": None,
+                }
+            ],
+            "reason_codes": [],
+        },
+    )
+    repo_dir = Path("Target/code").resolve()
+    agent = CompileTaskSpecAgent(llm=LLMClient(), artifacts=artifacts, step_index=6, step_total=14)
+    agent.run({"repo_dir": str(repo_dir), "budget_minutes": 5, "max_self_heal_iters": 2})
+
+    task_spec = artifacts.read_json("task/task_spec.json")
+    assert isinstance(task_spec.get("tasks"), list)
+    assert task_spec.get("tasks")
+    assert "goal" not in task_spec
+
+
+def test_compile_task_spec_excludes_non_code_verifiable_claims(tmp_path: Path) -> None:
+    artifacts = _mk_artifacts(tmp_path)
+    artifacts.write_json(
+        "fingerprint/claims_ir.json",
+        {
+            "claims": [
+                {
+                    "claim_id": "C1",
+                    "type": "absolute",
+                    "predicate": "accuracy claim",
+                    "metric": "accuracy",
+                    "target": 0.8,
+                    "baseline": None,
+                    "conditions": {},
+                    "aggregation": "best",
+                    "evidence_set": ["paper"],
+                    "tolerance_policy": {"abs_eps": 0.02, "rel_eps": 0.03},
+                    "code_verifiable": True,
+                    "unverifiable_from_paper": False,
+                    "reason_codes": [],
+                    "notes": None,
+                },
+                {
+                    "claim_id": "C2",
+                    "type": "other",
+                    "predicate": "model is stronger than baseline",
+                    "metric": None,
+                    "target": None,
+                    "baseline": None,
+                    "conditions": {},
+                    "aggregation": None,
+                    "evidence_set": ["paper"],
+                    "tolerance_policy": {"abs_eps": 0.02, "rel_eps": 0.03},
+                    "code_verifiable": False,
+                    "unverifiable_from_paper": False,
+                    "reason_codes": [],
+                    "notes": None,
+                },
+            ],
+            "reason_codes": [],
+        },
+    )
+    repo_dir = Path("Target/code").resolve()
+    agent = CompileTaskSpecAgent(llm=LLMClient(), artifacts=artifacts, step_index=6, step_total=14)
+    agent.run({"repo_dir": str(repo_dir), "budget_minutes": 5, "max_self_heal_iters": 2})
+    task_spec = artifacts.read_json("task/task_spec.json")
+    assert task_spec["tasks"]
+    assert "filtered_non_verifiable=1" in " ".join(task_spec.get("selection_notes", []))

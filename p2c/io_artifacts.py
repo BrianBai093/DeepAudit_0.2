@@ -28,12 +28,15 @@ REQUIRED_FILES = [
     "execution/codex_outputs/claim_alignment.json",
     "execution/codex_outputs/codex_exec.log",
     "execution/codex_outputs/dependency_solver.json",
+    "execution/codex_outputs/toolchain_probe.json",
     "execution/codex_outputs/pip_install.log",
     "execution/codex_outputs/capability_probe.json",
     "execution/codex_outputs/dependency_bootstrap.log",
     "execution/codex_outputs/codex_failure.json",
     "execution/codex_outputs/codex_main.log",
     "execution/codex_outputs/codex_repair.log",
+    "execution/codex_outputs/task_run_results.json",
+    "execution/codex_outputs/codex_exec.stream.log",
     "execution/repo_state.json",
     "execution/codex_failure.json",
     "execution/system_info.json",
@@ -104,6 +107,15 @@ class ArtifactManager:
                         "status": "not_run",
                         "reason_codes": ["INITIALIZED_PLACEHOLDER"],
                     }
+                elif rel.endswith("toolchain_probe.json"):
+                    payload = {
+                        "paths": {},
+                        "versions": {},
+                        "path_prefix": "",
+                        "reason_codes": ["INITIALIZED_PLACEHOLDER"],
+                    }
+                elif rel.endswith("task_run_results.json"):
+                    payload = {"runs": [], "reason_codes": ["INITIALIZED_PLACEHOLDER"]}
                 elif rel.endswith("evaluability.json"):
                     payload = {"entries": [], "reason_codes": ["INITIALIZED_PLACEHOLDER"]}
                 elif rel.endswith("evaluability_verdict.json"):
@@ -115,11 +127,12 @@ class ArtifactManager:
                     }
                 elif rel.endswith("task_spec.json"):
                     payload = {
-                        "goal": [],
+                        "tasks": [],
                         "constraints": {},
                         "entrypoints": [],
                         "metric_observers": [],
                         "run_matrix": [],
+                        "selection_notes": [],
                         "reason_codes": ["INITIALIZED_PLACEHOLDER"],
                     }
                 elif rel.endswith("metric_contract.json"):

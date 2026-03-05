@@ -4,6 +4,7 @@ import os
 import re
 import json
 import sys
+import time
 import types
 from pathlib import Path
 
@@ -44,6 +45,10 @@ class FakeRuntime:
         compat_install_success: bool | None = None,
         main_rate_limit_failures: int = 0,
         template_name: str = "openai-codex",
+        python_command_available: bool = False,
+        pip3_command_available: bool = False,
+        apply_patch_command_available: bool = False,
+        runtime_timeout_sec: int = 3600,
     ) -> None:
         self.outputs_dir = outputs_dir
         self.repo_is_git = repo_is_git
@@ -62,6 +67,10 @@ class FakeRuntime:
         self.compat_install_success = compat_install_success
         self.main_rate_limit_failures = main_rate_limit_failures
         self.template_name = template_name
+        self.python_command_available = python_command_available
+        self.pip3_command_available = pip3_command_available
+        self.apply_patch_command_available = apply_patch_command_available
+        self.runtime_timeout_sec = runtime_timeout_sec
         self.main_runs = 0
         self.files: dict[str, str] = {}
         self.commands: list[str] = []
@@ -128,6 +137,41 @@ class FakeRuntime:
             return RuntimeCommandResult(command=command, cwd=cwd, rc=0, stdout="", stderr="")
         if "command -v codex" in command:
             return RuntimeCommandResult(command=command, cwd=cwd, rc=0, stdout="", stderr="")
+        if "command -v python3" in command:
+            rc = 0 if self.python_ok else 1
+            return RuntimeCommandResult(command=command, cwd=cwd, rc=rc, stdout="/usr/bin/python3\n" if rc == 0 else "", stderr="")
+        if "command -v python" in command:
+            rc = 0 if self.python_command_available else 1
+            return RuntimeCommandResult(
+                command=command,
+                cwd=cwd,
+                rc=rc,
+                stdout="/usr/local/bin/python\n" if rc == 0 else "",
+                stderr="",
+            )
+        if "command -v pip3" in command:
+            rc = 0 if self.pip3_command_available else 1
+            return RuntimeCommandResult(command=command, cwd=cwd, rc=rc, stdout="/usr/bin/pip3\n" if rc == 0 else "", stderr="")
+        if "command -v pip" in command:
+            rc = 0 if self.pip_available else 1
+            return RuntimeCommandResult(command=command, cwd=cwd, rc=rc, stdout="/usr/bin/pip\n" if rc == 0 else "", stderr="")
+        if "command -v apply_patch" in command:
+            rc = 0 if self.apply_patch_command_available else 1
+            return RuntimeCommandResult(command=command, cwd=cwd, rc=rc, stdout="/workspace/bin/apply_patch\n" if rc == 0 else "", stderr="")
+        if "python3 -V" in command:
+            return RuntimeCommandResult(command=command, cwd=cwd, rc=0, stdout="Python 3.11.9\n", stderr="")
+        if "python -V" in command:
+            rc = 0 if self.python_command_available else 1
+            return RuntimeCommandResult(command=command, cwd=cwd, rc=rc, stdout="Python 3.11.9\n" if rc == 0 else "", stderr="")
+        if "pip --version" in command:
+            rc = 0 if self.pip_available else 1
+            return RuntimeCommandResult(command=command, cwd=cwd, rc=rc, stdout="pip 24.0\n" if rc == 0 else "", stderr="")
+        if "pip3 --version" in command:
+            rc = 0 if self.pip3_command_available else 1
+            return RuntimeCommandResult(command=command, cwd=cwd, rc=rc, stdout="pip 24.0\n" if rc == 0 else "", stderr="")
+        if "apply_patch --version" in command:
+            rc = 0 if self.apply_patch_command_available else 1
+            return RuntimeCommandResult(command=command, cwd=cwd, rc=rc, stdout="apply_patch shim\n" if rc == 0 else "", stderr="")
         if "python3 -c \"import sys; print(sys.version)\"" in command:
             if self.python_ok:
                 return RuntimeCommandResult(command=command, cwd=cwd, rc=0, stdout="3.11.9\n", stderr="")
@@ -302,7 +346,12 @@ class FakeRuntime:
         return None
 
     def metadata(self) -> dict:
-        return {"backend": "e2b", "sandbox_id": "fake", "template": self.template_name}
+        return {
+            "backend": "e2b",
+            "sandbox_id": "fake",
+            "template": self.template_name,
+            "timeout_sec": self.runtime_timeout_sec,
+        }
 
 
 class FakePrepareRuntime:
@@ -310,6 +359,7 @@ class FakePrepareRuntime:
 
     def __init__(self) -> None:
         self.upload_dir_calls: list[dict] = []
+        self.upload_file_calls: list[str] = []
 
     def ensure_started(self) -> None:
         return None
@@ -324,6 +374,7 @@ class FakePrepareRuntime:
         )
 
     def upload_file(self, local_file: Path, remote_path: str) -> None:
+        self.upload_file_calls.append(remote_path)
         return None
 
     def download_file(self, remote_path: str, local_file: Path) -> None:
@@ -399,7 +450,7 @@ def test_run_codex_exec_uses_fixed_codex_flags(tmp_path: Path, monkeypatch) -> N
     assert codex_cmds
     assert any("--skip-git-repo-check" in c for c in codex_cmds)
     assert any("--dangerously-bypass-approvals-and-sandbox" in c for c in codex_cmds)
-    assert any("gpt-5.1-codex-mini" in c for c in codex_cmds)
+    assert any("gpt-5.1" in c for c in codex_cmds)
     assert "/tmp/workspace/outputs/run_manifest.json" in rt.files
 
 
@@ -426,6 +477,71 @@ def test_run_codex_exec_does_not_use_help_or_dynamic_add_dir(tmp_path: Path, mon
     assert not any("--add-dir" in c for c in codex_cmds)
     assert not any("--sandbox" in c for c in codex_cmds)
     assert any("codex_main.log" in c for c in rt.commands if "tee -a" in c)
+
+
+def test_run_codex_exec_uses_task_only_prompt_no_claims(tmp_path: Path, monkeypatch) -> None:
+    os.environ["OPENAI_API_KEY"] = "test-key"
+    artifacts = _mk_artifacts(tmp_path)
+    rt = FakeRuntime(outputs_dir="/tmp/workspace/outputs")
+    monkeypatch.setattr("p2c.agents.phase2.run_codex_exec.ensure_runtime", lambda _ctx, _art: rt)
+
+    agent = RunCodexExecAgent(llm=LLMClient(), artifacts=artifacts, step_index=8, step_total=14)
+    agent.run(
+        {
+            "workspace_root": "/tmp/workspace",
+            "workspace_repo_dir": "/tmp/workspace/repo",
+            "workspace_inputs_dir": "/tmp/workspace/inputs",
+            "workspace_outputs_dir": "/tmp/workspace/outputs",
+        }
+    )
+
+    codex_cmds = [c for c in rt.commands if "codex exec" in c]
+    assert codex_cmds
+    main_cmd = codex_cmds[0]
+    assert "Do NOT read claims files" in main_cmd
+    assert "claims_ir.json" not in main_cmd
+
+
+def test_runner_builds_run_manifest_locally(tmp_path: Path, monkeypatch) -> None:
+    os.environ["OPENAI_API_KEY"] = "test-key"
+    artifacts = _mk_artifacts(tmp_path)
+    rt = FakeRuntime(outputs_dir="/tmp/workspace/outputs")
+    monkeypatch.setattr("p2c.agents.phase2.run_codex_exec.ensure_runtime", lambda _ctx, _art: rt)
+
+    agent = RunCodexExecAgent(llm=LLMClient(), artifacts=artifacts, step_index=8, step_total=14)
+    agent.run(
+        {
+            "workspace_root": "/tmp/workspace",
+            "workspace_repo_dir": "/tmp/workspace/repo",
+            "workspace_inputs_dir": "/tmp/workspace/inputs",
+            "workspace_outputs_dir": "/tmp/workspace/outputs",
+        }
+    )
+
+    manifest = artifacts.read_json("execution/codex_outputs/run_manifest.json")
+    assert isinstance(manifest.get("runs"), list)
+    assert manifest.get("runs")
+
+
+def test_runner_builds_claim_alignment_locally(tmp_path: Path, monkeypatch) -> None:
+    os.environ["OPENAI_API_KEY"] = "test-key"
+    artifacts = _mk_artifacts(tmp_path)
+    rt = FakeRuntime(outputs_dir="/tmp/workspace/outputs")
+    monkeypatch.setattr("p2c.agents.phase2.run_codex_exec.ensure_runtime", lambda _ctx, _art: rt)
+
+    agent = RunCodexExecAgent(llm=LLMClient(), artifacts=artifacts, step_index=8, step_total=14)
+    agent.run(
+        {
+            "workspace_root": "/tmp/workspace",
+            "workspace_repo_dir": "/tmp/workspace/repo",
+            "workspace_inputs_dir": "/tmp/workspace/inputs",
+            "workspace_outputs_dir": "/tmp/workspace/outputs",
+        }
+    )
+
+    alignment = artifacts.read_json("execution/codex_outputs/claim_alignment.json")
+    assert isinstance(alignment.get("claims"), list)
+    assert "CLAIMS_LOCAL_ONLY" in alignment.get("reason_codes", [])
 
 
 def test_run_codex_exec_recovers_from_launcher_deadline_exceeded(tmp_path: Path, monkeypatch) -> None:
@@ -464,6 +580,29 @@ def test_run_codex_exec_recovers_from_launcher_deadline_exceeded(tmp_path: Path,
     )
     manifest = json.loads(rt.read_text("/tmp/workspace/outputs/run_manifest.json"))
     assert manifest.get("runs")
+
+
+def test_stream_disconnect_keeps_polling_no_teardown(tmp_path: Path, monkeypatch) -> None:
+    os.environ["OPENAI_API_KEY"] = "test-key"
+    artifacts = _mk_artifacts(tmp_path)
+    rt = FakeRuntime(outputs_dir="/tmp/workspace/outputs", main_rate_limit_failures=1)
+    monkeypatch.setattr("p2c.agents.phase2.run_codex_exec.ensure_runtime", lambda _ctx, _art: rt)
+    monkeypatch.setenv("P2C_RATE_LIMIT_RETRIES", "2")
+    monkeypatch.setenv("P2C_RATE_LIMIT_BACKOFF_SEC", "0")
+    monkeypatch.setenv("P2C_RATE_LIMIT_BACKOFF_MULTIPLIER", "1")
+
+    agent = RunCodexExecAgent(llm=LLMClient(), artifacts=artifacts, step_index=8, step_total=14)
+    agent.run(
+        {
+            "workspace_root": "/tmp/workspace",
+            "workspace_repo_dir": "/tmp/workspace/repo",
+            "workspace_inputs_dir": "/tmp/workspace/inputs",
+            "workspace_outputs_dir": "/tmp/workspace/outputs",
+        }
+    )
+
+    manifest = artifacts.read_json("execution/codex_outputs/run_manifest.json")
+    assert "STREAM_DISCONNECT_CONTINUE_POLL" in manifest.get("reason_codes", [])
 
 
 def test_capability_gate_detects_missing_pip_and_ensurepip(tmp_path: Path, monkeypatch) -> None:
@@ -549,6 +688,34 @@ def test_dependency_bootstrap_apt_fallback_path(tmp_path: Path, monkeypatch) -> 
     assert any("apt-get install -y python3-pip" in c for c in rt.commands)
 
 
+def test_dependency_bootstrap_skips_apt_when_pip3_available(tmp_path: Path, monkeypatch) -> None:
+    os.environ["OPENAI_API_KEY"] = "test-key"
+    artifacts = _mk_artifacts(tmp_path)
+    rt = FakeRuntime(
+        outputs_dir="/tmp/workspace/outputs",
+        pip_available=False,
+        pip3_command_available=True,
+        ensurepip_available=False,
+        has_requirements=False,
+        required_modules={"numpy": True},
+    )
+    monkeypatch.setattr("p2c.agents.phase2.run_codex_exec.ensure_runtime", lambda _ctx, _art: rt)
+    monkeypatch.setenv("P2C_DEP_BOOTSTRAP_APT_ENABLE", "1")
+
+    agent = RunCodexExecAgent(llm=LLMClient(), artifacts=artifacts, step_index=8, step_total=14)
+    agent.run(
+        {
+            "workspace_root": "/tmp/workspace",
+            "workspace_repo_dir": "/tmp/workspace/repo",
+            "workspace_inputs_dir": "/tmp/workspace/inputs",
+            "workspace_outputs_dir": "/tmp/workspace/outputs",
+        }
+    )
+    assert not any("apt-get install -y python3-pip" in c for c in rt.commands)
+    manifest = artifacts.read_json("execution/codex_outputs/run_manifest.json")
+    assert "APT_BOOTSTRAP_SKIPPED_PIP3_AVAILABLE" in manifest.get("reason_codes", [])
+
+
 def test_e2b_runtime_uses_template_env_override(monkeypatch) -> None:
     calls: list[dict] = []
 
@@ -596,6 +763,49 @@ def test_e2b_runtime_uses_template_env_override(monkeypatch) -> None:
     assert calls[0].get("template") == "custom-codex-template"
     assert meta.get("template") == "custom-codex-template"
     rt.close()
+
+
+def test_e2b_runtime_upload_file_fallback_uses_workspace_when_tmp_denied(monkeypatch) -> None:
+    class _DummyCommands:
+        @staticmethod
+        def run(**kwargs):
+            return types.SimpleNamespace(exit_code=0, stdout="", stderr="")
+
+    class _DummyFiles:
+        store: dict[str, str] = {}
+
+        @classmethod
+        def read(cls, path: str) -> str:
+            if path in cls.store:
+                return cls.store[path]
+            raise FileNotFoundError(path)
+
+        @classmethod
+        def write(cls, path: str, content: str) -> None:
+            if path.startswith("/tmp/") or path.startswith("/var/tmp/"):
+                raise PermissionError("permission denied")
+            if path.startswith("/workspace/"):
+                cls.store[path] = content
+                return None
+            raise PermissionError(f"unwritable path: {path}")
+
+    class _DummySandbox:
+        sandbox_id = "sbx_upload_test"
+        commands = _DummyCommands()
+        files = _DummyFiles()
+
+        def close(self) -> None:
+            return None
+
+    rt = E2BRuntime(timeout_sec=60)
+    rt._sandbox = _DummySandbox()  # noqa: SLF001
+    rt._sandbox_id = "sbx_upload_test"  # noqa: SLF001
+    monkeypatch.delenv("P2C_E2B_UPLOAD_TMP_DIR", raising=False)
+    monkeypatch.delenv("P2C_WORKSPACE_ROOT", raising=False)
+
+    out = rt._write_file_with_fallback("p2c_file_upload.b64", "abc")  # noqa: SLF001
+    assert out == "/workspace/p2c_file_upload.b64"
+    assert _DummyFiles.store[out] == "abc"
 
 
 def test_dependency_bootstrap_uses_sudo_when_available(tmp_path: Path, monkeypatch) -> None:
@@ -961,6 +1171,103 @@ def test_prompt_forbids_full_input_dump() -> None:
     )
     assert "Do NOT print or dump full contents" in prompt
     assert "Only output compact summaries" in prompt or "only output compact summaries" in prompt
+    assert "Do NOT read claims files" in prompt
+    assert "Use `python3` only" in prompt
+    assert "Do NOT call `update_plan`" in prompt
+    assert "Patch tool is preinstalled as `apply_patch`" in prompt
+    assert "Do not omit task results" in prompt
+    assert "TF1_API_INCOMPATIBLE_WITH_TF2" in prompt
+
+
+def test_normalize_run_marks_tf1_tf2_incompatibility() -> None:
+    row = {
+        "task_id": "task_legacy_tf1",
+        "command": "python3 main.py",
+        "exit_code": 1,
+        "status": "failed",
+        "stderr_tail": "AttributeError: module 'tensorflow' has no attribute 'placeholder'",
+        "reason_codes": ["EXECUTION"],
+    }
+    out = RunCodexExecAgent._normalize_run(row, default_task={"task_id": "task_legacy_tf1"})
+    assert out["status"] == "failed_dependency"
+    assert "TF1_API_INCOMPATIBLE_WITH_TF2" in out["reason_codes"]
+    assert "EXECUTION" in out["reason_codes"]
+
+
+def test_run_codex_exec_writes_toolchain_probe_and_uses_path_prefix(tmp_path: Path, monkeypatch) -> None:
+    os.environ["OPENAI_API_KEY"] = "test-key"
+    artifacts = _mk_artifacts(tmp_path)
+    rt = FakeRuntime(
+        outputs_dir="/tmp/workspace/outputs",
+        pip3_command_available=True,
+        apply_patch_command_available=True,
+    )
+    monkeypatch.setattr("p2c.agents.phase2.run_codex_exec.ensure_runtime", lambda _ctx, _art: rt)
+
+    agent = RunCodexExecAgent(llm=LLMClient(), artifacts=artifacts, step_index=8, step_total=14)
+    agent.run(
+        {
+            "workspace_root": "/tmp/workspace",
+            "workspace_repo_dir": "/tmp/workspace/repo",
+            "workspace_inputs_dir": "/tmp/workspace/inputs",
+            "workspace_outputs_dir": "/tmp/workspace/outputs",
+            "workspace_bin_dir": "/tmp/workspace/bin",
+        }
+    )
+
+    probe_local = artifacts.read_json("execution/codex_outputs/toolchain_probe.json")
+    assert isinstance(probe_local.get("paths"), dict)
+    assert isinstance(probe_local.get("versions"), dict)
+    assert "/tmp/workspace/outputs/toolchain_probe.json" in rt.files
+    codex_cmds = [c for c in rt.commands if "codex exec" in c]
+    assert codex_cmds
+    assert any("workspace/bin" in c and "PATH=" in c for c in codex_cmds)
+
+
+def test_failure_artifact_is_mirrored_to_codex_outputs(tmp_path: Path, monkeypatch) -> None:
+    os.environ["OPENAI_API_KEY"] = "test-key"
+    artifacts = _mk_artifacts(tmp_path)
+    rt = FakeRuntime(outputs_dir="/tmp/workspace/outputs", always_fail_main=True)
+    monkeypatch.setattr("p2c.agents.phase2.run_codex_exec.ensure_runtime", lambda _ctx, _art: rt)
+
+    agent = RunCodexExecAgent(llm=LLMClient(), artifacts=artifacts, step_index=8, step_total=14)
+    with pytest.raises(AgentError):
+        agent.run(
+            {
+                "workspace_root": "/tmp/workspace",
+                "workspace_repo_dir": "/tmp/workspace/repo",
+                "workspace_inputs_dir": "/tmp/workspace/inputs",
+                "workspace_outputs_dir": "/tmp/workspace/outputs",
+            }
+        )
+
+    local_payload = artifacts.read_json("execution/codex_failure.json")
+    mirror_payload = artifacts.read_json("execution/codex_outputs/codex_failure.json")
+    assert mirror_payload.get("stage") == local_payload.get("stage")
+    assert mirror_payload.get("last_command") == local_payload.get("last_command")
+
+
+def test_lifetime_guard_fails_fast_before_task_launch(tmp_path: Path, monkeypatch) -> None:
+    os.environ["OPENAI_API_KEY"] = "test-key"
+    artifacts = _mk_artifacts(tmp_path)
+    rt = FakeRuntime(outputs_dir="/tmp/workspace/outputs", runtime_timeout_sec=3600)
+    monkeypatch.setattr("p2c.agents.phase2.run_codex_exec.ensure_runtime", lambda _ctx, _art: rt)
+    monkeypatch.setenv("P2C_SANDBOX_MIN_LIFETIME_BEFORE_TASK_SEC", "120")
+
+    agent = RunCodexExecAgent(llm=LLMClient(), artifacts=artifacts, step_index=8, step_total=14)
+    with pytest.raises(AgentError):
+        agent.run(
+            {
+                "workspace_root": "/tmp/workspace",
+                "workspace_repo_dir": "/tmp/workspace/repo",
+                "workspace_inputs_dir": "/tmp/workspace/inputs",
+                "workspace_outputs_dir": "/tmp/workspace/outputs",
+                "_runtime_started_at": time.time() - 3550,
+            }
+        )
+
+    failure = artifacts.read_json("execution/codex_failure.json")
+    assert "SANDBOX_LIFETIME_TOO_LOW_BEFORE_TASK" in failure.get("reason_codes", [])
 
 
 def test_fallback_outputs_contract_valid_when_dependency_unresolved(tmp_path: Path, monkeypatch) -> None:
@@ -1127,7 +1434,8 @@ def test_upload_dir_can_include_git_with_flag(tmp_path: Path) -> None:
 
 def test_prepare_sandbox_excludes_git_by_default(tmp_path: Path, monkeypatch) -> None:
     artifacts = _mk_artifacts(tmp_path)
-    artifacts.write_json("task/task_spec.json", {"entrypoints": []})
+    artifacts.write_json("task/task_spec.json", {"tasks": []})
+    artifacts.write_json("task/metric_contract.json", {"required_metrics": []})
     artifacts.write_json("fingerprint/claims_ir.json", {"claims": []})
     repo_dir = tmp_path / "repo"
     repo_dir.mkdir(parents=True, exist_ok=True)
@@ -1142,13 +1450,61 @@ def test_prepare_sandbox_excludes_git_by_default(tmp_path: Path, monkeypatch) ->
 
     assert rt.upload_dir_calls
     assert rt.upload_dir_calls[0]["exclude_globs"] == [".git", ".git/**"]
+    assert any(p.endswith("/task_spec.json") for p in rt.upload_file_calls)
+    assert any(p.endswith("/metric_contract.json") for p in rt.upload_file_calls)
+    assert not any(p.endswith("/claims_ir.json") for p in rt.upload_file_calls)
     run_log = artifacts.path("execution/run.log").read_text(encoding="utf-8")
     assert "repo upload mode=local_dir include_git=0" in run_log
 
 
+def test_prepare_sandbox_installs_tool_shims_and_workspace_bin(tmp_path: Path, monkeypatch) -> None:
+    artifacts = _mk_artifacts(tmp_path)
+    artifacts.write_json("task/task_spec.json", {"tasks": []})
+    artifacts.write_json("task/metric_contract.json", {"required_metrics": []})
+    artifacts.write_json("fingerprint/claims_ir.json", {"claims": []})
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir(parents=True, exist_ok=True)
+    (repo_dir / "main.py").write_text("print('ok')\n", encoding="utf-8")
+
+    rt = FakePrepareRuntime()
+    monkeypatch.setattr("p2c.agents.phase2.prepare_sandbox.ensure_runtime", lambda _ctx, _art: rt)
+    ctx = {"repo_dir": str(repo_dir)}
+
+    agent = PrepareSandboxAgent(llm=LLMClient(), artifacts=artifacts, step_index=7, step_total=14)
+    agent.run(ctx)
+
+    assert ctx.get("workspace_bin_dir")
+    assert any(p.endswith("/tools/python") for p in rt.upload_file_calls)
+    assert any(p.endswith("/tools/pip") for p in rt.upload_file_calls)
+    assert any(p.endswith("/tools/apply_patch") for p in rt.upload_file_calls)
+    assert any(p.endswith("/tools/p2c_apply_patch.py") for p in rt.upload_file_calls)
+    run_log = artifacts.path("execution/run.log").read_text(encoding="utf-8")
+    assert "toolchain=" in run_log
+
+
+def test_prepare_sandbox_does_not_upload_claims_ir(tmp_path: Path, monkeypatch) -> None:
+    artifacts = _mk_artifacts(tmp_path)
+    artifacts.write_json("task/task_spec.json", {"tasks": []})
+    artifacts.write_json("task/metric_contract.json", {"required_metrics": []})
+    artifacts.write_json("fingerprint/claims_ir.json", {"claims": [{"claim_id": "c1"}]})
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir(parents=True, exist_ok=True)
+    (repo_dir / "main.py").write_text("print('ok')\n", encoding="utf-8")
+
+    rt = FakePrepareRuntime()
+    monkeypatch.setattr("p2c.agents.phase2.prepare_sandbox.ensure_runtime", lambda _ctx, _art: rt)
+    monkeypatch.delenv("P2C_UPLOAD_CLAIMS_TO_SANDBOX", raising=False)
+
+    agent = PrepareSandboxAgent(llm=LLMClient(), artifacts=artifacts, step_index=7, step_total=14)
+    agent.run({"repo_dir": str(repo_dir)})
+
+    assert not any(p.endswith("/claims_ir.json") for p in rt.upload_file_calls)
+
+
 def test_prepare_sandbox_can_include_git_with_flag(tmp_path: Path, monkeypatch) -> None:
     artifacts = _mk_artifacts(tmp_path)
-    artifacts.write_json("task/task_spec.json", {"entrypoints": []})
+    artifacts.write_json("task/task_spec.json", {"tasks": []})
+    artifacts.write_json("task/metric_contract.json", {"required_metrics": []})
     artifacts.write_json("fingerprint/claims_ir.json", {"claims": []})
     repo_dir = tmp_path / "repo"
     repo_dir.mkdir(parents=True, exist_ok=True)
@@ -1163,3 +1519,22 @@ def test_prepare_sandbox_can_include_git_with_flag(tmp_path: Path, monkeypatch) 
 
     assert rt.upload_dir_calls
     assert rt.upload_dir_calls[0]["exclude_globs"] is None
+
+
+def test_prepare_sandbox_can_upload_claims_when_enabled(tmp_path: Path, monkeypatch) -> None:
+    artifacts = _mk_artifacts(tmp_path)
+    artifacts.write_json("task/task_spec.json", {"tasks": []})
+    artifacts.write_json("task/metric_contract.json", {"required_metrics": []})
+    artifacts.write_json("fingerprint/claims_ir.json", {"claims": [{"claim_id": "c1"}]})
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir(parents=True, exist_ok=True)
+    (repo_dir / "main.py").write_text("print('ok')\n", encoding="utf-8")
+
+    rt = FakePrepareRuntime()
+    monkeypatch.setattr("p2c.agents.phase2.prepare_sandbox.ensure_runtime", lambda _ctx, _art: rt)
+    monkeypatch.setenv("P2C_UPLOAD_CLAIMS_TO_SANDBOX", "1")
+
+    agent = PrepareSandboxAgent(llm=LLMClient(), artifacts=artifacts, step_index=7, step_total=14)
+    agent.run({"repo_dir": str(repo_dir)})
+
+    assert any(p.endswith("/claims_ir.json") for p in rt.upload_file_calls)

@@ -5,17 +5,26 @@ import re
 from pathlib import Path
 
 from p2c.agents.base import BaseAgent
-from p2c.schemas import Entrypoint, MetricContract, MetricObserver, MetricParser, RunConfig, TaskCompileOutput, TaskSpec
+from p2c.schemas import (
+    Entrypoint,
+    MetricContract,
+    MetricObserver,
+    MetricParser,
+    RunConfig,
+    TaskCompileOutput,
+    TaskItem,
+    TaskSpec,
+)
 
 SYSTEM_PROMPT = (
-    "You compile an executable TaskSpec from claims and repository clues. "
+    "You compile an executable TaskSpec from repository clues and code-verifiable claims. "
     "Only use existing file paths. Output strict JSON."
 )
 
 USER_PROMPT_TEMPLATE = (
     "Inputs: fingerprint/claims_ir.json + repo_dir scan\n"
     "Outputs: task/task_spec.json and task/metric_contract.json\n"
-    "Constraints: keep entrypoints <= 5, include at least one metric observer."
+    "Constraints: keep tasks <= 5, include at least one metric observer."
 )
 
 
@@ -69,10 +78,84 @@ class CompileTaskSpecAgent(BaseAgent):
                 uniq[entry.path] = entry
         return list(uniq.values())[:5]
 
+    @staticmethod
+    def _extract_hyperparams(claims: list[dict]) -> dict[str, float | int | str]:
+        out: dict[str, float | int | str] = {}
+        patterns: list[tuple[str, str]] = [
+            ("lr", r"(?:learning\s*rate|lr)\D*(\d+(?:\.\d+)?(?:e-?\d+)?)"),
+            ("epochs", r"(?:epoch|epochs)\D*(\d+)"),
+            ("batch_size", r"(?:batch(?:\s*size)?)\D*(\d+)"),
+            ("seed", r"(?:seed|random\s*seed)\D*(\d+)"),
+        ]
+        for row in claims:
+            predicate = str(row.get("predicate") or "")
+            target = row.get("target")
+            text = f"{predicate} {target if target is not None else ''}".lower()
+            for key, pattern in patterns:
+                if key in out:
+                    continue
+                m = re.search(pattern, text)
+                if not m:
+                    continue
+                raw = m.group(1)
+                try:
+                    if key in {"epochs", "batch_size", "seed"}:
+                        out[key] = int(float(raw))
+                    else:
+                        out[key] = float(raw)
+                except ValueError:
+                    out[key] = raw
+        return out
+
+    @staticmethod
+    def _collect_required_metrics(claims: list[dict]) -> list[str]:
+        metrics: list[str] = []
+        for row in claims:
+            if not bool(row.get("code_verifiable", not row.get("unverifiable_from_paper", False))):
+                continue
+            metric = str(row.get("metric") or "").strip().lower()
+            if metric and metric not in metrics:
+                metrics.append(metric)
+        if not metrics:
+            metrics = ["accuracy"]
+        return metrics
+
+    @staticmethod
+    def _to_task_items(
+        selected: list[Entrypoint],
+        *,
+        required_metrics: list[str],
+        hyperparams: dict[str, float | int | str],
+        budget_minutes: int,
+    ) -> list[TaskItem]:
+        items: list[TaskItem] = []
+        for idx, ep in enumerate(selected, start=1):
+            timeout_class = "medium"
+            if budget_minutes <= 10:
+                timeout_class = "short"
+            elif budget_minutes >= 45:
+                timeout_class = "long"
+            items.append(
+                TaskItem(
+                    task_id=f"task_{idx:02d}",
+                    entrypoint=ep.path,
+                    command=ep.command,
+                    timeout_class=timeout_class,
+                    expected_metrics=required_metrics,
+                    hyperparams=hyperparams,
+                    confidence=ep.confidence,
+                    evidence=ep.evidence,
+                )
+            )
+        return items
+
     def execute(self, ctx: dict) -> dict:
         repo_dir = Path(ctx["repo_dir"])
         claims_doc = self.artifacts.read_json("fingerprint/claims_ir.json")
-        claim_ids = [c.get("claim_id", "") for c in claims_doc.get("claims", []) if c.get("claim_id")]
+        all_claims = [c for c in claims_doc.get("claims", []) if isinstance(c, dict)]
+        verifiable_claims = [
+            c for c in all_claims if bool(c.get("code_verifiable", not c.get("unverifiable_from_paper", False)))
+        ]
         candidates = self._scan_entrypoints(repo_dir)
 
         llm_schema = {
@@ -87,8 +170,8 @@ class CompileTaskSpecAgent(BaseAgent):
             USER_PROMPT_TEMPLATE
             + "\nCandidates:\n"
             + "\n".join(f"- {e.path}: {e.command}" for e in candidates)
-            + "\nClaims:\n"
-            + ", ".join(claim_ids)
+            + "\nCode-verifiable claims:\n"
+            + ", ".join(str(c.get("claim_id", "")) for c in verifiable_claims if c.get("claim_id"))
         )
         llm_data, llm_err = self.safe_chat_json(llm_schema, SYSTEM_PROMPT, llm_user)
 
@@ -109,38 +192,45 @@ class CompileTaskSpecAgent(BaseAgent):
             MetricObserver(name="accuracy_decimal", kind="stdout_regex", pattern=r"accuracy[^0-9]*(0\.\d+|1\.0+)"),
         ]
 
+        budget_minutes = int(ctx.get("budget_minutes", 60))
         run_matrix = [
             RunConfig(
                 seed=0,
-                timeout_sec=min(1800, max(120, int(ctx.get("budget_minutes", 60)) * 60)),
-                budget_minutes=int(ctx.get("budget_minutes", 60)),
+                timeout_sec=min(1800, max(120, budget_minutes * 60)),
+                budget_minutes=budget_minutes,
             )
         ]
 
         if not selected:
             reason_codes.append("NO_ENTRYPOINT_FOUND")
 
+        required_metrics = self._collect_required_metrics(verifiable_claims)
+        hyperparams = self._extract_hyperparams(verifiable_claims)
+        tasks = self._to_task_items(
+            selected,
+            required_metrics=required_metrics,
+            hyperparams=hyperparams,
+            budget_minutes=budget_minutes,
+        )
+
         task_spec = TaskSpec(
-            goal=claim_ids,
             constraints={
-                "budget_minutes": int(ctx.get("budget_minutes", 60)),
+                "budget_minutes": budget_minutes,
                 "network": "limited",
                 "allowed_modification_scope": "Target/code",
                 "max_self_heal_iters": int(ctx.get("max_self_heal_iters", 6)),
             },
+            tasks=tasks,
             entrypoints=selected,
             metric_observers=observers,
             run_matrix=run_matrix,
+            selection_notes=[
+                "compiled_from_code_verifiable_claims_only",
+                f"verifiable_claims={len(verifiable_claims)}",
+                f"filtered_non_verifiable={max(0, len(all_claims) - len(verifiable_claims))}",
+            ],
             reason_codes=reason_codes,
         )
-
-        required_metrics = []
-        for claim in claims_doc.get("claims", []):
-            metric = claim.get("metric")
-            if metric and metric not in required_metrics:
-                required_metrics.append(metric)
-        if not required_metrics:
-            required_metrics = ["accuracy"]
 
         metric_contract = MetricContract(
             required_metrics=required_metrics,

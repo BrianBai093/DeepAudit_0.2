@@ -1,7 +1,7 @@
 {
   "clusters": [
     {
-      "cluster_key": "dataset_task|||study.task|the classification task in the study is heart disease classification.||",
+      "cluster_key": "dataset_task|||dataset|the task is binary classification.||",
       "candidate_indices": [
         0
       ],
@@ -9,7 +9,7 @@
       "selection_reason": "heuristic"
     },
     {
-      "cluster_key": "dataset_task|||dataset|the dataset used for training is the combined (pooled) data.||",
+      "cluster_key": "dataset_task|||dataset|the training data from different sources are combined into a single pooled dataset.||",
       "candidate_indices": [
         1
       ],
@@ -17,7 +17,7 @@
       "selection_reason": "heuristic"
     },
     {
-      "cluster_key": "dataset_task|||dataset|the models were trained to perform a binary classification task.||",
+      "cluster_key": "dataset_task||svm|dataset|a support vector machine (svm) is trained on the pooled dataset.||",
       "candidate_indices": [
         2
       ],
@@ -25,7 +25,7 @@
       "selection_reason": "heuristic"
     },
     {
-      "cluster_key": "dataset_task||svm|dataset|a support vector machine (svm) was trained on the combined (pooled) data.||",
+      "cluster_key": "dataset_task||knn|dataset|a k-nearest neighbor (knn) classifier is trained on the pooled dataset.||",
       "candidate_indices": [
         3
       ],
@@ -33,7 +33,7 @@
       "selection_reason": "heuristic"
     },
     {
-      "cluster_key": "dataset_task||knn|dataset|a k-nearest neighbor (knn) classifier was trained on the combined (pooled) data.||",
+      "cluster_key": "dataset_task||nb|dataset|a naïve bayes (nb) classifier is trained on the pooled dataset.||",
       "candidate_indices": [
         4
       ],
@@ -41,7 +41,7 @@
       "selection_reason": "heuristic"
     },
     {
-      "cluster_key": "dataset_task||nb|dataset|a naïve bayes (nb) classifier was trained on the combined (pooled) data.||",
+      "cluster_key": "dataset_task||dt|dataset|a decision tree (dt) classifier is trained on the pooled dataset.||",
       "candidate_indices": [
         5
       ],
@@ -49,7 +49,7 @@
       "selection_reason": "heuristic"
     },
     {
-      "cluster_key": "dataset_task||dt|dataset|a decision tree (dt) classifier was trained on the combined (pooled) data.||",
+      "cluster_key": "dataset_task||rf|dataset|a random forest (rf) classifier is trained on the pooled dataset.||",
       "candidate_indices": [
         6
       ],
@@ -57,7 +57,7 @@
       "selection_reason": "heuristic"
     },
     {
-      "cluster_key": "dataset_task||rf|dataset|a random forests (rf) model was trained on the combined (pooled) data.||",
+      "cluster_key": "dataset_task|||full training configuration for the referenced logistic regression model.|the model being trained is the logistic regression model described in reference [#].|7|",
       "candidate_indices": [
         7
       ],
@@ -65,7 +65,7 @@
       "selection_reason": "heuristic"
     },
     {
-      "cluster_key": "dataset_task|||experimental training procedure in this study.|the model trained is the logistic regression model described in reference [#].|7|",
+      "cluster_key": "hyperparameter|||hyperparameter settings for the training process of the logistic regression model in [7].|the learning rate used to train the logistic regression model in [#] is #.|0.001|",
       "candidate_indices": [
         8
       ],
@@ -73,7 +73,7 @@
       "selection_reason": "heuristic"
     },
     {
-      "cluster_key": "dataset_task|||order of operations within the experimental protocol of this study.|the logistic regression model from reference [#] is trained as the first step in the procedure.|7|",
+      "cluster_key": "hyperparameter|||hyperparameter settings for the training process of the logistic regression model in [7].|the batch size used to train the logistic regression model in [#] is #.|7|",
       "candidate_indices": [
         9
       ],
@@ -81,7 +81,7 @@
       "selection_reason": "heuristic"
     },
     {
-      "cluster_key": "hyperparameter|||hyperparameter settings for training the logistic regression model in this study.|the training uses a learning rate of #.|0.001|",
+      "cluster_key": "hyperparameter|||hyperparameter settings for the training process of the logistic regression model in [7].|the number of training epochs for the logistic regression model in [#] is #.|7|",
       "candidate_indices": [
         10
       ],
@@ -89,7 +89,7 @@
       "selection_reason": "heuristic"
     },
     {
-      "cluster_key": "hyperparameter|||hyperparameter settings for training the logistic regression model in this study.|the training uses a batch size of #.|4|",
+      "cluster_key": "hyperparameter|||from paper context|hyperparameters tuned include learning rate $( # .|0|",
       "candidate_indices": [
         11
       ],
@@ -97,7 +97,7 @@
       "selection_reason": "heuristic"
     },
     {
-      "cluster_key": "hyperparameter|||hyperparameter settings for training the logistic regression model in this study.|the training runs for # epochs.|30|",
+      "cluster_key": "hyperparameter||svm|from paper context|# )$ , batch size $( # - # # )$ , hidden units (#−#) for one-hidden-layer nn, svm regularization strength $c$ $( # .|1|",
       "candidate_indices": [
         12
       ],
@@ -105,7 +105,7 @@
       "selection_reason": "heuristic"
     },
     {
-      "cluster_key": "hyperparameter|||other models and hyperparameter combinations in the experiment.|each model is trained using # different random seeds.|10|",
+      "cluster_key": "algorithm|||from paper context|the benchmark in [#] provides a code to several federated aggregation algorithms, including fedavg, fedadam, scaffold, and fedprox.|7|",
       "candidate_indices": [
         13
       ],
@@ -113,7 +113,7 @@
       "selection_reason": "heuristic"
     },
     {
-      "cluster_key": "hyperparameter|||other models and hyperparameter combinations in the experiment.|the # random seeds are used to produce different data splits.|10|",
+      "cluster_key": "hyperparameter|||from paper context|in this work, as in [#], local updates in batches are counted rather than local epochs, aligning with theoretical formulations and extending to related strategies based on fedavg.|7|",
       "candidate_indices": [
         14
       ],
@@ -121,7 +121,7 @@
       "selection_reason": "heuristic"
     },
     {
-      "cluster_key": "hyperparameter|||input facts (user-provided line)|the numeric value or range for the learning rate is incomplete/truncated in the input; the text ends with the substring \"$( # .\".|0|",
+      "cluster_key": "hyperparameter|||from paper context|client updates are computed as: $$ \\begin{array}{l} \\delta_ {t} = \\frac {#}{| s |} \\sum_ {i \\in s} \\delta_ {i} ^ {t} \\\\ m _ {t} = \\beta_ {#} m _ {t - #} + (# - \\beta_ {#}) \\delta_ {t} \\tag {#} \\\\ v _ {t} = \\beta_ {#} v _ {t - #} + (# - \\beta_ {#}) (\\delta_ {t}) ^ {#} \\\\ x _ {t + #} = x _ {t} - \\eta \\frac {m _ {t}}{\\sqrt {v _ {t}} + \\tau} \\\\ \\end{array} $$ where $\\delta _ { t }$ is the aggregated gradient update at time t, $s$ is the set of clients participating, $| s |$ is the number of clients in $s$ , $m _ { t }$ and $v _ { t }$ are the first and second moment estimates, $\\beta _ { # }$ and $\\beta _ { # }$ are the exponential decay rates for these moment estimates, $\\eta$ is the learning rate, and $\\tau$ is a small constant for numerical stability.|1|",
       "candidate_indices": [
         15
       ],
@@ -129,7 +129,7 @@
       "selection_reason": "heuristic"
     },
     {
-      "cluster_key": "hyperparameter|||hyperparameter: batch size for training.|batch size is an integer in the inclusive range [#,#].|4|",
+      "cluster_key": "hyperparameter|||from paper context|updates for the global and local control variables and model parameters are computed as follows: $$ \\begin{array}{l} \\boldsymbol {y} _ {i} \\leftarrow \\boldsymbol {y} _ {i} - \\eta_ {l} \\left(g _ {i} \\left(\\boldsymbol {y} _ {i}\\right) + \\boldsymbol {c} - \\boldsymbol {c} _ {i}\\right) \\\\ c _ {i} ^ {+} \\leftarrow (\\mathrm {i}) g _ {i} (\\boldsymbol {x}), \\text {o r (i i)} \\boldsymbol {c} _ {i} - \\boldsymbol {c} + \\frac {#}{k \\eta_ {l}} (\\boldsymbol {x} - \\boldsymbol {y} _ {i}) \\\\ \\boldsymbol {x} \\leftarrow \\boldsymbol {x} + \\frac {\\eta_ {g}}{| s |} \\sum_ {i \\in s} (\\boldsymbol {y} _ {i} - \\boldsymbol {x}) \\\\ \\boldsymbol {c} \\gets \\boldsymbol {c} + \\frac {#}{n} \\sum_ {i \\in s} (\\boldsymbol {c} _ {\\boldsymbol {i}} ^ {+} - \\boldsymbol {c} _ {\\boldsymbol {i}}) \\\\ \\end{array} $$ where $\\mathbf { { \\mathit { y } } } _ { i }$ is client update performed $k$ times, $\\eta$ is the learning rate, $g _ { i } ( y _ { i } )$ is the mini-batch gradient, and $_ { \\textbf { \\em x } }$ are the server parameters.|1|",
       "candidate_indices": [
         16
       ],
@@ -137,7 +137,7 @@
       "selection_reason": "heuristic"
     },
     {
-      "cluster_key": "architecture|||model: one-hidden-layer neural network architecture (hidden units).|hidden units count for a one-hidden-layer neural network is an integer in the inclusive range [#,#].|4|",
+      "cluster_key": "dataset_task|||from paper context|results the results for the pooled data are presented in table ii, which highlights the testing accuracies for adopted models.||",
       "candidate_indices": [
         17
       ],
@@ -145,7 +145,7 @@
       "selection_reason": "heuristic"
     },
     {
-      "cluster_key": "hyperparameter|||from paper context|in this work, as in [#], local updates in batches are counted rather than local epochs, aligning with theoretical formulations and extending to related strategies based on fedavg.|7|",
+      "cluster_key": "hyperparameter||svm|from paper context|logistic regression (lr), one-layer neural network (#lnn), support vector machine (svm) with a linear kernel achieve the highest accuracies, with svm leading at $# # .|1|",
       "candidate_indices": [
         18
       ],
@@ -153,7 +153,7 @@
       "selection_reason": "heuristic"
     },
     {
-      "cluster_key": "hyperparameter|||from paper context|client updates are computed as: $$ \\begin{array}{l} \\delta_ {t} = \\frac {#}{| s |} \\sum_ {i \\in s} \\delta_ {i} ^ {t} \\\\ m _ {t} = \\beta_ {#} m _ {t - #} + (# - \\beta_ {#}) \\delta_ {t} \\tag {#} \\\\ v _ {t} = \\beta_ {#} v _ {t - #} + (# - \\beta_ {#}) (\\delta_ {t}) ^ {#} \\\\ x _ {t + #} = x _ {t} - \\eta \\frac {m _ {t}}{\\sqrt {v _ {t}} + \\tau} \\\\ \\end{array} $$ where $\\delta _ { t }$ is the aggregated gradient update at time t, $s$ is the set of clients participating, $| s |$ is the number of clients in $s$ , $m _ { t }$ and $v _ { t }$ are the first and second moment estimates, $\\beta _ { # }$ and $\\beta _ { # }$ are the exponential decay rates for these moment estimates, $\\eta$ is the learning rate, and $\\tau$ is a small constant for numerical stability.|1|",
+      "cluster_key": "hyperparameter||lr|from paper context|the [#] model refers to the lr model configured with a learning rate of # and a batch size of #, trained over # epochs.|0.001|",
       "candidate_indices": [
         19
       ],
@@ -161,7 +161,7 @@
       "selection_reason": "heuristic"
     },
     {
-      "cluster_key": "hyperparameter|||from paper context|updates for the global and local control variables and model parameters are computed as follows: $$ \\begin{array}{l} \\boldsymbol {y} _ {i} \\leftarrow \\boldsymbol {y} _ {i} - \\eta_ {l} \\left(g _ {i} \\left(\\boldsymbol {y} _ {i}\\right) + \\boldsymbol {c} - \\boldsymbol {c} _ {i}\\right) \\\\ c _ {i} ^ {+} \\leftarrow (\\mathrm {i}) g _ {i} (\\boldsymbol {x}), \\text {o r (i i)} \\boldsymbol {c} _ {i} - \\boldsymbol {c} + \\frac {#}{k \\eta_ {l}} (\\boldsymbol {x} - \\boldsymbol {y} _ {i}) \\\\ \\boldsymbol {x} \\leftarrow \\boldsymbol {x} + \\frac {\\eta_ {g}}{| s |} \\sum_ {i \\in s} (\\boldsymbol {y} _ {i} - \\boldsymbol {x}) \\\\ \\boldsymbol {c} \\gets \\boldsymbol {c} + \\frac {#}{n} \\sum_ {i \\in s} (\\boldsymbol {c} _ {\\boldsymbol {i}} ^ {+} - \\boldsymbol {c} _ {\\boldsymbol {i}}) \\\\ \\end{array} $$ where $\\mathbf { { \\mathit { y } } } _ { i }$ is client update performed $k$ times, $\\eta$ is the learning rate, $g _ { i } ( y _ { i } )$ is the mini-batch gradient, and $_ { \\textbf { \\em x } }$ are the server parameters.|1|",
+      "cluster_key": "hyperparameter|||from paper context|the models were all trained for # epochs using their respective best performing hyperparameter settings from centralized (pooled) tuning.|30|",
       "candidate_indices": [
         20
       ],
@@ -169,7 +169,7 @@
       "selection_reason": "heuristic"
     },
     {
-      "cluster_key": "dataset_task|||from paper context|table ii test accuracies for pooled data and various learning models.||",
+      "cluster_key": "hyperparameter||svm|from paper context|we compare test accuracies (averaged over # seeds) of lr, #lnn, and svm local models and using fedavg, fedadam, fedyogi and scaffold fl algorithms.|10|",
       "candidate_indices": [
         21
       ],
@@ -177,7 +177,7 @@
       "selection_reason": "heuristic"
     },
     {
-      "cluster_key": "hyperparameter||svm|from paper context|logistic regression (lr), one-layer neural network (#lnn), support vector machine (svm) with a linear kernel achieve the highest accuracies, with svm leading at $# # .|1|",
+      "cluster_key": "dataset_task|||dataset|we exclude switzerland dataset from this comparison where all examples are of the same class after preprocessing.||",
       "candidate_indices": [
         22
       ],
@@ -185,7 +185,7 @@
       "selection_reason": "heuristic"
     },
     {
-      "cluster_key": "hyperparameter||lr|from paper context|the [#] model refers to the lr model configured with a learning rate of # and a batch size of #, trained over # epochs.|0.001|",
+      "cluster_key": "hyperparameter||svm|from paper context|table iii test accuracies for local training compared to fl algorithms <table><tr><td></td><td>cleveland</td><td>hungary</td><td>va</td><td>fedavg</td><td>fedadam</td><td>fedyogi</td><td>scaffold</td></tr><tr><td>lr</td><td># ± #</td><td># ± #</td><td># ± #</td><td># ± #</td><td># ± #</td><td># ± #</td><td># ± #</td></tr><tr><td>#lnn</td><td># ± #</td><td># ± #</td><td># ± #</td><td># ± #</td><td># ± #</td><td># ± #</td><td># ± #</td></tr><tr><td>svm</td><td># ± #</td><td># ± #</td><td># ± #</td><td># ± #</td><td># ± #</td><td># ± #</td><td># ± #</td></tr></table> # iv.|0.667|",
       "candidate_indices": [
         23
       ],
@@ -193,7 +193,7 @@
       "selection_reason": "heuristic"
     },
     {
-      "cluster_key": "hyperparameter|||from paper context|the models were all trained for # epochs using their respective best performing hyperparameter settings from centralized (pooled) tuning.|30|",
+      "cluster_key": "hyperparameter||svm|from paper context|like age, it table iv mean absolute shap values for each feature and their importance ranking (in paranthes is) <table><tr><td></td><td>oldpeak</td><td>cp</td><td>exang</td><td>sex</td><td>thalach</td><td>fbs</td><td>chol</td><td>restecg</td><td>trestbps</td><td>age</td></tr><tr><td>lr</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td></tr><tr><td>svm</td><td>#(#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td></tr><tr><td>#lnn</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td></tr><tr><td>nb</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td></tr><tr><td>rf</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td></tr><tr><td>dt</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td></tr><tr><td>knn</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td></tr></table> serves as a general health indicator rather than a direct measure of heart function.|0.57|",
       "candidate_indices": [
         24
       ],
@@ -201,7 +201,7 @@
       "selection_reason": "heuristic"
     },
     {
-      "cluster_key": "hyperparameter||svm|from paper context|we compare test accuracies (averaged over # seeds) of lr, #lnn, and svm local models and using fedavg, fedadam, fedyogi and scaffold fl algorithms.|10|",
+      "cluster_key": "metric|accuracy|svm|from paper context|accuracy|8|",
       "candidate_indices": [
         25
       ],
@@ -209,7 +209,7 @@
       "selection_reason": "heuristic"
     },
     {
-      "cluster_key": "dataset_task|||dataset|we exclude switzerland dataset from this comparison where all examples are of the same class after preprocessing.||",
+      "cluster_key": "dataset_task|||uci|the uci heart disease dataset provides a great example of naturally heterogeneous splits of the data across geographically distant hospitals.||",
       "candidate_indices": [
         26
       ],
@@ -217,7 +217,7 @@
       "selection_reason": "heuristic"
     },
     {
-      "cluster_key": "hyperparameter||svm|from paper context|table iii test accuracies for local training compared to fl algorithms <table><tr><td></td><td>cleveland</td><td>hungary</td><td>va</td><td>fedavg</td><td>fedadam</td><td>fedyogi</td><td>scaffold</td></tr><tr><td>lr</td><td># ± #</td><td># ± #</td><td># ± #</td><td># ± #</td><td># ± #</td><td># ± #</td><td># ± #</td></tr><tr><td>#lnn</td><td># ± #</td><td># ± #</td><td># ± #</td><td># ± #</td><td># ± #</td><td># ± #</td><td># ± #</td></tr><tr><td>svm</td><td># ± #</td><td># ± #</td><td># ± #</td><td># ± #</td><td># ± #</td><td># ± #</td><td># ± #</td></tr></table> # iv.|0.667|",
+      "cluster_key": "hyperparameter|||from paper context|pmlr, #, pp.|2020|",
       "candidate_indices": [
         27
       ],
@@ -225,7 +225,7 @@
       "selection_reason": "heuristic"
     },
     {
-      "cluster_key": "hyperparameter||svm|from paper context|like age, it table iv mean absolute shap values for each feature and their importance ranking (in paranthes is) <table><tr><td></td><td>oldpeak</td><td>cp</td><td>exang</td><td>sex</td><td>thalach</td><td>fbs</td><td>chol</td><td>restecg</td><td>trestbps</td><td>age</td></tr><tr><td>lr</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td></tr><tr><td>svm</td><td>#(#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td></tr><tr><td>#lnn</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td></tr><tr><td>nb</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td></tr><tr><td>rf</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td></tr><tr><td>dt</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td></tr><tr><td>knn</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td><td># (#)</td></tr></table> serves as a general health indicator rather than a direct measure of heart function.|0.57|",
+      "cluster_key": "algorithm|||from paper context|we examine various federated aggregation strategies including fedavg [#], fedadam [#], fedyogi [#], and scaffold [#].|9|",
       "candidate_indices": [
         28
       ],
@@ -233,27 +233,11 @@
       "selection_reason": "heuristic"
     },
     {
-      "cluster_key": "metric|accuracy|svm|from paper context|accuracy|8|",
+      "cluster_key": "metric|accuracy|svm|from paper context|accuracy|7|",
       "candidate_indices": [
         29
       ],
       "selected_index": 29,
-      "selection_reason": "heuristic"
-    },
-    {
-      "cluster_key": "dataset_task|||uci|the uci heart disease dataset provides a great example of naturally heterogeneous splits of the data across geographically distant hospitals.||",
-      "candidate_indices": [
-        30
-      ],
-      "selected_index": 30,
-      "selection_reason": "heuristic"
-    },
-    {
-      "cluster_key": "algorithm|||from paper context|we examine various federated aggregation strategies including fedavg [#], fedadam [#], fedyogi [#], and scaffold [#].|9|",
-      "candidate_indices": [
-        31
-      ],
-      "selected_index": 31,
       "selection_reason": "heuristic"
     }
   ],

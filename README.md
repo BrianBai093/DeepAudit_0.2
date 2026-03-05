@@ -1,309 +1,256 @@
-# Paper2Code (Development Stage) / 当前开发阶段说明
+# Paper2Code (Dev)
 
 ## 中文
 
-### 1) 项目概述
+### 当前状态
 
-本项目目标是实现一个三阶段自动化链路：
+本仓库当前采用三阶段架构：
 
-1. Phase 1：从论文（`Target/paper/full.md`）抽取可复现信息，生成 `fingerprint`、`claims_ir`、`task_spec`。  
-2. Phase 2：在 E2B Sandbox 内执行代码并产出结构化运行结果。  
-3. Phase 3：根据运行结果做证据对齐与结论验证，输出最终报告。
+1. `Phase1`：从论文和代码中抽取可执行任务，生成 `task_spec.json`（仅执行任务，不再写 `goal=[claim_ids]`）。
+2. `Phase2`：在 E2B 沙盒中执行任务（Gitless），由 Runner 本地汇总结构化产物。
+3. `Phase3`：本地做 claims 证据对齐与判定。
 
-当前执行编排在 `p2c/main.py` 与 `p2c/graph.py`。
+核心变化：
 
-### 1.1) 当前代码架构（已整理）
+- 已放弃 SWE-agent 执行链路，统一使用 `E2B + codex exec`。
+- Phase2 中 Codex 只负责执行任务，不再在沙盒里做 claims 判断。
+- `claim_alignment.json` 改为 Runner 本地生成（路径不变）。
 
-Agent 已按阶段拆分到三个子目录：
+### Agent 目录
 
-- `p2c/agents/phase1/`
-  - `ingest_paper.py`
-  - `extract_fingerprint_guide.py`
-  - `extract_fingerprint_atomic.py`
-  - `extract_fingerprint_filter.py`
-  - `build_claims_ir.py`
-  - `compile_task_spec.py`
-- `p2c/agents/phase2/`
-  - `prepare_sandbox.py`
-  - `run_codex_exec.py`
-  - `collect_codex_outputs.py`
-  - `codex_exec_support.py`
-  - `codex_prompt_templates.py`
-- `p2c/agents/phase3/`
-  - `observe_metrics.py`
-  - `align_evidence.py`
-  - `verify_claims.py`
-  - `audit_report.py`
+- `p2c/agents/phase1/*`
+- `p2c/agents/phase2/*`
+- `p2c/agents/phase3/*`
 
-公共基类仍在 `p2c/agents/base.py`，编排入口仍在 `p2c/graph.py`。
+编排入口：`p2c/graph.py`，主入口：`p2c/main.py`。
 
-### 2) 当前技术路线（已变更）
+### Phase2 关键行为（当前实现）
 
-已放弃旧的 swe-agent 执行路径，改为 **E2B 官方支持的 Codex** 路线：
+1. **Gitless 执行**
+   - 本地 `--repo_dir` 上传到沙盒后直接执行。
+   - Codex 固定参数：
+     - `--skip-git-repo-check`
+     - `--dangerously-bypass-approvals-and-sandbox`
 
-- Runtime：E2B Sandbox
-- 执行器：`codex exec`
-- 主要 Agent：`prepare_sandbox` -> `run_codex_exec` -> `collect_codex_outputs`
+2. **Claims 本地化**
+   - 默认不上传 `claims_ir.json` 到沙盒。
+   - Phase2 仅上传：`task_spec.json`、`metric_contract.json`、repo、data。
+   - `run_manifest.json` / `claim_alignment.json` / `codex_worklog.jsonl` 由 Runner 本地组装并写回 artifacts。
 
-### 3) 当前已验证能力
+3. **依赖安装 Runner 主导**
+   - 先做 capability gate（`python3/pip/ensurepip/numpy`）。
+   - 再做 dependency bootstrap（支持后台执行+轮询日志）。
+   - legacy 依赖支持兼容映射（生成 `requirements.compat.txt`）。
+   - 关键日志：
+     - `execution/codex_outputs/dependency_bootstrap.log`
+     - `execution/codex_outputs/pip_install.log`
 
-- E2B 可以正常创建 Sandbox。
-- Codex 可以在 Sandbox 内执行并生成/运行简单程序。
-- 简单场景下可以回传文件和日志。
+4. **串行单任务 + 20 秒流式日志回传**
+   - `task_spec.tasks` 按顺序执行：每次只跑 1 个 task（1 次 `codex exec` 会话）。
+   - 默认 task 失败后继续下一个 task（不中断整批）。
+   - 运行期间每 20 秒从沙盒增量同步 `codex_exec.log` 到本地：
+     - `execution/codex_outputs/codex_exec.stream.log`
+   - 保留镜像日志：
+     - `execution/codex_outputs/codex_exec.log`
+     - `execution/codex_outputs/codex_main.log`
+     - `execution/codex_outputs/codex_repair.log`
 
-### 3.1) Phase 2 依赖能力链路（最新）
+5. **长任务稳定性**
+   - 长命令采用后台 + `pid/rc/log` 轮询，减少流式断开误杀。
+   - 断流时优先继续轮询，不立即 teardown。
+   - Phase2 全局硬超时：`45` 分钟（`GLOBAL_TIMEOUT_45M`）。
 
-Phase 2 现在按下面顺序处理依赖能力：
+6. **输出契约**
+   - `execution/codex_outputs/run_manifest.json`
+   - `execution/codex_outputs/codex_worklog.jsonl`
+   - `execution/codex_outputs/patches.diff`
+   - `execution/codex_outputs/claim_alignment.json`
+   - 失败时：`execution/codex_failure.json`
 
-1. 模板预装能力优先（推荐）  
-   使用 `scripts/build_e2b_codex_template.py` 构建自定义模板，并通过 `P2C_E2B_TEMPLATE` 指定。
-2. 运行时 sudo apt 兜底  
-   若 runtime 缺 pip，先探测 `sudo -n true`，可用时走 `sudo apt-get update/install`。
-3. legacy 兼容替代（默认开启）  
-   对 `tensorflow==1.15.4`、`numpy==1.13.3` 等旧 pin 生成 `requirements.compat.txt` 并重试安装。
-4. 若依赖仍不可用  
-   不进入 Codex main，执行 entrypoint probe 并写完整 fallback outputs + `execution/codex_failure.json`。
+### 最近一次实跑快照（run_id=`codex_e2b_001`）
 
-关键环境变量：
+- 模型/API切换后（`gpt-5.1`）可完成整批执行，`5` 个 task 中 `3` 个成功、`2` 个失败。
+- 失败任务：
+  - `task_01` (`main_gru_svm.py`)
+  - `task_04` (`main_mlp.py`)
+- 共性报错：`AttributeError: module 'tensorflow' has no attribute 'placeholder'`
+  - 属于典型 TF1 API 在 TF2 运行时不兼容。
+- 额外观察：
+  - `task_05` 有 `TASK_RESULT_MISSING_FROM_CODEX`，说明曾存在“任务执行后结果未完整落盘”的稳定性问题。
+- 建议优先查看：
+  - `execution/codex_outputs/task_run_results.json`
+  - `execution/codex_outputs/run_manifest.json`
+  - `execution/codex_outputs/dependency_solver.json`
 
+### Prompt 新增硬限制（已生效）
+
+- 必须为当前 `task_id` 写入一条 `task_run_results.json` 记录，禁止漏写。
+- 退出前必须校验 `task_run_results.json` 为合法 JSON 且包含当前 `task_id`。
+- 命中 TF1/TF2 API 不兼容（`tf.placeholder`/`tf.set_random_seed`/`tf.contrib`）时，统一标记：
+  - `status=failed_dependency`
+  - `reason_codes` 包含 `TF1_API_INCOMPATIBLE_WITH_TF2`
+- 执行失败时也必须写结构化产物（至少 `task_run_results.json` + `codex_worklog.jsonl`）。
+
+### TaskSpec（Breaking 变更）
+
+`task_spec.json` 使用任务数组，不再使用 `goal`：
+
+```json
+{
+  "tasks": [
+    {
+      "task_id": "task_01",
+      "entrypoint": "main.py",
+      "command": "python3 main.py --epochs 10",
+      "timeout_class": "medium",
+      "expected_metrics": ["accuracy"],
+      "hyperparams": {"epochs": 10}
+    }
+  ],
+  "constraints": {
+    "budget_minutes": 30,
+    "max_self_heal_iters": 2,
+    "network_policy": "default"
+  },
+  "selection_notes": ["code-verifiable only"]
+}
+```
+
+### 关键环境变量
+
+- `P2C_RUNTIME_BACKEND=e2b`
+- `E2B_API_KEY`
+- `OPENAI_API_KEY`
 - `P2C_E2B_TEMPLATE`（默认 `openai-codex`）
+- `P2C_CODEX_MODEL`（默认 `gpt-5.1`）
+- `P2C_E2B_UPLOAD_TMP_DIR`（可选；指定 E2B 上传临时文件目录，建议 `/workspace`）
+- `P2C_WORKSPACE_ROOT`（可选；覆盖沙盒工作目录根）
+- `P2C_UPLOAD_CLAIMS_TO_SANDBOX`（默认 `0`）
+- `P2C_DEP_BOOTSTRAP_ENABLE`（默认 `1`）
+- `P2C_DEP_BOOTSTRAP_APT_ENABLE`（默认 `1`）
 - `P2C_DEP_BOOTSTRAP_RUNTIME_SUDO_ENABLE`（默认 `1`）
 - `P2C_DEP_COMPAT_MODE`（默认 `1`）
 - `P2C_DEP_COMPAT_PROFILE`（默认 `tf1_legacy`）
-- `P2C_DEP_BOOTSTRAP_ENABLE`（默认 `1`）
-- `P2C_DEP_BOOTSTRAP_APT_ENABLE`（默认 `1`）
+- `P2C_TASK_SERIAL_MODE`（默认 `1`）
+- `P2C_TASK_BATCH_SIZE`（默认 `1`）
+- `P2C_TASK_CONTINUE_ON_FAILURE`（默认 `1`）
+- `P2C_TASK_RATE_LIMIT_RETRIES`（默认 `1`）
+- `P2C_TASK_RATE_LIMIT_BACKOFF_SEC`（默认 `60`）
+- `P2C_TASK_RATE_LIMIT_BACKOFF_MULTIPLIER`（默认 `2.0`）
+- `P2C_STREAM_SYNC_ENABLE`（默认 `1`）
+- `P2C_STREAM_SYNC_INTERVAL_SEC`（默认 `20`）
+- `P2C_STREAM_LOCAL_PATH`（默认 `execution/codex_outputs/codex_exec.stream.log`）
 
-### 3.2) 当前运行状态（2026-02）
+### 诊断顺序（推荐）
 
-- Phase 2 目前已可在真实仓库上“跑起来并进入训练/执行阶段”。  
-- 但整体耗时仍偏长（依赖准备 + 大仓库扫描 + 长任务执行）。  
-- OpenAI API 在高负载时容易触发速率上限（尤其 TPM），导致中断、重试或总时长进一步拉长。  
+1. `execution/codex_outputs/codex_exec.stream.log`
+2. `execution/codex_outputs/codex_exec.log`
+3. `execution/codex_failure.json`
 
-短期建议：
+### 运行示例
 
-1. 降低单次 prompt 与日志输出量（避免打印大 JSON 和超长目录列表）。  
-2. 先用更小 run_matrix 做冒烟，再跑完整配置。  
-3. 在 runner 侧继续增强限流退避与分批执行策略。  
-4. 优先使用预装依赖的自定义模板，减少运行时安装开销。
-
-### 4) 当前阻塞问题
-
-#### 问题 A：复杂仓库执行直接退出（error code 1）
-
-在当前多环境、长依赖链仓库中，Codex 经常在“目录/文件扫描阶段”后直接退出，未返回明确报错。  
-根据 OpenAI API log，执行停在类似步骤：
-
-```text
-Function call
-Arguments
-shell({
-  "command": [
-    "/bin/sh",
-    "-c",
-    "cd /home/user/workspace/repo && head -n 20 requirements.txt"
-  ]
-})
+```bash
+python -m p2c.main \
+  --phase 2 \
+  --paper_md Target/paper/full.md \
+  --paper_md_out output/paper.md \
+  --repo_dir Target/code \
+  --run_id codex_e2b_001 \
+  --artifacts_dir artifacts \
+  --budget_minutes 30 \
+  --max_self_heal_iters 2
 ```
 
-表现：执行到此后无有效错误信息，进程退出，`run_codex_exec` 只拿到 `exit code 1`。
+### 下一步（稳定性增强）
 
-#### 问题 B：Codex API 速率限制导致超时
-
-- 当前限制：约 `20000 tokens/min`  
-- 在复杂仓库中容易触发超时或中断。  
-- 需要加入更严格的节流/等待策略（人工或程序化 backoff）。
-
-### 5) 当前排查方向
-
-1. 强化 Phase 2 可观测性：记录最后命令、stdout/stderr tail、pip 日志、阶段日志。  
-2. 细分主执行与修复阶段日志，区分 main/repair 的真实失败位置。  
-3. 重点确认“无报错退出”是在：
-   - Codex CLI 层
-   - Sandbox 命令层
-   - API streaming 层（例如 deadline/stream 中断）
-
-### 5.1) 启动超时修复（已实现）
-
-Phase 2 的 `run_codex_exec` 已增加启动器健壮性处理：
-
-1. 背景启动命令使用 `timeout=0`（禁用 E2B 请求级超时）。  
-2. 若仍出现 `context deadline exceeded`，不会立即判失败；会先探测 `pid/rc` 文件确认后台进程是否已启动。  
-3. 只有在“超时且未探测到任何后台进程/退出码”时才判定 `CODEX_BACKGROUND_LAUNCH_FAILED`。
-
-### 5.2) 仍待优化项（性能/配额）
-
-1. 长任务的总耗时仍偏高，尤其在 legacy 依赖仓库上。  
-2. API 速率限制（TPM）仍是主要不稳定因素之一。  
-3. 后续会继续做 prompt 压缩、阶段拆分与更保守的重试节奏。
-
-### 6) TODO（下一步必须做）
-
-实现一个独立测试模块（不依赖主 pipeline 复杂逻辑），流程如下：
-
-1. 用同样方式创建 E2B Sandbox（预装 Codex）。  
-2. 注入 Key 与测试 repo。  
-3. 使用 E2B CLI 连接同一 Sandbox。  
-4. 手动逐条执行命令并观察输出/退出码。  
-5. 与 agent 自动执行路径对比差异（命令、cwd、环境变量、超时设置）。
-
-### 7) 当前阶段目标
-
-找出“agent 被杀死且无报错退出”的根因，并形成可复现最小案例，最终修复：
-
-- 能稳定执行复杂仓库首轮依赖分析与入口命令。  
-- 失败时必须有明确错误归因，而不是只有 `exit code 1`。  
+1. 失败原因探索：
+   - 将失败聚类为 `环境不兼容`、`依赖冲突`、`结果漏写`、`速率限制` 四类，沉淀标准 `reason_codes`。
+2. 跨仓库回归：
+   - 至少准备 3 类 repo（TF1 老项目 / 现代 PyTorch / 纯 sklearn），固定同一 Phase2 配置跑 A/B。
+3. 稳定性门禁：
+   - 以“任务结果完整率（每 task 必有记录）”和“可复现失败原因覆盖率”作为发布前门槛。
+4. Skills 化方向（可落地）：
+   - `phase2-failure-triage`：日志->分类->建议修复动作。
+   - `phase2-cross-repo-regression`：批量执行->汇总->回归对比报告。
 
 ---
 
 ## English
 
-### 1) Project Overview
+### Current Architecture
 
-This project implements a 3-phase automated pipeline:
+This repo currently uses a 3-phase pipeline:
 
-1. Phase 1: Extract reproducible paper facts from `Target/paper/full.md`, then generate `fingerprint`, `claims_ir`, and `task_spec`.  
-2. Phase 2: Execute code inside E2B Sandbox and collect structured run outputs.  
-3. Phase 3: Align evidence and verify claims, then generate final reports.
+1. `Phase1`: build executable `task_spec.json` from paper/code (task-oriented, no `goal=[claim_ids]`).
+2. `Phase2`: run tasks inside E2B sandbox (gitless), then assemble structured outputs locally in the runner.
+3. `Phase3`: perform claims evidence alignment and verification locally.
 
-Current orchestration lives in `p2c/main.py` and `p2c/graph.py`.
+Key direction:
 
-### 1.1) Current Code Layout (Refactored)
+- SWE-agent execution path is removed.
+- `E2B + codex exec` is the only execution backend.
+- Codex in sandbox is task execution only; claims judgment is local.
 
-Agents are now organized by phase:
+### Phase2 Behavior
 
-- `p2c/agents/phase1/`
-  - `ingest_paper.py`
-  - `extract_fingerprint_guide.py`
-  - `extract_fingerprint_atomic.py`
-  - `extract_fingerprint_filter.py`
-  - `build_claims_ir.py`
-  - `compile_task_spec.py`
-- `p2c/agents/phase2/`
-  - `prepare_sandbox.py`
-  - `run_codex_exec.py`
-  - `collect_codex_outputs.py`
-  - `codex_exec_support.py`
-  - `codex_prompt_templates.py`
-- `p2c/agents/phase3/`
-  - `observe_metrics.py`
-  - `align_evidence.py`
-  - `verify_claims.py`
-  - `audit_report.py`
+- Uploads repo/data + `task_spec.json` (+ optional `metric_contract.json`) to sandbox.
+- Does **not** upload claims by default.
+- Runs capability gate + dependency bootstrap (with background long-command polling).
+- Runs tasks in **serial single-task mode** (one `codex exec` session per task).
+- Continues to next task on failure by default.
+- Streams sandbox log delta every 20 seconds to:
+  - `execution/codex_outputs/codex_exec.stream.log`
+- Enforces a hard global timeout of `45 minutes`.
+- Builds structured outputs locally:
+  - `execution/codex_outputs/run_manifest.json`
+  - `execution/codex_outputs/codex_worklog.jsonl`
+  - `execution/codex_outputs/patches.diff`
+  - `execution/codex_outputs/claim_alignment.json`
+- Writes `execution/codex_failure.json` on failure with stage-level diagnostics.
 
-Shared base agent remains in `p2c/agents/base.py`, while orchestration remains in `p2c/graph.py`.
+### Latest Run Snapshot (`run_id=codex_e2b_001`)
 
-### 2) Execution Strategy (Updated)
+- After switching model/API (`gpt-5.1`), the batch completed end-to-end.
+- Result: `5` tasks total, `3` succeeded, `2` failed.
+- Failed tasks: `task_01` (`main_gru_svm.py`), `task_04` (`main_mlp.py`).
+- Shared error: `AttributeError: module 'tensorflow' has no attribute 'placeholder'` (TF1 API on TF2 runtime).
+- Additional signal: `task_05` had `TASK_RESULT_MISSING_FROM_CODEX`, indicating prior output-completeness instability.
 
-We have **dropped swe-agent** for execution and moved to the **official E2B + Codex** path:
+### Prompt Hard Constraints (Current)
 
-- Runtime: E2B Sandbox
-- Executor: `codex exec`
-- Main agents: `prepare_sandbox` -> `run_codex_exec` -> `collect_codex_outputs`
+- Must persist one run record for the current `task_id` in `task_run_results.json`.
+- Must validate JSON shape + current `task_id` presence before exit.
+- TF1-vs-TF2 API errors (`tf.placeholder` / `tf.set_random_seed` / `tf.contrib`) must be normalized as:
+  - `status=failed_dependency`
+  - `reason_code=TF1_API_INCOMPATIBLE_WITH_TF2`
+- Even on execution failure, structured outputs must still be written.
 
-### 3) What Works Today
+Recommended debug order:
+1. `execution/codex_outputs/codex_exec.stream.log`
+2. `execution/codex_outputs/codex_exec.log`
+3. `execution/codex_failure.json`
 
-- E2B sandbox creation works.
-- Codex can run and write simple programs in sandbox.
-- File and log collection works in simple scenarios.
+### Phase2 Codex Flags
 
-### 3.1) Phase 2 Dependency Capability Flow (Latest)
+Codex runs with fixed flags:
 
-Phase 2 now resolves dependencies in this order:
+- `--skip-git-repo-check`
+- `--dangerously-bypass-approvals-and-sandbox`
 
-1. Template preinstall first (recommended)  
-   Build a custom template with `scripts/build_e2b_codex_template.py`, then set `P2C_E2B_TEMPLATE`.
-2. Runtime sudo apt fallback  
-   If pip is missing, probe `sudo -n true`; when available, run `sudo apt-get update/install`.
-3. Legacy compatibility fallback (enabled by default)  
-   For old pins such as `tensorflow==1.15.4` and `numpy==1.13.3`, generate `requirements.compat.txt` and retry.
-4. If dependencies are still unresolved  
-   Skip Codex main, run one probe per entrypoint, and emit fallback outputs plus `execution/codex_failure.json`.
+Default model:
 
-Key environment variables:
+- `gpt-5.1` (override via `P2C_CODEX_MODEL`).
 
-- `P2C_E2B_TEMPLATE` (default `openai-codex`)
-- `P2C_DEP_BOOTSTRAP_RUNTIME_SUDO_ENABLE` (default `1`)
-- `P2C_DEP_COMPAT_MODE` (default `1`)
-- `P2C_DEP_COMPAT_PROFILE` (default `tf1_legacy`)
-- `P2C_DEP_BOOTSTRAP_ENABLE` (default `1`)
-- `P2C_DEP_BOOTSTRAP_APT_ENABLE` (default `1`)
+### Next Steps
 
-### 3.2) Current Runtime Status (2026-02)
+1. Build a failure taxonomy (`env incompat`, `dependency conflict`, `missing task result`, `rate limit`).
+2. Run cross-repo regression on at least three repo types (legacy TF1, modern PyTorch, pure sklearn).
+3. Gate releases with output completeness + failure-reason reproducibility.
+4. Potential skills to extract:
+   - `phase2-failure-triage`
+   - `phase2-cross-repo-regression`
 
-- Phase 2 can now run end-to-end far enough to enter real training/execution paths on complex repos.  
-- Runtime is still long in many cases (dependency bootstrap + repo scan + long-running workloads).  
-- API rate limits (especially TPM) are still a practical bottleneck and can trigger retries/timeouts.
+### TaskSpec Breaking Change
 
-Short-term recommendations:
-
-1. Keep prompts and logs compact (avoid dumping large JSON/files).  
-2. Run a small smoke run_matrix before full runs.  
-3. Continue improving runner-side backoff and staged execution.  
-4. Prefer custom preinstalled templates to reduce runtime install overhead.
-
-### 4) Current Blockers
-
-#### Issue A: Complex repo exits early with error code 1
-
-For this long, multi-environment dependency repo, Codex often exits right after directory/file scanning with no meaningful error.  
-From OpenAI API logs, execution often stops around:
-
-```text
-Function call
-Arguments
-shell({
-  "command": [
-    "/bin/sh",
-    "-c",
-    "cd /home/user/workspace/repo && head -n 20 requirements.txt"
-  ]
-})
-```
-
-Observed behavior: process exits after this step; `run_codex_exec` only gets `exit code 1`.
-
-#### Issue B: Codex API token rate limit causes timeouts
-
-- Current limit is around `20,000 tokens/min`.
-- Complex repos frequently hit timeout/interruption.
-- We likely need explicit wait/backoff throttling (manual or automated).
-
-### 5) Current Investigation Focus
-
-1. Improve Phase 2 observability: last command, stdout/stderr tail, pip tail, stage logs.  
-2. Separate stage logs (main vs repair) to locate real failure point.  
-3. Verify whether silent exits occur in:
-   - Codex CLI layer
-   - Sandbox command layer
-   - API streaming layer (deadline/stream interruption)
-
-### 5.1) Launcher Timeout Fix (Implemented)
-
-`run_codex_exec` now has launcher hardening:
-
-1. Background launcher call uses `timeout=0` to disable request-level timeout in E2B command RPC.  
-2. On `context deadline exceeded`, runner probes `pid/rc` before failing, to avoid false negatives when the process already started.  
-3. The stage is marked failed only if timeout happened and no running/exited process can be confirmed.
-
-### 5.2) Remaining Optimization Work (Performance/Quota)
-
-1. End-to-end runtime is still high on legacy-heavy repositories.  
-2. API TPM limits remain a key instability source.  
-3. Next iterations will focus on prompt compression, stage splitting, and more conservative retry pacing.
-
-### 6) TODO (Next Mandatory Task)
-
-Build an isolated test module (independent from full pipeline complexity):
-
-1. Create an E2B sandbox using the same method (Codex preinstalled).  
-2. Inject key and upload target repo.  
-3. Connect to the same sandbox via E2B CLI.  
-4. Run commands manually and observe outputs/exit codes.  
-5. Compare manual path vs agent path (command, cwd, env vars, timeout settings).
-
-### 7) Goal of This Stage
-
-Identify why the agent gets killed with no explicit error and provide a reproducible minimal case, then fix it:
-
-- Complex repo should complete first-pass dependency and entrypoint execution reliably.  
-- Failures must be diagnosable with explicit cause, not just `exit code 1`.
+`TaskSpec` now uses `tasks[]` (execution-first schema) instead of `goal`.
+Only code-verifiable objectives should be turned into tasks/metrics/hyperparameters.

@@ -18,6 +18,97 @@ USER_PROMPT_TEMPLATE = "Input: local runtime info. Output: execution/system_info
 DATA_DIR_NAMES = {"data", "dataset", "datasets", "input", "inputs"}
 DATA_SUFFIXES = {".csv", ".tsv", ".json", ".jsonl", ".parquet", ".npy", ".npz", ".txt", ".pt", ".pth"}
 
+PYTHON_SHIM = """#!/usr/bin/env sh
+set -eu
+exec python3 "$@"
+"""
+
+PIP_SHIM = """#!/usr/bin/env sh
+set -eu
+if python3 -m pip --version >/dev/null 2>&1; then
+  exec python3 -m pip "$@"
+fi
+exec pip3 "$@"
+"""
+
+APPLY_PATCH_SHIM = """#!/usr/bin/env sh
+set -eu
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+exec python3 "${SCRIPT_DIR}/p2c_apply_patch.py" "$@"
+"""
+
+APPLY_PATCH_PY = """#!/usr/bin/env python3
+from __future__ import annotations
+
+import subprocess
+import sys
+
+
+def _to_unified(payload: str) -> str:
+    if "*** Begin Patch" not in payload:
+        return payload
+
+    lines = payload.splitlines()
+    out: list[str] = []
+    idx = 0
+    while idx < len(lines):
+        line = lines[idx]
+        if line.startswith("*** Begin Patch") or line.startswith("*** End Patch"):
+            idx += 1
+            continue
+        if line.startswith("*** Update File: "):
+            path = line[len("*** Update File: ") :].strip()
+            out.append(f"--- {path}")
+            out.append(f"+++ {path}")
+            idx += 1
+            if idx < len(lines) and lines[idx].startswith("*** Move to: "):
+                idx += 1
+            while idx < len(lines):
+                cur = lines[idx]
+                if cur.startswith("*** "):
+                    break
+                if cur.startswith("@@") or cur.startswith("+") or cur.startswith("-") or cur.startswith(" "):
+                    out.append(cur)
+                idx += 1
+            continue
+        if line.startswith("*** Add File: "):
+            path = line[len("*** Add File: ") :].strip()
+            added: list[str] = []
+            idx += 1
+            while idx < len(lines):
+                cur = lines[idx]
+                if cur.startswith("*** "):
+                    break
+                if cur.startswith("+"):
+                    added.append(cur[1:])
+                idx += 1
+            out.append("--- /dev/null")
+            out.append(f"+++ {path}")
+            out.append(f"@@ -0,0 +1,{len(added)} @@")
+            out.extend([f"+{x}" for x in added])
+            continue
+        idx += 1
+    if not out:
+        return ""
+    return "\\n".join(out) + "\\n"
+
+
+def main() -> int:
+    raw = sys.stdin.read()
+    if not raw.strip():
+        return 0
+    patch_text = _to_unified(raw)
+    if not patch_text.strip():
+        sys.stderr.write("p2c_apply_patch: empty converted patch\\n")
+        return 2
+    proc = subprocess.run(["patch", "-p0"], input=patch_text, text=True)
+    return int(proc.returncode)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+"""
+
 
 class PrepareSandboxAgent(BaseAgent):
     def __init__(self, *args, **kwargs):
@@ -94,23 +185,26 @@ class PrepareSandboxAgent(BaseAgent):
             raise FileNotFoundError(f"repo_dir not found: {repo_dir}")
 
         task_spec_local = self.artifacts.path("task/task_spec.json")
+        metric_contract_local = self.artifacts.path("task/metric_contract.json")
         claims_ir_local = self.artifacts.path("fingerprint/claims_ir.json")
         if not task_spec_local.exists():
             raise FileNotFoundError(f"missing required artifact: {task_spec_local}")
-        if not claims_ir_local.exists():
-            raise FileNotFoundError(f"missing required artifact: {claims_ir_local}")
+        if not metric_contract_local.exists():
+            raise FileNotFoundError(f"missing required artifact: {metric_contract_local}")
 
         workspace_root = self._pick_workspace_root(runtime)
         workspace_repo_dir = f"{workspace_root}/repo"
         workspace_data_dir = f"{workspace_root}/data"
         workspace_inputs_dir = f"{workspace_root}/inputs"
         workspace_outputs_dir = f"{workspace_root}/outputs"
+        workspace_bin_dir = f"{workspace_root}/bin"
 
         ctx["workspace_root"] = workspace_root
         ctx["workspace_repo_dir"] = workspace_repo_dir
         ctx["workspace_data_dir"] = workspace_data_dir
         ctx["workspace_inputs_dir"] = workspace_inputs_dir
         ctx["workspace_outputs_dir"] = workspace_outputs_dir
+        ctx["workspace_bin_dir"] = workspace_bin_dir
         # Keep backward-compatible keys for agents that still look for runtime_*.
         ctx["runtime_repo_dir"] = workspace_repo_dir
 
@@ -118,13 +212,59 @@ class PrepareSandboxAgent(BaseAgent):
         data_q = shlex.quote(workspace_data_dir)
         inputs_q = shlex.quote(workspace_inputs_dir)
         outputs_q = shlex.quote(workspace_outputs_dir)
+        bin_q = shlex.quote(workspace_bin_dir)
         mk = runtime.run_command(
-            f"mkdir -p {repo_q} {data_q} {inputs_q} {outputs_q}",
+            f"mkdir -p {repo_q} {data_q} {inputs_q} {outputs_q} {bin_q}",
             cwd=workspace_root,
             timeout_sec=30,
         )
         if mk.rc != 0:
             raise RuntimeError(f"failed to prepare workspace dirs: {mk.stderr[:300]}")
+
+        # Install deterministic tool shims to avoid command guessing.
+        tools_local_dir = "execution/tools"
+        python_shim_local = self.artifacts.write_text(f"{tools_local_dir}/python", PYTHON_SHIM)
+        pip_shim_local = self.artifacts.write_text(f"{tools_local_dir}/pip", PIP_SHIM)
+        apply_patch_shim_local = self.artifacts.write_text(f"{tools_local_dir}/apply_patch", APPLY_PATCH_SHIM)
+        apply_patch_py_local = self.artifacts.write_text(f"{tools_local_dir}/p2c_apply_patch.py", APPLY_PATCH_PY)
+
+        tools_remote_dir = f"{workspace_inputs_dir}/tools"
+        runtime.upload_file(local_file=python_shim_local, remote_path=f"{tools_remote_dir}/python")
+        runtime.upload_file(local_file=pip_shim_local, remote_path=f"{tools_remote_dir}/pip")
+        runtime.upload_file(local_file=apply_patch_shim_local, remote_path=f"{tools_remote_dir}/apply_patch")
+        runtime.upload_file(local_file=apply_patch_py_local, remote_path=f"{tools_remote_dir}/p2c_apply_patch.py")
+
+        install_tools = runtime.run_command(
+            "bash -lc "
+            + shlex.quote(
+                f"mkdir -p {workspace_bin_dir} {tools_remote_dir} && "
+                f"cp {tools_remote_dir}/python {workspace_bin_dir}/python && "
+                f"cp {tools_remote_dir}/pip {workspace_bin_dir}/pip && "
+                f"cp {tools_remote_dir}/apply_patch {workspace_bin_dir}/apply_patch && "
+                f"cp {tools_remote_dir}/p2c_apply_patch.py {workspace_bin_dir}/p2c_apply_patch.py && "
+                f"chmod +x {workspace_bin_dir}/python {workspace_bin_dir}/pip "
+                f"{workspace_bin_dir}/apply_patch {workspace_bin_dir}/p2c_apply_patch.py"
+            ),
+            cwd=workspace_root,
+            timeout_sec=30,
+        )
+        if install_tools.rc != 0:
+            raise RuntimeError(f"failed to install tool shims: {install_tools.stderr[:300]}")
+
+        tool_summary_probe = runtime.run_command(
+            "bash -lc "
+            + shlex.quote(
+                f"PATH={workspace_bin_dir}:$PATH; "
+                "for t in python python3 pip pip3 apply_patch; do "
+                "  p=$(command -v \"$t\" 2>/dev/null || true); "
+                "  if [ -n \"$p\" ]; then echo \"$t=$p\"; else echo \"$t=MISSING\"; fi; "
+                "done"
+            ),
+            cwd=workspace_root,
+            timeout_sec=20,
+        )
+        tool_summary = "; ".join([x.strip() for x in (tool_summary_probe.stdout or "").splitlines() if x.strip()])
+        self.artifacts.append_text("execution/run.log", f"[prepare_sandbox] toolchain={tool_summary}\n")
 
         include_git = (os.getenv("P2C_INCLUDE_GIT") or "").strip() == "1"
         repo_excludes = None if include_git else [".git", ".git/**"]
@@ -134,7 +274,14 @@ class PrepareSandboxAgent(BaseAgent):
         )
         runtime.upload_dir(local_dir=repo_dir, remote_dir=workspace_repo_dir, exclude_globs=repo_excludes)
         runtime.upload_file(local_file=task_spec_local, remote_path=f"{workspace_inputs_dir}/task_spec.json")
-        runtime.upload_file(local_file=claims_ir_local, remote_path=f"{workspace_inputs_dir}/claims_ir.json")
+        runtime.upload_file(local_file=metric_contract_local, remote_path=f"{workspace_inputs_dir}/metric_contract.json")
+        upload_claims = (os.getenv("P2C_UPLOAD_CLAIMS_TO_SANDBOX") or "").strip() == "1"
+        if upload_claims and claims_ir_local.exists():
+            runtime.upload_file(local_file=claims_ir_local, remote_path=f"{workspace_inputs_dir}/claims_ir.json")
+        self.artifacts.append_text(
+            "execution/run.log",
+            f"[prepare_sandbox] upload_claims_to_sandbox={1 if upload_claims else 0}\n",
+        )
 
         entries: list[DataManifestEntry] = []
         for src in self._discover_data_entries(repo_dir):
@@ -211,5 +358,6 @@ class PrepareSandboxAgent(BaseAgent):
                 "data": workspace_data_dir,
                 "inputs": workspace_inputs_dir,
                 "outputs": workspace_outputs_dir,
+                "bin": workspace_bin_dir,
             },
         }

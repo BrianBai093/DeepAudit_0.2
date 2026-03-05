@@ -1,14 +1,60 @@
 {
   "claims": [
     {
-      "claim_id": "claim_11",
+      "claim_id": "claim_09",
       "type": "other",
-      "predicate": "The training uses a learning rate of 0.001.",
+      "predicate": "The learning rate used to train the logistic regression model in [7] is 0.001.",
       "metric": null,
       "target": 0.001,
       "baseline": null,
       "conditions": {
-        "scope": "Hyperparameter settings for training the logistic regression model in this study."
+        "scope": "Hyperparameter settings for the training process of the logistic regression model in [7]."
+      },
+      "aggregation": "average",
+      "evidence_set": [
+        "atomic_criteria[8]"
+      ],
+      "tolerance_policy": {
+        "abs_eps": 0.02,
+        "rel_eps": 0.03
+      },
+      "unverifiable_from_paper": false,
+      "code_verifiable": true,
+      "reason_codes": [],
+      "notes": "Generated via strict guide -> atomic -> filter pipeline aligned with paper_fingerprint_schema.md"
+    },
+    {
+      "claim_id": "claim_10",
+      "type": "other",
+      "predicate": "The batch size used to train the logistic regression model in [7] is 4.",
+      "metric": null,
+      "target": null,
+      "baseline": null,
+      "conditions": {
+        "scope": "Hyperparameter settings for the training process of the logistic regression model in [7]."
+      },
+      "aggregation": "average",
+      "evidence_set": [
+        "atomic_criteria[9]"
+      ],
+      "tolerance_policy": {
+        "abs_eps": 0.02,
+        "rel_eps": 0.03
+      },
+      "unverifiable_from_paper": false,
+      "code_verifiable": true,
+      "reason_codes": [],
+      "notes": "Generated via strict guide -> atomic -> filter pipeline aligned with paper_fingerprint_schema.md"
+    },
+    {
+      "claim_id": "claim_11",
+      "type": "other",
+      "predicate": "The number of training epochs for the logistic regression model in [7] is 30.",
+      "metric": null,
+      "target": null,
+      "baseline": null,
+      "conditions": {
+        "scope": "Hyperparameter settings for the training process of the logistic regression model in [7]."
       },
       "aggregation": "average",
       "evidence_set": [
@@ -19,18 +65,19 @@
         "rel_eps": 0.03
       },
       "unverifiable_from_paper": false,
+      "code_verifiable": true,
       "reason_codes": [],
       "notes": "Generated via strict guide -> atomic -> filter pipeline aligned with paper_fingerprint_schema.md"
     },
     {
       "claim_id": "claim_12",
       "type": "other",
-      "predicate": "The training uses a batch size of 4.",
+      "predicate": "Hyperparameters tuned include learning rate $( 0 .",
       "metric": null,
       "target": null,
       "baseline": null,
       "conditions": {
-        "scope": "Hyperparameter settings for training the logistic regression model in this study."
+        "scope": "from paper context"
       },
       "aggregation": "average",
       "evidence_set": [
@@ -41,18 +88,21 @@
         "rel_eps": 0.03
       },
       "unverifiable_from_paper": false,
-      "reason_codes": [],
+      "code_verifiable": true,
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ],
       "notes": "Generated via strict guide -> atomic -> filter pipeline aligned with paper_fingerprint_schema.md"
     },
     {
       "claim_id": "claim_13",
       "type": "other",
-      "predicate": "The training runs for 30 epochs.",
+      "predicate": "1 )$ , batch size $( 4 - 6 4 )$ , hidden units (4−16) for one-hidden-layer NN, SVM regularization strength $C$ $( 0 .",
       "metric": null,
       "target": null,
       "baseline": null,
       "conditions": {
-        "scope": "Hyperparameter settings for training the logistic regression model in this study."
+        "scope": "from paper context"
       },
       "aggregation": "average",
       "evidence_set": [
@@ -63,40 +113,21 @@
         "rel_eps": 0.03
       },
       "unverifiable_from_paper": false,
-      "reason_codes": [],
-      "notes": "Generated via strict guide -> atomic -> filter pipeline aligned with paper_fingerprint_schema.md"
-    },
-    {
-      "claim_id": "claim_14",
-      "type": "other",
-      "predicate": "Each model is trained using 10 different random seeds.",
-      "metric": null,
-      "target": null,
-      "baseline": null,
-      "conditions": {
-        "scope": "Other models and hyperparameter combinations in the experiment."
-      },
-      "aggregation": "average",
-      "evidence_set": [
-        "atomic_criteria[13]"
+      "code_verifiable": true,
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
       ],
-      "tolerance_policy": {
-        "abs_eps": 0.02,
-        "rel_eps": 0.03
-      },
-      "unverifiable_from_paper": false,
-      "reason_codes": [],
       "notes": "Generated via strict guide -> atomic -> filter pipeline aligned with paper_fingerprint_schema.md"
     },
     {
       "claim_id": "claim_15",
       "type": "other",
-      "predicate": "The 10 random seeds are used to produce different data splits.",
+      "predicate": "In this work, as in [7], local updates in batches are counted rather than local epochs, aligning with theoretical formulations and extending to related strategies based on FedAvg.",
       "metric": null,
       "target": null,
       "baseline": null,
       "conditions": {
-        "scope": "Other models and hyperparameter combinations in the experiment."
+        "scope": "from paper context"
       },
       "aggregation": "average",
       "evidence_set": [
@@ -107,18 +138,21 @@
         "rel_eps": 0.03
       },
       "unverifiable_from_paper": false,
-      "reason_codes": [],
+      "code_verifiable": true,
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ],
       "notes": "Generated via strict guide -> atomic -> filter pipeline aligned with paper_fingerprint_schema.md"
     },
     {
       "claim_id": "claim_16",
       "type": "other",
-      "predicate": "The numeric value or range for the learning rate is incomplete/truncated in the input; the text ends with the substring \"$( 0 .\".",
+      "predicate": "Client updates are computed as: $$ \\begin{array}{l} \\Delta_ {t} = \\frac {1}{| S |} \\sum_ {i \\in S} \\Delta_ {i} ^ {t} \\\\ m _ {t} = \\beta_ {1} m _ {t - 1} + (1 - \\beta_ {1}) \\Delta_ {t} \\tag {1} \\\\ v _ {t} = \\beta_ {2} v _ {t - 1} + (1 - \\beta_ {2}) (\\Delta_ {t}) ^ {2} \\\\ x _ {t + 1} = x _ {t} - \\eta \\frac {m _ {t}}{\\sqrt {v _ {t}} + \\tau} \\\\ \\end{array} $$ where $\\Delta _ { t }$ is the aggregated gradient update at time t, $S$ is the set of clients participating, $| S |$ is the number of clients in $S$ , $m _ { t }$ and $v _ { t }$ are the first and second moment estimates, $\\beta _ { 1 }$ and $\\beta _ { 2 }$ are the exponential decay rates for these moment estimates, $\\eta$ is the learning rate, and $\\tau$ is a small constant for numerical stability.",
       "metric": null,
       "target": null,
       "baseline": null,
       "conditions": {
-        "scope": "Input Facts (user-provided line)"
+        "scope": "from paper context"
       },
       "aggregation": "average",
       "evidence_set": [
@@ -129,18 +163,21 @@
         "rel_eps": 0.03
       },
       "unverifiable_from_paper": false,
-      "reason_codes": [],
+      "code_verifiable": true,
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
+      ],
       "notes": "Generated via strict guide -> atomic -> filter pipeline aligned with paper_fingerprint_schema.md"
     },
     {
       "claim_id": "claim_17",
       "type": "other",
-      "predicate": "Batch size is an integer in the inclusive range [4,64].",
+      "predicate": "Updates for the global and local control variables and model parameters are computed as follows: $$ \\begin{array}{l} \\boldsymbol {y} _ {i} \\leftarrow \\boldsymbol {y} _ {i} - \\eta_ {l} \\left(g _ {i} \\left(\\boldsymbol {y} _ {i}\\right) + \\boldsymbol {c} - \\boldsymbol {c} _ {i}\\right) \\\\ c _ {i} ^ {+} \\leftarrow (\\mathrm {i}) g _ {i} (\\boldsymbol {x}), \\text {o r (i i)} \\boldsymbol {c} _ {i} - \\boldsymbol {c} + \\frac {1}{K \\eta_ {l}} (\\boldsymbol {x} - \\boldsymbol {y} _ {i}) \\\\ \\boldsymbol {x} \\leftarrow \\boldsymbol {x} + \\frac {\\eta_ {g}}{| S |} \\sum_ {i \\in S} (\\boldsymbol {y} _ {i} - \\boldsymbol {x}) \\\\ \\boldsymbol {c} \\gets \\boldsymbol {c} + \\frac {1}{N} \\sum_ {i \\in S} (\\boldsymbol {c} _ {\\boldsymbol {i}} ^ {+} - \\boldsymbol {c} _ {\\boldsymbol {i}}) \\\\ \\end{array} $$ where $\\mathbf { { \\mathit { y } } } _ { i }$ is client update performed $K$ times, $\\eta$ is the learning rate, $g _ { i } ( y _ { i } )$ is the mini-batch gradient, and $_ { \\textbf { \\em x } }$ are the server parameters.",
       "metric": null,
       "target": null,
       "baseline": null,
       "conditions": {
-        "scope": "Hyperparameter: batch size for training."
+        "scope": "from paper context"
       },
       "aggregation": "average",
       "evidence_set": [
@@ -151,36 +188,17 @@
         "rel_eps": 0.03
       },
       "unverifiable_from_paper": false,
-      "reason_codes": [],
-      "notes": "Generated via strict guide -> atomic -> filter pipeline aligned with paper_fingerprint_schema.md"
-    },
-    {
-      "claim_id": "claim_18",
-      "type": "other",
-      "predicate": "Hidden units count for a one-hidden-layer neural network is an integer in the inclusive range [4,16].",
-      "metric": null,
-      "target": null,
-      "baseline": null,
-      "conditions": {
-        "scope": "Model: one-hidden-layer neural network architecture (hidden units)."
-      },
-      "aggregation": "average",
-      "evidence_set": [
-        "atomic_criteria[17]"
+      "code_verifiable": true,
+      "reason_codes": [
+        "HEURISTIC_FALLBACK"
       ],
-      "tolerance_policy": {
-        "abs_eps": 0.02,
-        "rel_eps": 0.03
-      },
-      "unverifiable_from_paper": false,
-      "reason_codes": [],
       "notes": "Generated via strict guide -> atomic -> filter pipeline aligned with paper_fingerprint_schema.md"
     },
     {
       "claim_id": "claim_19",
       "type": "other",
-      "predicate": "In this work, as in [7], local updates in batches are counted rather than local epochs, aligning with theoretical formulations and extending to related strategies based on FedAvg.",
-      "metric": null,
+      "predicate": "Logistic regression (LR), one-layer neural network (1LNN), support vector machine (SVM) with a linear kernel achieve the highest accuracies, with SVM leading at $8 3 .",
+      "metric": "accuracy",
       "target": null,
       "baseline": null,
       "conditions": {
@@ -195,6 +213,7 @@
         "rel_eps": 0.03
       },
       "unverifiable_from_paper": false,
+      "code_verifiable": true,
       "reason_codes": [
         "HEURISTIC_FALLBACK"
       ],
@@ -203,9 +222,9 @@
     {
       "claim_id": "claim_20",
       "type": "other",
-      "predicate": "Client updates are computed as: $$ \\begin{array}{l} \\Delta_ {t} = \\frac {1}{| S |} \\sum_ {i \\in S} \\Delta_ {i} ^ {t} \\\\ m _ {t} = \\beta_ {1} m _ {t - 1} + (1 - \\beta_ {1}) \\Delta_ {t} \\tag {1} \\\\ v _ {t} = \\beta_ {2} v _ {t - 1} + (1 - \\beta_ {2}) (\\Delta_ {t}) ^ {2} \\\\ x _ {t + 1} = x _ {t} - \\eta \\frac {m _ {t}}{\\sqrt {v _ {t}} + \\tau} \\\\ \\end{array} $$ where $\\Delta _ { t }$ is the aggregated gradient update at time t, $S$ is the set of clients participating, $| S |$ is the number of clients in $S$ , $m _ { t }$ and $v _ { t }$ are the first and second moment estimates, $\\beta _ { 1 }$ and $\\beta _ { 2 }$ are the exponential decay rates for these moment estimates, $\\eta$ is the learning rate, and $\\tau$ is a small constant for numerical stability.",
+      "predicate": "The [7] model refers to the LR model configured with a learning rate of 0.001 and a batch size of 4, trained over 30 epochs.",
       "metric": null,
-      "target": null,
+      "target": 0.001,
       "baseline": null,
       "conditions": {
         "scope": "from paper context"
@@ -219,6 +238,7 @@
         "rel_eps": 0.03
       },
       "unverifiable_from_paper": false,
+      "code_verifiable": true,
       "reason_codes": [
         "HEURISTIC_FALLBACK"
       ],
@@ -227,7 +247,7 @@
     {
       "claim_id": "claim_21",
       "type": "other",
-      "predicate": "Updates for the global and local control variables and model parameters are computed as follows: $$ \\begin{array}{l} \\boldsymbol {y} _ {i} \\leftarrow \\boldsymbol {y} _ {i} - \\eta_ {l} \\left(g _ {i} \\left(\\boldsymbol {y} _ {i}\\right) + \\boldsymbol {c} - \\boldsymbol {c} _ {i}\\right) \\\\ c _ {i} ^ {+} \\leftarrow (\\mathrm {i}) g _ {i} (\\boldsymbol {x}), \\text {o r (i i)} \\boldsymbol {c} _ {i} - \\boldsymbol {c} + \\frac {1}{K \\eta_ {l}} (\\boldsymbol {x} - \\boldsymbol {y} _ {i}) \\\\ \\boldsymbol {x} \\leftarrow \\boldsymbol {x} + \\frac {\\eta_ {g}}{| S |} \\sum_ {i \\in S} (\\boldsymbol {y} _ {i} - \\boldsymbol {x}) \\\\ \\boldsymbol {c} \\gets \\boldsymbol {c} + \\frac {1}{N} \\sum_ {i \\in S} (\\boldsymbol {c} _ {\\boldsymbol {i}} ^ {+} - \\boldsymbol {c} _ {\\boldsymbol {i}}) \\\\ \\end{array} $$ where $\\mathbf { { \\mathit { y } } } _ { i }$ is client update performed $K$ times, $\\eta$ is the learning rate, $g _ { i } ( y _ { i } )$ is the mini-batch gradient, and $_ { \\textbf { \\em x } }$ are the server parameters.",
+      "predicate": "The models were all trained for 30 epochs using their respective best performing hyperparameter settings from centralized (pooled) tuning.",
       "metric": null,
       "target": null,
       "baseline": null,
@@ -243,15 +263,16 @@
         "rel_eps": 0.03
       },
       "unverifiable_from_paper": false,
+      "code_verifiable": true,
       "reason_codes": [
         "HEURISTIC_FALLBACK"
       ],
       "notes": "Generated via strict guide -> atomic -> filter pipeline aligned with paper_fingerprint_schema.md"
     },
     {
-      "claim_id": "claim_23",
+      "claim_id": "claim_22",
       "type": "other",
-      "predicate": "Logistic regression (LR), one-layer neural network (1LNN), support vector machine (SVM) with a linear kernel achieve the highest accuracies, with SVM leading at $8 3 .",
+      "predicate": "We compare test accuracies (averaged over 10 seeds) of LR, 1LNN, and SVM local models and using FedAvg, FedAdam, FedYogi and SCAFFOLD FL algorithms.",
       "metric": "accuracy",
       "target": null,
       "baseline": null,
@@ -260,13 +281,14 @@
       },
       "aggregation": "average",
       "evidence_set": [
-        "atomic_criteria[22]"
+        "atomic_criteria[21]"
       ],
       "tolerance_policy": {
         "abs_eps": 0.02,
         "rel_eps": 0.03
       },
       "unverifiable_from_paper": false,
+      "code_verifiable": true,
       "reason_codes": [
         "HEURISTIC_FALLBACK"
       ],
@@ -275,9 +297,9 @@
     {
       "claim_id": "claim_24",
       "type": "other",
-      "predicate": "The [7] model refers to the LR model configured with a learning rate of 0.001 and a batch size of 4, trained over 30 epochs.",
-      "metric": null,
-      "target": 0.001,
+      "predicate": "TABLE III TEST ACCURACIES FOR LOCAL TRAINING COMPARED TO FL ALGORITHMS <table><tr><td></td><td>Cleveland</td><td>Hungary</td><td>VA</td><td>FedAvg</td><td>FedAdam</td><td>FedYogi</td><td>SCAFFOLD</td></tr><tr><td>LR</td><td>0.667 ± 0.0831</td><td>0.659 ± 0.0901</td><td>0.608 ± 0.0616</td><td>0.703 ± 0.0262</td><td>0.72 ± 0.0191</td><td>0.721 ± 0.0129</td><td>0.703 ± 0.262</td></tr><tr><td>1LNN</td><td>0.728 ± 0.0462</td><td>0.686 ± 0.0558</td><td>0.648 ± 0.0742</td><td>0.598 ± 0.0223</td><td>0.726 ± 0.483</td><td>0.732 ± 0.329</td><td>0.598 ± 0.1025</td></tr><tr><td>SVM</td><td>0.779 ± 0.0247</td><td>0.628 ± 0.0873</td><td>0.661 ± 0.0719</td><td>0.731 ± 0.0223</td><td>0.736 ± 0.372</td><td>0.738 ± 0.276</td><td>0.731 ± 0.0223</td></tr></table> # IV.",
+      "metric": "accuracy",
+      "target": 0.667,
       "baseline": null,
       "conditions": {
         "scope": "from paper context"
@@ -291,6 +313,7 @@
         "rel_eps": 0.03
       },
       "unverifiable_from_paper": false,
+      "code_verifiable": true,
       "reason_codes": [
         "HEURISTIC_FALLBACK"
       ],
@@ -299,9 +322,9 @@
     {
       "claim_id": "claim_25",
       "type": "other",
-      "predicate": "The models were all trained for 30 epochs using their respective best performing hyperparameter settings from centralized (pooled) tuning.",
+      "predicate": "Like age, it TABLE IV MEAN ABSOLUTE SHAP VALUES FOR EACH FEATURE AND THEIR IMPORTANCE RANKING (IN PARANTHES IS) <table><tr><td></td><td>oldpeak</td><td>cp</td><td>exang</td><td>sex</td><td>thalach</td><td>fbs</td><td>chol</td><td>restecg</td><td>trestbps</td><td>age</td></tr><tr><td>LR</td><td>0.57 (1)</td><td>0.53 (2)</td><td>0.51 (3)</td><td>0.44 (4)</td><td>0.37 (5)</td><td>0.18 (6)</td><td>0.16 (7)</td><td>0.13 (8)</td><td>0.03 (9)</td><td>0.03 (10)</td></tr><tr><td>SVM</td><td>0.44(1)</td><td>0.44 (2)</td><td>0.38 (3)</td><td>0.36 (4)</td><td>0.18 (5)</td><td>0.14 (6)</td><td>0.13 (7)</td><td>0.04 (9)</td><td>0.01 (10)</td><td>0.08 (8)</td></tr><tr><td>1LNN</td><td>0.1 (1)</td><td>0.07 (5)</td><td>0.09 (2)</td><td>0.05 (6)</td><td>0.08 (3)</td><td>0.02 (7)</td><td>0.07 (4)</td><td>0.02 (8)</td><td>0.01 (9)</td><td>0.0 (10)</td></tr><tr><td>NB</td><td>0.11 (3)</td><td>0.09 (4)</td><td>0.15 (1)</td><td>0.11 (2)</td><td>0.06 (6)</td><td>0.04 (7)</td><td>0.06 (5)</td><td>0.01 (10)</td><td>0.03 (9)</td><td>0.03 (8)</td></tr><tr><td>RF</td><td>0.1 (2)</td><td>0.17 (1)</td><td>0.09 (3)</td><td>0.08 (4)</td><td>0.06 (6)</td><td>0.02 (9)</td><td>0.06 (5)</td><td>0.01 (10)</td><td>0.03 (8)</td><td>0.04 (7)</td></tr><tr><td>DT</td><td>0.0 (5)</td><td>0.38 (1)</td><td>0.05 (4)</td><td>0.08 (2)</td><td>0.0 (5)</td><td>0.0 (5)</td><td>0.06 (3)</td><td>0.0 (5)</td><td>0.0 (5)</td><td>0.0 (5)</td></tr><tr><td>KNN</td><td>0.0 (5)</td><td>0.0 (5)</td><td>0.0 (5)</td><td>0.0 (5)</td><td>0.22 (1)</td><td>0.0 (5)</td><td>0.17 (2)</td><td>0.0 (5)</td><td>0.09 (3)</td><td>0.06 (4)</td></tr></table> serves as a general health indicator rather than a direct measure of heart function.",
       "metric": null,
-      "target": null,
+      "target": 0.57,
       "baseline": null,
       "conditions": {
         "scope": "from paper context"
@@ -315,6 +338,7 @@
         "rel_eps": 0.03
       },
       "unverifiable_from_paper": false,
+      "code_verifiable": true,
       "reason_codes": [
         "HEURISTIC_FALLBACK"
       ],
@@ -322,8 +346,8 @@
     },
     {
       "claim_id": "claim_26",
-      "type": "other",
-      "predicate": "We compare test accuracies (averaged over 10 seeds) of LR, 1LNN, and SVM local models and using FedAvg, FedAdam, FedYogi and SCAFFOLD FL algorithms.",
+      "type": "relative",
+      "predicate": "In the centralized setup, various binary classification algorithms are trained on pooled data, with a support vector machine (SVM) achieving the highest testing accuracy of $8 3 .",
       "metric": "accuracy",
       "target": null,
       "baseline": null,
@@ -335,10 +359,11 @@
         "atomic_criteria[25]"
       ],
       "tolerance_policy": {
-        "abs_eps": 0.02,
-        "rel_eps": 0.03
+        "abs_eps": 0.005,
+        "rel_eps": 0.02
       },
-      "unverifiable_from_paper": false,
+      "unverifiable_from_paper": true,
+      "code_verifiable": false,
       "reason_codes": [
         "HEURISTIC_FALLBACK"
       ],
@@ -347,9 +372,9 @@
     {
       "claim_id": "claim_28",
       "type": "other",
-      "predicate": "TABLE III TEST ACCURACIES FOR LOCAL TRAINING COMPARED TO FL ALGORITHMS <table><tr><td></td><td>Cleveland</td><td>Hungary</td><td>VA</td><td>FedAvg</td><td>FedAdam</td><td>FedYogi</td><td>SCAFFOLD</td></tr><tr><td>LR</td><td>0.667 ± 0.0831</td><td>0.659 ± 0.0901</td><td>0.608 ± 0.0616</td><td>0.703 ± 0.0262</td><td>0.72 ± 0.0191</td><td>0.721 ± 0.0129</td><td>0.703 ± 0.262</td></tr><tr><td>1LNN</td><td>0.728 ± 0.0462</td><td>0.686 ± 0.0558</td><td>0.648 ± 0.0742</td><td>0.598 ± 0.0223</td><td>0.726 ± 0.483</td><td>0.732 ± 0.329</td><td>0.598 ± 0.1025</td></tr><tr><td>SVM</td><td>0.779 ± 0.0247</td><td>0.628 ± 0.0873</td><td>0.661 ± 0.0719</td><td>0.731 ± 0.0223</td><td>0.736 ± 0.372</td><td>0.738 ± 0.276</td><td>0.731 ± 0.0223</td></tr></table> # IV.",
-      "metric": "accuracy",
-      "target": 0.667,
+      "predicate": "PMLR, 2020, pp.",
+      "metric": null,
+      "target": null,
       "baseline": null,
       "conditions": {
         "scope": "from paper context"
@@ -363,30 +388,7 @@
         "rel_eps": 0.03
       },
       "unverifiable_from_paper": false,
-      "reason_codes": [
-        "HEURISTIC_FALLBACK"
-      ],
-      "notes": "Generated via strict guide -> atomic -> filter pipeline aligned with paper_fingerprint_schema.md"
-    },
-    {
-      "claim_id": "claim_29",
-      "type": "other",
-      "predicate": "Like age, it TABLE IV MEAN ABSOLUTE SHAP VALUES FOR EACH FEATURE AND THEIR IMPORTANCE RANKING (IN PARANTHES IS) <table><tr><td></td><td>oldpeak</td><td>cp</td><td>exang</td><td>sex</td><td>thalach</td><td>fbs</td><td>chol</td><td>restecg</td><td>trestbps</td><td>age</td></tr><tr><td>LR</td><td>0.57 (1)</td><td>0.53 (2)</td><td>0.51 (3)</td><td>0.44 (4)</td><td>0.37 (5)</td><td>0.18 (6)</td><td>0.16 (7)</td><td>0.13 (8)</td><td>0.03 (9)</td><td>0.03 (10)</td></tr><tr><td>SVM</td><td>0.44(1)</td><td>0.44 (2)</td><td>0.38 (3)</td><td>0.36 (4)</td><td>0.18 (5)</td><td>0.14 (6)</td><td>0.13 (7)</td><td>0.04 (9)</td><td>0.01 (10)</td><td>0.08 (8)</td></tr><tr><td>1LNN</td><td>0.1 (1)</td><td>0.07 (5)</td><td>0.09 (2)</td><td>0.05 (6)</td><td>0.08 (3)</td><td>0.02 (7)</td><td>0.07 (4)</td><td>0.02 (8)</td><td>0.01 (9)</td><td>0.0 (10)</td></tr><tr><td>NB</td><td>0.11 (3)</td><td>0.09 (4)</td><td>0.15 (1)</td><td>0.11 (2)</td><td>0.06 (6)</td><td>0.04 (7)</td><td>0.06 (5)</td><td>0.01 (10)</td><td>0.03 (9)</td><td>0.03 (8)</td></tr><tr><td>RF</td><td>0.1 (2)</td><td>0.17 (1)</td><td>0.09 (3)</td><td>0.08 (4)</td><td>0.06 (6)</td><td>0.02 (9)</td><td>0.06 (5)</td><td>0.01 (10)</td><td>0.03 (8)</td><td>0.04 (7)</td></tr><tr><td>DT</td><td>0.0 (5)</td><td>0.38 (1)</td><td>0.05 (4)</td><td>0.08 (2)</td><td>0.0 (5)</td><td>0.0 (5)</td><td>0.06 (3)</td><td>0.0 (5)</td><td>0.0 (5)</td><td>0.0 (5)</td></tr><tr><td>KNN</td><td>0.0 (5)</td><td>0.0 (5)</td><td>0.0 (5)</td><td>0.0 (5)</td><td>0.22 (1)</td><td>0.0 (5)</td><td>0.17 (2)</td><td>0.0 (5)</td><td>0.09 (3)</td><td>0.06 (4)</td></tr></table> serves as a general health indicator rather than a direct measure of heart function.",
-      "metric": null,
-      "target": 0.57,
-      "baseline": null,
-      "conditions": {
-        "scope": "from paper context"
-      },
-      "aggregation": "average",
-      "evidence_set": [
-        "atomic_criteria[28]"
-      ],
-      "tolerance_policy": {
-        "abs_eps": 0.02,
-        "rel_eps": 0.03
-      },
-      "unverifiable_from_paper": false,
+      "code_verifiable": true,
       "reason_codes": [
         "HEURISTIC_FALLBACK"
       ],
@@ -395,7 +397,7 @@
     {
       "claim_id": "claim_30",
       "type": "relative",
-      "predicate": "In the centralized setup, various binary classification algorithms are trained on pooled data, with a support vector machine (SVM) achieving the highest testing accuracy of $8 3 .",
+      "predicate": "Once again, SVM is the top-performing model in the federated setting, achieving the highest test accuracy across the four aggregation strategies; the highest being $7 3 .",
       "metric": "accuracy",
       "target": null,
       "baseline": null,
@@ -411,15 +413,66 @@
         "rel_eps": 0.02
       },
       "unverifiable_from_paper": true,
+      "code_verifiable": false,
       "reason_codes": [
         "HEURISTIC_FALLBACK"
       ],
       "notes": "Generated via strict guide -> atomic -> filter pipeline aligned with paper_fingerprint_schema.md"
     },
     {
-      "claim_id": "claim_33",
+      "claim_id": "claim_31",
       "type": "absolute",
       "predicate": "[7] accuracy = 78.7",
+      "metric": "accuracy",
+      "target": null,
+      "baseline": null,
+      "conditions": {
+        "scope": "from table in paper"
+      },
+      "aggregation": "best",
+      "evidence_set": [
+        "atomic_criteria[30]"
+      ],
+      "tolerance_policy": {
+        "abs_eps": 0.005,
+        "rel_eps": 0.02
+      },
+      "unverifiable_from_paper": true,
+      "code_verifiable": false,
+      "reason_codes": [
+        "TABLE_EXPANDED"
+      ],
+      "notes": "Generated via strict guide -> atomic -> filter pipeline aligned with paper_fingerprint_schema.md"
+    },
+    {
+      "claim_id": "claim_32",
+      "type": "absolute",
+      "predicate": "LR accuracy = 80.5",
+      "metric": "accuracy",
+      "target": null,
+      "baseline": null,
+      "conditions": {
+        "scope": "from table in paper"
+      },
+      "aggregation": "best",
+      "evidence_set": [
+        "atomic_criteria[31]"
+      ],
+      "tolerance_policy": {
+        "abs_eps": 0.005,
+        "rel_eps": 0.02
+      },
+      "unverifiable_from_paper": true,
+      "code_verifiable": true,
+      "reason_codes": [
+        "TABLE_EXPANDED"
+      ],
+      "notes": "Generated via strict guide -> atomic -> filter pipeline aligned with paper_fingerprint_schema.md"
+    },
+    {
+      "claim_id": "claim_33",
+      "type": "absolute",
+      "predicate": "1LNN accuracy = 82.1",
       "metric": "accuracy",
       "target": null,
       "baseline": null,
@@ -435,6 +488,7 @@
         "rel_eps": 0.02
       },
       "unverifiable_from_paper": true,
+      "code_verifiable": false,
       "reason_codes": [
         "TABLE_EXPANDED"
       ],
@@ -443,7 +497,7 @@
     {
       "claim_id": "claim_34",
       "type": "absolute",
-      "predicate": "LR accuracy = 80.5",
+      "predicate": "SVM accuracy = 83.3",
       "metric": "accuracy",
       "target": null,
       "baseline": null,
@@ -459,6 +513,7 @@
         "rel_eps": 0.02
       },
       "unverifiable_from_paper": true,
+      "code_verifiable": false,
       "reason_codes": [
         "TABLE_EXPANDED"
       ],
@@ -467,7 +522,7 @@
     {
       "claim_id": "claim_35",
       "type": "absolute",
-      "predicate": "1LNN accuracy = 82.1",
+      "predicate": "NB accuracy = 78.5",
       "metric": "accuracy",
       "target": null,
       "baseline": null,
@@ -483,6 +538,7 @@
         "rel_eps": 0.02
       },
       "unverifiable_from_paper": true,
+      "code_verifiable": false,
       "reason_codes": [
         "TABLE_EXPANDED"
       ],
@@ -491,7 +547,7 @@
     {
       "claim_id": "claim_36",
       "type": "absolute",
-      "predicate": "SVM accuracy = 83.3",
+      "predicate": "DT accuracy = 78.1",
       "metric": "accuracy",
       "target": null,
       "baseline": null,
@@ -507,6 +563,7 @@
         "rel_eps": 0.02
       },
       "unverifiable_from_paper": true,
+      "code_verifiable": false,
       "reason_codes": [
         "TABLE_EXPANDED"
       ],
@@ -515,7 +572,7 @@
     {
       "claim_id": "claim_37",
       "type": "absolute",
-      "predicate": "NB accuracy = 78.5",
+      "predicate": "RF accuracy = 80.3",
       "metric": "accuracy",
       "target": null,
       "baseline": null,
@@ -531,6 +588,7 @@
         "rel_eps": 0.02
       },
       "unverifiable_from_paper": true,
+      "code_verifiable": false,
       "reason_codes": [
         "TABLE_EXPANDED"
       ],
@@ -539,7 +597,7 @@
     {
       "claim_id": "claim_38",
       "type": "absolute",
-      "predicate": "DT accuracy = 78.1",
+      "predicate": "KNN accuracy = 68.6",
       "metric": "accuracy",
       "target": null,
       "baseline": null,
@@ -555,54 +613,7 @@
         "rel_eps": 0.02
       },
       "unverifiable_from_paper": true,
-      "reason_codes": [
-        "TABLE_EXPANDED"
-      ],
-      "notes": "Generated via strict guide -> atomic -> filter pipeline aligned with paper_fingerprint_schema.md"
-    },
-    {
-      "claim_id": "claim_39",
-      "type": "absolute",
-      "predicate": "RF accuracy = 80.3",
-      "metric": "accuracy",
-      "target": null,
-      "baseline": null,
-      "conditions": {
-        "scope": "from table in paper"
-      },
-      "aggregation": "best",
-      "evidence_set": [
-        "atomic_criteria[38]"
-      ],
-      "tolerance_policy": {
-        "abs_eps": 0.005,
-        "rel_eps": 0.02
-      },
-      "unverifiable_from_paper": true,
-      "reason_codes": [
-        "TABLE_EXPANDED"
-      ],
-      "notes": "Generated via strict guide -> atomic -> filter pipeline aligned with paper_fingerprint_schema.md"
-    },
-    {
-      "claim_id": "claim_40",
-      "type": "absolute",
-      "predicate": "KNN accuracy = 68.6",
-      "metric": "accuracy",
-      "target": null,
-      "baseline": null,
-      "conditions": {
-        "scope": "from table in paper"
-      },
-      "aggregation": "best",
-      "evidence_set": [
-        "atomic_criteria[39]"
-      ],
-      "tolerance_policy": {
-        "abs_eps": 0.005,
-        "rel_eps": 0.02
-      },
-      "unverifiable_from_paper": true,
+      "code_verifiable": false,
       "reason_codes": [
         "TABLE_EXPANDED"
       ],

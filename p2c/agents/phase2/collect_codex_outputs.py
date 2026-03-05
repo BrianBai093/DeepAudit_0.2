@@ -28,25 +28,28 @@ class CollectCodexOutputsAgent(BaseAgent):
 
         outputs_dir = str(ctx["workspace_outputs_dir"])
 
-        files = {
+        raw_files = {
+            f"{outputs_dir}/codex_exec.log": "execution/codex_outputs/codex_exec.log",
+            f"{outputs_dir}/codex_main.log": "execution/codex_outputs/codex_main.log",
+            f"{outputs_dir}/codex_repair.log": "execution/codex_outputs/codex_repair.log",
+            f"{outputs_dir}/task_run_results.json": "execution/codex_outputs/task_run_results.json",
+            f"{outputs_dir}/patches.diff": "execution/codex_outputs/patches.diff",
+            f"{outputs_dir}/codex_exec.stream.log": "execution/codex_outputs/codex_exec.stream.log",
+        }
+        optional_files = {
             f"{outputs_dir}/run_manifest.json": "execution/codex_outputs/run_manifest.json",
             f"{outputs_dir}/claim_alignment.json": "execution/codex_outputs/claim_alignment.json",
             f"{outputs_dir}/codex_worklog.jsonl": "execution/codex_outputs/codex_worklog.jsonl",
-            f"{outputs_dir}/patches.diff": "execution/codex_outputs/patches.diff",
-            f"{outputs_dir}/codex_exec.log": "execution/codex_outputs/codex_exec.log",
-        }
-        optional_files = {
             f"{outputs_dir}/dependency_solver.json": "execution/codex_outputs/dependency_solver.json",
             f"{outputs_dir}/pip_install.log": "execution/codex_outputs/pip_install.log",
             f"{outputs_dir}/capability_probe.json": "execution/codex_outputs/capability_probe.json",
             f"{outputs_dir}/dependency_bootstrap.log": "execution/codex_outputs/dependency_bootstrap.log",
             f"{outputs_dir}/codex_failure.json": "execution/codex_outputs/codex_failure.json",
-            f"{outputs_dir}/codex_main.log": "execution/codex_outputs/codex_main.log",
-            f"{outputs_dir}/codex_repair.log": "execution/codex_outputs/codex_repair.log",
+            f"{outputs_dir}/toolchain_probe.json": "execution/codex_outputs/toolchain_probe.json",
         }
 
         reason_codes: list[str] = []
-        for remote, rel in files.items():
+        for remote, rel in raw_files.items():
             try:
                 runtime.download_file(remote, self.artifacts.path(rel))
             except Exception as e:  # noqa: BLE001
@@ -54,12 +57,25 @@ class CollectCodexOutputsAgent(BaseAgent):
                     self.artifacts.write_text(rel, "")
                     reason_codes.append("PATCH_DIFF_UNAVAILABLE")
                     continue
-                raise RuntimeError(f"failed to download {remote}: {e}") from e
+                if remote.endswith("/codex_exec.stream.log"):
+                    # Local stream log may already be assembled by runner; keep non-blocking.
+                    if not self.artifacts.path(rel).exists():
+                        self.artifacts.write_text(rel, "")
+                    reason_codes.append("STREAM_LOG_REMOTE_MISSING")
+                    continue
+                self.artifacts.write_text(rel, "")
+                reason_codes.append(f"OPTIONAL_RAW_MISSING:{Path(remote).name}")
         for remote, rel in optional_files.items():
             try:
                 runtime.download_file(remote, self.artifacts.path(rel))
             except Exception:  # noqa: BLE001
                 continue
+
+        # Runner-local contract: these two files must exist by end of run_codex_exec.
+        if not self.artifacts.path("execution/codex_outputs/run_manifest.json").exists():
+            raise RuntimeError("missing local run_manifest.json from runner assembly")
+        if not self.artifacts.path("execution/codex_outputs/claim_alignment.json").exists():
+            raise RuntimeError("missing local claim_alignment.json from runner assembly")
 
         run_manifest_raw = self.artifacts.path("execution/codex_outputs/run_manifest.json").read_text(
             encoding="utf-8", errors="ignore"
@@ -98,6 +114,9 @@ class CollectCodexOutputsAgent(BaseAgent):
             "codex_outputs": {
                 "run_manifest_runs": len(run_manifest.runs),
                 "aligned_claims": len(claim_alignment.claims),
+                "stream_log_bytes": self.artifacts.path("execution/codex_outputs/codex_exec.stream.log").stat().st_size
+                if self.artifacts.path("execution/codex_outputs/codex_exec.stream.log").exists()
+                else 0,
                 "reason_codes": reason_codes,
             }
         }
