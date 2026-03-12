@@ -174,10 +174,15 @@ class ClaimsIR(BaseModel):
 
 
 class Entrypoint(BaseModel):
+    entrypoint_id: str | None = None
     path: str
     command: str
+    cwd: str = "."
+    runtime: str = "python"
+    dependency_profile_id: str | None = None
     confidence: float = Field(ge=0, le=1)
     evidence: str
+    reason_codes: list[str] = Field(default_factory=list)
 
 
 class MetricObserver(BaseModel):
@@ -196,6 +201,9 @@ class TaskItem(BaseModel):
     task_id: str
     entrypoint: str
     command: str
+    cwd: str = "."
+    runtime: str = "python"
+    dependency_profile_id: str | None = None
     timeout_class: Literal["short", "medium", "long"] = "medium"
     expected_metrics: list[str] = Field(default_factory=list)
     hyperparams: dict[str, Any] = Field(default_factory=dict)
@@ -211,6 +219,25 @@ class TaskSpec(BaseModel):
     metric_observers: list[MetricObserver] = Field(default_factory=list)
     run_matrix: list[RunConfig] = Field(default_factory=list)
     selection_notes: list[str] = Field(default_factory=list)
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+class DependencyProfile(BaseModel):
+    profile_id: str
+    ecosystem: str
+    manager: str
+    cwd: str = "."
+    manifest_paths: list[str] = Field(default_factory=list)
+    install_command: str | None = None
+    auto_bootstrap_supported: bool = True
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+class RepoAnalysis(BaseModel):
+    ecosystems: list[str] = Field(default_factory=list)
+    dependency_profiles: list[DependencyProfile] = Field(default_factory=list)
+    entrypoint_candidates: list[Entrypoint] = Field(default_factory=list)
+    primary_entrypoint_id: str | None = None
     reason_codes: list[str] = Field(default_factory=list)
 
 
@@ -298,6 +325,26 @@ class ClaimAlignmentItem(BaseModel):
 
 class ClaimAlignmentDoc(BaseModel):
     claims: list[ClaimAlignmentItem] = Field(default_factory=list)
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+class ExecutionSummaryTaskResult(BaseModel):
+    task_id: str
+    planned_command: str
+    final_command: str
+    status: Literal["ok", "failed", "skipped"] = "failed"
+    notes: str = ""
+
+
+class ExecutionSummaryDoc(BaseModel):
+    project_type: str = "unknown"
+    dependency_steps: list[str] = Field(default_factory=list)
+    commands_run: list[str] = Field(default_factory=list)
+    success_basis: Literal["run", "test", "build", "none"] = "none"
+    execution_succeeded: bool = False
+    attempt_count: int = 0
+    task_results: list[ExecutionSummaryTaskResult] = Field(default_factory=list)
+    remaining_blockers: list[str] = Field(default_factory=list)
     reason_codes: list[str] = Field(default_factory=list)
 
 

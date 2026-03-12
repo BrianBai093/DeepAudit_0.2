@@ -1,15 +1,16 @@
 from __future__ import annotations
 
-import os
 import re
 from pathlib import Path
 
 from p2c.agents.base import BaseAgent
+from p2c.agents.phase1.repo_analysis import SystemRepoAnalyzer
 from p2c.schemas import (
     Entrypoint,
     MetricContract,
     MetricObserver,
     MetricParser,
+    RepoAnalysis,
     RunConfig,
     TaskCompileOutput,
     TaskItem,
@@ -33,50 +34,13 @@ class CompileTaskSpecAgent(BaseAgent):
         super().__init__(name="compile_task_spec", *args, **kwargs)
 
     @staticmethod
-    def _scan_entrypoints(repo_dir: Path) -> list[Entrypoint]:
-        candidates: list[Entrypoint] = []
-
-        for path in sorted(repo_dir.glob("main*.py")):
-            candidates.append(
-                Entrypoint(
-                    path=str(path.relative_to(repo_dir)),
-                    command=f"python3 {path.relative_to(repo_dir)}",
-                    confidence=0.8,
-                    evidence="main*.py discovered",
-                )
-            )
-
-        for path in sorted(repo_dir.rglob("train.py"))[:3]:
-            candidates.append(
-                Entrypoint(
-                    path=str(path.relative_to(repo_dir)),
-                    command=f"python3 {path.relative_to(repo_dir)}",
-                    confidence=0.7,
-                    evidence="train.py discovered",
-                )
-            )
-
-        readme = repo_dir / "README.md"
-        if readme.exists():
-            text = readme.read_text(encoding="utf-8", errors="ignore")
-            for cmd in re.findall(r"python\s+([\w./-]+\.py)", text):
-                p = repo_dir / cmd
-                if p.exists():
-                    candidates.append(
-                        Entrypoint(
-                            path=str(Path(cmd)),
-                            command=f"python3 {cmd}",
-                            confidence=0.75,
-                            evidence="README python command",
-                        )
-                    )
-
-        # Deduplicate while preserving order.
-        uniq: dict[str, Entrypoint] = {}
-        for entry in candidates:
-            if entry.path not in uniq:
-                uniq[entry.path] = entry
-        return list(uniq.values())[:5]
+    def _load_repo_analysis(artifacts, repo_dir: Path) -> RepoAnalysis:
+        payload = artifacts.read_json("task/repo_analysis.json")
+        if payload.get("entrypoint_candidates") or payload.get("dependency_profiles"):
+            return RepoAnalysis(**payload)
+        analysis = SystemRepoAnalyzer(repo_dir).analyze()
+        artifacts.write_json("task/repo_analysis.json", analysis.model_dump())
+        return analysis
 
     @staticmethod
     def _extract_hyperparams(claims: list[dict]) -> dict[str, float | int | str]:
@@ -140,6 +104,9 @@ class CompileTaskSpecAgent(BaseAgent):
                     task_id=f"task_{idx:02d}",
                     entrypoint=ep.path,
                     command=ep.command,
+                    cwd=ep.cwd,
+                    runtime=ep.runtime,
+                    dependency_profile_id=ep.dependency_profile_id,
                     timeout_class=timeout_class,
                     expected_metrics=required_metrics,
                     hyperparams=hyperparams,
@@ -156,36 +123,26 @@ class CompileTaskSpecAgent(BaseAgent):
         verifiable_claims = [
             c for c in all_claims if bool(c.get("code_verifiable", not c.get("unverifiable_from_paper", False)))
         ]
-        candidates = self._scan_entrypoints(repo_dir)
+        repo_analysis = self._load_repo_analysis(self.artifacts, repo_dir)
+        candidates = [Entrypoint(**row) if isinstance(row, dict) else row for row in repo_analysis.entrypoint_candidates]
+        primary_id = str(repo_analysis.primary_entrypoint_id or "")
+        selected: list[Entrypoint] = []
+        if primary_id:
+            selected.extend([e for e in candidates if str(e.entrypoint_id or "") == primary_id][:1])
+        for candidate in candidates:
+            if len(selected) >= 5:
+                break
+            if any(str(x.entrypoint_id or "") == str(candidate.entrypoint_id or "") for x in selected):
+                continue
+            selected.append(candidate)
 
-        llm_schema = {
-            "type": "object",
-            "properties": {
-                "selected_paths": {"type": "array", "items": {"type": "string"}},
-                "reason_codes": {"type": "array", "items": {"type": "string"}},
-            },
-            "required": ["selected_paths", "reason_codes"],
-        }
-        llm_user = (
-            USER_PROMPT_TEMPLATE
-            + "\nCandidates:\n"
-            + "\n".join(f"- {e.path}: {e.command}" for e in candidates)
-            + "\nCode-verifiable claims:\n"
-            + ", ".join(str(c.get("claim_id", "")) for c in verifiable_claims if c.get("claim_id"))
-        )
-        llm_data, llm_err = self.safe_chat_json(llm_schema, SYSTEM_PROMPT, llm_user)
-
-        if llm_data and llm_data.get("selected_paths"):
-            selected_set = set(str(x) for x in llm_data["selected_paths"])
-            selected = [e for e in candidates if e.path in selected_set][:5]
-            if not selected:
-                selected = candidates[:5]
-                reason_codes = ["LLM_SELECTION_EMPTY", "HEURISTIC_FALLBACK"]
-            else:
-                reason_codes = list(llm_data.get("reason_codes", []))
+        reason_codes = list(repo_analysis.reason_codes)
+        if selected:
+            reason_codes.append("ENTRYPOINT_SELECTED_PRIMARY")
+            if len(selected) > 1:
+                reason_codes.append("ENTRYPOINT_SELECTED_BACKUP")
         else:
-            selected = candidates[:5]
-            reason_codes = ["LLM_UNAVAILABLE", "HEURISTIC_FALLBACK"]
+            reason_codes.append("REPO_ANALYSIS_NO_EXECUTABLE_CANDIDATE")
 
         observers = [
             MetricObserver(name="accuracy_percent", kind="stdout_regex", pattern=r"accuracy[^0-9]*(\d+(?:\.\d+)?)%"),
@@ -225,11 +182,14 @@ class CompileTaskSpecAgent(BaseAgent):
             metric_observers=observers,
             run_matrix=run_matrix,
             selection_notes=[
-                "compiled_from_code_verifiable_claims_only",
+                "compiled_from_repo_analysis",
                 f"verifiable_claims={len(verifiable_claims)}",
                 f"filtered_non_verifiable={max(0, len(all_claims) - len(verifiable_claims))}",
+                f"primary_entrypoint_id={primary_id or ''}",
+                f"primary_entrypoint_path={selected[0].path if selected else ''}",
+                f"primary_entrypoint_evidence={selected[0].evidence if selected else ''}",
             ],
-            reason_codes=reason_codes,
+            reason_codes=list(dict.fromkeys(reason_codes)),
         )
 
         metric_contract = MetricContract(
@@ -244,7 +204,7 @@ class CompileTaskSpecAgent(BaseAgent):
                     "clip": [0, 1],
                 }
             },
-            reason_codes=[] if selected else ["NO_ENTRYPOINT_FOUND"],
+            reason_codes=[] if selected else ["REPO_ANALYSIS_NO_EXECUTABLE_CANDIDATE"],
         )
 
         output = TaskCompileOutput(task_spec=task_spec, metric_contract=metric_contract)

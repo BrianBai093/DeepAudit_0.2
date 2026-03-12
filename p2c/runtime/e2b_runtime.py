@@ -4,6 +4,8 @@ import base64
 import io
 import os
 import shlex
+import subprocess
+import sys
 import tarfile
 from fnmatch import fnmatch
 from pathlib import Path, PurePosixPath
@@ -23,7 +25,46 @@ class E2BRuntime:
         self._timeout_sec = timeout_sec
         self._sandbox = None
         self._sandbox_id: str | None = None
-        self._template = (template or os.getenv("P2C_E2B_TEMPLATE") or "openai-codex").strip() or "openai-codex"
+        env_template = (os.getenv("P2C_E2B_TEMPLATE") or "").strip()
+        self._template = (template or env_template or "openai-codex").strip() or "openai-codex"
+        self._template_explicit = bool(template or env_template)
+        self._template_build_attempted = False
+        self._template_auto_built = False
+
+    @staticmethod
+    def _is_template_not_found_error(error: Exception, template_name: str) -> bool:
+        text = str(error or "").lower()
+        return "404" in text and "template" in text and "not found" in text and template_name.lower() in text
+
+    def _template_builder_script(self) -> Path:
+        return Path(__file__).resolve().parents[2] / "scripts" / "build_e2b_codex_template.py"
+
+    def _maybe_autobuild_template(self) -> None:
+        if self._template_build_attempted:
+            return
+        if not self._template_explicit:
+            return
+        if (os.getenv("P2C_E2B_AUTO_BUILD_TEMPLATE") or "1").strip() == "0":
+            return
+        self._template_build_attempted = True
+
+        script_path = self._template_builder_script()
+        if not script_path.exists():
+            raise E2BRuntimeError(f"Template builder script not found: {script_path}")
+
+        proc = subprocess.run(
+            [sys.executable, str(script_path), "--template-name", self._template],
+            capture_output=True,
+            text=True,
+            env=os.environ.copy(),
+            timeout=60 * 60,
+        )
+        if proc.returncode != 0:
+            raise E2BRuntimeError(
+                f"Automatic template build failed for '{self._template}' via {script_path}: "
+                f"rc={proc.returncode}; stdout_tail={proc.stdout[-1200:]!r}; stderr_tail={proc.stderr[-1200:]!r}"
+            )
+        self._template_auto_built = True
 
     def ensure_started(self) -> None:
         if self._sandbox is not None:
@@ -69,6 +110,7 @@ class E2BRuntime:
             factory = getattr(sandbox_cls, method_name, None)
             if not callable(factory):
                 continue
+            retry_after_build = False
             for kwargs in attempts:
                 try:
                     self._sandbox = factory(**kwargs)
@@ -77,10 +119,29 @@ class E2BRuntime:
                     type_errors.append(f"{sandbox_cls_ref}.{method_name}{sorted(kwargs.keys())}: {e}")
                     continue
                 except Exception as e:  # noqa: BLE001
+                    if self._is_template_not_found_error(e, self._template) and not self._template_build_attempted:
+                        self._maybe_autobuild_template()
+                        retry_after_build = True
+                        break
                     keys = ",".join(sorted(kwargs.keys())) or "<none>"
                     raise E2BRuntimeError(
-                        f"Failed to initialize E2B via {sandbox_cls_ref}.{method_name} with args [{keys}]: {e}"
+                        f"Failed to initialize E2B via {sandbox_cls_ref}.{method_name} with args [{keys}]: {e}. "
+                        f"If the template '{self._template}' was not built yet, run scripts/build_e2b_codex_template.py first."
                     ) from e
+            if retry_after_build:
+                for kwargs in attempts:
+                    try:
+                        self._sandbox = factory(**kwargs)
+                        break
+                    except TypeError as e:
+                        type_errors.append(f"{sandbox_cls_ref}.{method_name}{sorted(kwargs.keys())}: {e}")
+                        continue
+                    except Exception as e:  # noqa: BLE001
+                        keys = ",".join(sorted(kwargs.keys())) or "<none>"
+                        raise E2BRuntimeError(
+                            f"Failed to initialize E2B via {sandbox_cls_ref}.{method_name} with args [{keys}] "
+                            f"after auto-building template '{self._template}': {e}"
+                        ) from e
             if self._sandbox is not None:
                 break
 
@@ -88,7 +149,8 @@ class E2BRuntime:
             detail = "; ".join(type_errors[-6:]) if type_errors else "no constructor/factory attempts executed"
             raise E2BRuntimeError(
                 f"Unable to initialize E2B sandbox with required template '{self._template}' "
-                f"from {sandbox_cls_ref}: {detail}"
+                f"from {sandbox_cls_ref}: {detail}. "
+                f"If the template '{self._template}' was not built yet, run scripts/build_e2b_codex_template.py first."
             )
 
         self._sandbox_id = str(getattr(self._sandbox, "sandbox_id", None) or getattr(self._sandbox, "id", "unknown"))
@@ -306,9 +368,9 @@ class E2BRuntime:
 
         kwargs_variants: list[dict[str, Any]] = []
         base_kwargs = {"cmd": command, "cwd": cwd, "timeout": timeout_sec}
-        if timeout_sec == 0:
-            # Some SDK/runtime combinations require request_timeout=0 too.
-            kwargs_variants.append({**base_kwargs, "request_timeout": 0})
+        # Prefer disabling SDK-side request deadlines so long-lived sandbox calls
+        # are governed by the command timeout, not the client request timeout.
+        kwargs_variants.append({**base_kwargs, "request_timeout": 0})
         kwargs_variants.append(base_kwargs)
 
         out = None
@@ -401,4 +463,5 @@ class E2BRuntime:
             "sandbox_id": self._sandbox_id,
             "timeout_sec": self._timeout_sec,
             "template": self._template,
+            "template_auto_built": self._template_auto_built,
         }

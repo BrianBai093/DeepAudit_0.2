@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 
 from p2c.graph import build_agents, run_phase_1, run_phase_2, run_phase_3
@@ -100,6 +101,7 @@ def main() -> None:
         "artifacts_dir": str(Path(args.artifacts_dir)),
         "budget_minutes": args.budget_minutes,
         "max_self_heal_iters": args.max_self_heal_iters,
+        "phase2_style": os.getenv("P2C_PHASE2_STYLE", "legacy"),
     }
 
     log_global(artifacts, "START", "0/3", f"phase={args.phase} run_id={args.run_id}")

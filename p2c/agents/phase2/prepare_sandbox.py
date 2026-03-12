@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import platform
 import shlex
@@ -109,6 +110,16 @@ if __name__ == "__main__":
     raise SystemExit(main())
 """
 
+CODEX_EXECUTION_SKILL = """# Codex Execution Skill
+
+Follow these rules before running the repository:
+
+1. If an error contains `No module named ...`, identify the most likely installable package for that module, install it with `python3 -m pip` into the sandbox user's local environment, and retry. Do not stop at the first import error if a reasonable package guess exists.
+2. If the README contains data download, dataset setup, processing, or vectorization commands, execute those README steps during setup. Treat documented dataset preparation as required unless the README explicitly says the step is optional or unavailable in this environment.
+3. Do not create a virtual environment. Install tools and packages only into the sandbox user's local environment, for example with `--user` or under `~/.local`.
+4. Keep logs compact and record the actual install and data-setup commands you ran.
+"""
+
 
 class PrepareSandboxAgent(BaseAgent):
     def __init__(self, *args, **kwargs):
@@ -165,6 +176,65 @@ class PrepareSandboxAgent(BaseAgent):
                 continue
         detail = "; ".join(errors[-4:]) if errors else "no candidates checked"
         raise RuntimeError(f"no writable workspace root found; candidates={uniq}; detail={detail}")
+
+    @staticmethod
+    def _rewrite_code_scoped_task_spec(payload: dict, *, uploaded_code_subdir: bool) -> dict:
+        if not isinstance(payload, dict):
+            return {}
+        if not uploaded_code_subdir:
+            return payload
+
+        def _strip_code_prefix(value: object) -> object:
+            raw = str(value or "").strip()
+            if not raw:
+                return value
+            if raw == "code":
+                return "."
+            if raw.startswith("code/"):
+                return raw[len("code/") :]
+            return value
+
+        def _rewrite_command(value: object) -> object:
+            raw = str(value or "").strip()
+            if not raw:
+                return value
+            return raw.replace(" code/", " ").replace("code/", "", 1) if raw.startswith("code/") else raw.replace(" code/", " ")
+
+        rewritten = json.loads(json.dumps(payload))
+
+        for row in rewritten.get("tasks") or []:
+            if not isinstance(row, dict):
+                continue
+            row["entrypoint"] = _strip_code_prefix(row.get("entrypoint"))
+            row["command"] = _rewrite_command(row.get("command"))
+            if str(row.get("cwd") or "").strip() == "code":
+                row["cwd"] = "."
+
+        for row in rewritten.get("entrypoints") or []:
+            if not isinstance(row, dict):
+                continue
+            row["path"] = _strip_code_prefix(row.get("path"))
+            row["command"] = _rewrite_command(row.get("command"))
+            if str(row.get("cwd") or "").strip() == "code":
+                row["cwd"] = "."
+            entrypoint_id = str(row.get("entrypoint_id") or "")
+            if entrypoint_id.startswith("python-file:code/"):
+                row["entrypoint_id"] = "python-file:" + entrypoint_id[len("python-file:code/") :]
+
+        constraints = rewritten.get("constraints")
+        if isinstance(constraints, dict):
+            if str(constraints.get("allowed_modification_scope") or "").strip() == "Target/code":
+                constraints["allowed_modification_scope"] = "repo"
+
+        notes = rewritten.get("selection_notes")
+        if isinstance(notes, list):
+            new_notes: list[object] = []
+            for note in notes:
+                raw = str(note or "")
+                new_notes.append(raw.replace("code/", "", 1) if "primary_entrypoint_path=code/" in raw else raw)
+            rewritten["selection_notes"] = new_notes
+
+        return rewritten
 
     def execute(self, ctx: dict) -> dict:
         runtime = ensure_runtime(ctx, self.artifacts)
@@ -266,14 +336,37 @@ class PrepareSandboxAgent(BaseAgent):
         tool_summary = "; ".join([x.strip() for x in (tool_summary_probe.stdout or "").splitlines() if x.strip()])
         self.artifacts.append_text("execution/run.log", f"[prepare_sandbox] toolchain={tool_summary}\n")
 
+        upload_repo_dir = repo_dir / "code" if (repo_dir / "code").is_dir() else repo_dir
+        uploaded_code_subdir = upload_repo_dir != repo_dir
+
+        raw_task_spec_payload = self.artifacts.read_json("task/task_spec.json")
+        sandbox_task_spec_payload = self._rewrite_code_scoped_task_spec(
+            raw_task_spec_payload,
+            uploaded_code_subdir=uploaded_code_subdir,
+        )
+        sandbox_task_spec_local = self.artifacts.write_json(
+            "execution/task_spec.sandbox.json",
+            sandbox_task_spec_payload,
+        )
+        codex_skill_local = self.artifacts.write_text(
+            "execution/codex_execution_skill.md",
+            CODEX_EXECUTION_SKILL,
+        )
+        ctx["workspace_task_spec_remote"] = f"{workspace_inputs_dir}/task_spec.json"
+        ctx["workspace_task_spec_local_artifact"] = "execution/task_spec.sandbox.json"
+        ctx["workspace_codex_skill_remote"] = f"{workspace_inputs_dir}/codex_execution_skill.md"
+        ctx["workspace_codex_skill_local_artifact"] = "execution/codex_execution_skill.md"
+
         include_git = (os.getenv("P2C_INCLUDE_GIT") or "").strip() == "1"
         repo_excludes = None if include_git else [".git", ".git/**"]
         self.artifacts.append_text(
             "execution/run.log",
-            f"[prepare_sandbox] repo upload mode=local_dir include_git={1 if include_git else 0}\n",
+            f"[prepare_sandbox] repo upload mode=local_dir include_git={1 if include_git else 0} "
+            f"upload_root={upload_repo_dir}\n",
         )
-        runtime.upload_dir(local_dir=repo_dir, remote_dir=workspace_repo_dir, exclude_globs=repo_excludes)
-        runtime.upload_file(local_file=task_spec_local, remote_path=f"{workspace_inputs_dir}/task_spec.json")
+        runtime.upload_dir(local_dir=upload_repo_dir, remote_dir=workspace_repo_dir, exclude_globs=repo_excludes)
+        runtime.upload_file(local_file=sandbox_task_spec_local, remote_path=f"{workspace_inputs_dir}/task_spec.json")
+        runtime.upload_file(local_file=codex_skill_local, remote_path=f"{workspace_inputs_dir}/codex_execution_skill.md")
         runtime.upload_file(local_file=metric_contract_local, remote_path=f"{workspace_inputs_dir}/metric_contract.json")
         upload_claims = (os.getenv("P2C_UPLOAD_CLAIMS_TO_SANDBOX") or "").strip() == "1"
         if upload_claims and claims_ir_local.exists():
@@ -284,8 +377,8 @@ class PrepareSandboxAgent(BaseAgent):
         )
 
         entries: list[DataManifestEntry] = []
-        for src in self._discover_data_entries(repo_dir):
-            rel = src.relative_to(repo_dir)
+        for src in self._discover_data_entries(upload_repo_dir):
+            rel = src.relative_to(upload_repo_dir)
             remote = f"{workspace_data_dir}/{str(rel).replace('\\', '/')}"
             try:
                 if src.is_dir():

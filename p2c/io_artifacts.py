@@ -17,6 +17,7 @@ REQUIRED_FILES = [
     "fingerprint/filter_clusters.json",
     "fingerprint/filter_selected.json",
     "fingerprint/claims_ir.json",
+    "task/repo_analysis.json",
     "task/task_spec.json",
     "task/metric_contract.json",
     "execution/run.log",
@@ -26,6 +27,7 @@ REQUIRED_FILES = [
     "execution/codex_outputs/codex_worklog.jsonl",
     "execution/codex_outputs/patches.diff",
     "execution/codex_outputs/claim_alignment.json",
+    "execution/codex_outputs/execution_summary.json",
     "execution/codex_outputs/codex_exec.log",
     "execution/codex_outputs/dependency_solver.json",
     "execution/codex_outputs/toolchain_probe.json",
@@ -79,6 +81,18 @@ class ArtifactManager:
                     payload = {"runs": [], "reason_codes": ["INITIALIZED_PLACEHOLDER"]}
                 elif rel.endswith("claim_alignment.json"):
                     payload = {"claims": [], "reason_codes": ["INITIALIZED_PLACEHOLDER"]}
+                elif rel.endswith("execution_summary.json"):
+                    payload = {
+                        "project_type": "unknown",
+                        "dependency_steps": [],
+                        "commands_run": [],
+                        "success_basis": "none",
+                        "execution_succeeded": False,
+                        "attempt_count": 0,
+                        "task_results": [],
+                        "remaining_blockers": [],
+                        "reason_codes": ["INITIALIZED_PLACEHOLDER"],
+                    }
                 elif rel.endswith("codex_failure.json"):
                     payload = {
                         "stage": "postcheck",
@@ -133,6 +147,14 @@ class ArtifactManager:
                         "metric_observers": [],
                         "run_matrix": [],
                         "selection_notes": [],
+                        "reason_codes": ["INITIALIZED_PLACEHOLDER"],
+                    }
+                elif rel.endswith("repo_analysis.json"):
+                    payload = {
+                        "ecosystems": [],
+                        "dependency_profiles": [],
+                        "entrypoint_candidates": [],
+                        "primary_entrypoint_id": None,
                         "reason_codes": ["INITIALIZED_PLACEHOLDER"],
                     }
                 elif rel.endswith("metric_contract.json"):

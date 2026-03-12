@@ -5,6 +5,7 @@ import os
 import re
 import shlex
 import time
+from pathlib import Path
 from typing import Any
 
 from p2c.agents.base import BaseAgent
@@ -12,18 +13,19 @@ from p2c.agents.phase2.codex_exec_support import (
     CodexBackgroundExecutor,
     CodexCapabilityGate,
     CodexFailureReporter,
+    CodexOutputValidator,
     extract_task_items,
     is_rate_limit_failure,
-    timeout_for_class,
 )
 from p2c.agents.phase2.codex_prompt_templates import (
-    build_codex_single_task_prompt,
-    build_codex_single_task_repair_prompt,
+    build_autonomous_discovery_prompt,
+    build_autonomous_execution_prompt,
+    build_autonomous_repair_prompt,
 )
 from p2c.runtime.factory import ensure_runtime
 
-SYSTEM_PROMPT = "You orchestrate Codex execution in sandbox with strict output contracts."
-USER_PROMPT_TEMPLATE = "Input: task_spec. Output: task execution artifacts under /workspace/outputs."
+SYSTEM_PROMPT = "You orchestrate autonomous Codex execution in E2B sandbox with two-stage discovery and execution."
+USER_PROMPT_TEMPLATE = "Input: task_spec. Output: discovery summary + task execution artifacts under /workspace/outputs."
 DEFAULT_CODEX_MODEL = "gpt-5.1"
 
 
@@ -33,6 +35,7 @@ class RunCodexExecAgent(BaseAgent):
         self.reporter = CodexFailureReporter(self.artifacts, self.log)
         self.bg = CodexBackgroundExecutor(self.log, artifacts=self.artifacts)
         self.capability_gate = CodexCapabilityGate()
+        self.validator = CodexOutputValidator()
 
     @staticmethod
     def _build_codex_cmd(prompt: str, extra_args: list[str] | None = None) -> str:
@@ -50,12 +53,174 @@ class RunCodexExecAgent(BaseAgent):
         path_q = shlex.quote(workspace_bin_dir)
         return f"PATH={path_q}:$PATH {cmd}"
 
+    def _required_toolchain_checks(self, *, require_rscript: bool = False) -> list[tuple[str, str]]:
+        checks = [
+            ("python3", "python3 --version"),
+            ("pip", "python3 -m pip --version"),
+            ("poetry", "poetry --version"),
+            ("uv", "uv --version"),
+            ("node", "node --version"),
+            ("npm", "npm --version"),
+            ("codex", "codex --version"),
+        ]
+        if require_rscript:
+            checks.append(("Rscript", "Rscript --version"))
+        return checks
+
+    def _bootstrap_toolchain(
+        self,
+        runtime,
+        *,
+        workspace_root: str,
+        workspace_bin_dir: str,
+        outputs_dir: str,
+        install_rscript: bool = False,
+    ) -> dict[str, Any]:
+        log_remote = f"{outputs_dir}/dependency_bootstrap.log"
+        rscript_block = ""
+        verify_commands = [
+            "python3 --version",
+            "python3 -m pip --version",
+            "poetry --version",
+            "uv --version",
+            "node --version",
+            "npm --version",
+            "codex --version",
+        ]
+        if install_rscript:
+            rscript_block = f"""
+if ! command -v Rscript >/dev/null 2>&1; then
+  log "install Rscript via micromamba"
+  MM_CACHE="$HOME/.cache/p2c/micromamba"
+  MM_BIN="$HOME/.local/bin/micromamba"
+  MM_ROOT="$HOME/.local/micromamba"
+  mkdir -p "$MM_CACHE" "$HOME/.local/bin" "$MM_ROOT"
+  if [ ! -x "$MM_BIN" ]; then
+    if command -v curl >/dev/null 2>&1; then
+      curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/latest | tar -xvj -C "$MM_CACHE" bin/micromamba >> {shlex.quote(log_remote)} 2>&1 || true
+    elif command -v wget >/dev/null 2>&1; then
+      wget -qO- https://micro.mamba.pm/api/micromamba/linux-64/latest | tar -xvj -C "$MM_CACHE" bin/micromamba >> {shlex.quote(log_remote)} 2>&1 || true
+    fi
+    if [ -x "$MM_CACHE/bin/micromamba" ]; then
+      cp "$MM_CACHE/bin/micromamba" "$MM_BIN" >> {shlex.quote(log_remote)} 2>&1 || true
+      chmod +x "$MM_BIN" >> {shlex.quote(log_remote)} 2>&1 || true
+    fi
+  fi
+  if [ -x "$MM_BIN" ]; then
+    export MAMBA_ROOT_PREFIX="$MM_ROOT"
+    "$MM_BIN" create -y -p "$MM_ROOT/envs/r-base" -c conda-forge r-base >> {shlex.quote(log_remote)} 2>&1 || true
+    if [ -x "$MM_ROOT/envs/r-base/bin/Rscript" ]; then
+      ln -sf "$MM_ROOT/envs/r-base/bin/Rscript" "$HOME/.local/bin/Rscript" >> {shlex.quote(log_remote)} 2>&1 || true
+    fi
+  fi
+fi
+"""
+            verify_commands.append("Rscript --version")
+        verify_lines = " \\\n".join(f'  "{cmd}"' for cmd in verify_commands)
+        script = f"""
+set -eu
+export HOME="${{HOME:-/home/user}}"
+export PATH="{workspace_bin_dir}:$HOME/.local/bin:$PATH"
+mkdir -p "$HOME/.local/bin" "$HOME/.cache/p2c" {shlex.quote(workspace_bin_dir)} {shlex.quote(outputs_dir)}
+: > {shlex.quote(log_remote)}
+log() {{
+  printf '%s %s\\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" >> {shlex.quote(log_remote)}
+}}
+run_log() {{
+  log "$1"
+  shift
+  "$@" >> {shlex.quote(log_remote)} 2>&1 || return $?
+}}
+
+log "bootstrap start"
+if ! command -v python3 >/dev/null 2>&1; then
+  log "python3 missing"
+  exit 97
+fi
+
+if ! python3 -m pip --version >/dev/null 2>&1; then
+  log "install pip via ensurepip"
+  python3 -m ensurepip --upgrade >> {shlex.quote(log_remote)} 2>&1 || true
+fi
+if ! python3 -m pip --version >/dev/null 2>&1; then
+  log "install pip via get-pip.py"
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL https://bootstrap.pypa.io/get-pip.py -o "$HOME/.cache/p2c/get-pip.py" >> {shlex.quote(log_remote)} 2>&1 || true
+  elif command -v wget >/dev/null 2>&1; then
+    wget -qO "$HOME/.cache/p2c/get-pip.py" https://bootstrap.pypa.io/get-pip.py >> {shlex.quote(log_remote)} 2>&1 || true
+  fi
+  if [ -f "$HOME/.cache/p2c/get-pip.py" ]; then
+    python3 "$HOME/.cache/p2c/get-pip.py" --user >> {shlex.quote(log_remote)} 2>&1 || true
+  fi
+fi
+
+if ! command -v uv >/dev/null 2>&1 && python3 -m pip --version >/dev/null 2>&1; then
+  log "install uv"
+  python3 -m pip install --user uv >> {shlex.quote(log_remote)} 2>&1 || true
+fi
+if ! command -v poetry >/dev/null 2>&1 && python3 -m pip --version >/dev/null 2>&1; then
+  log "install poetry"
+  python3 -m pip install --user poetry >> {shlex.quote(log_remote)} 2>&1 || true
+fi
+if ! command -v codex >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
+  log "install codex"
+  npm install -g --prefix "$HOME/.local" @openai/codex >> {shlex.quote(log_remote)} 2>&1 || true
+fi
+{rscript_block}
+
+for tool in python python3 pip pip3 poetry uv node npm codex Rscript apply_patch; do
+  p="$(command -v "$tool" 2>/dev/null || true)"
+  if [ -n "$p" ]; then
+    ln -sf "$p" {shlex.quote(workspace_bin_dir)}/"$tool" >> {shlex.quote(log_remote)} 2>&1 || true
+  fi
+done
+
+log "bootstrap verification"
+for verify in \
+{verify_lines}
+do
+  log "$verify"
+  bash -lc "$verify" >> {shlex.quote(log_remote)} 2>&1 || true
+done
+log "bootstrap end"
+"""
+        result = runtime.run_command(
+            "bash -lc " + shlex.quote(script),
+            cwd=workspace_root,
+            timeout_sec=15 * 60,
+        )
+        try:
+            bootstrap_log = runtime.read_text(log_remote)
+        except Exception:  # noqa: BLE001
+            bootstrap_log = ""
+        self.artifacts.write_text("execution/codex_outputs/dependency_bootstrap.log", bootstrap_log)
+        return {
+            "rc": int(result.rc),
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+            "log_remote": log_remote,
+            "reason_codes": [] if int(result.rc) == 0 else ["TOOLCHAIN_BOOTSTRAP_FAILED"],
+        }
+
     def _probe_toolchain(self, runtime, *, workspace_root: str, workspace_bin_dir: str) -> dict[str, Any]:
-        tools = ["python", "python3", "pip", "pip3", "apply_patch"]
+        tools = ["python", "python3", "pip", "pip3", "poetry", "uv", "node", "npm", "codex", "Rscript", "apply_patch"]
         paths: dict[str, str | None] = {}
         versions: dict[str, str] = {}
         reason_codes: list[str] = []
         for tool in tools:
+            if tool == "pip":
+                v_cmd = "bash -lc " + shlex.quote(
+                    f"PATH={workspace_bin_dir}:$PATH; python3 -m pip --version 2>&1 || true"
+                )
+                v_probe = runtime.run_command(v_cmd, cwd=workspace_root, timeout_sec=20)
+                version_text = (v_probe.stdout or v_probe.stderr or "").strip()
+                if version_text and "no module named pip" not in version_text.lower():
+                    paths[tool] = "python3 -m pip"
+                    versions[tool] = version_text[-300:]
+                else:
+                    paths[tool] = None
+                    reason_codes.append("TOOL_MISSING_PIP")
+                continue
             cmd = "bash -lc " + shlex.quote(
                 f"PATH={workspace_bin_dir}:$PATH; command -v {tool} 2>/dev/null || true"
             )
@@ -87,6 +252,41 @@ class RunCodexExecAgent(BaseAgent):
                 encoding="utf-8", errors="ignore"
             ),
         )
+
+    def _missing_required_tools(self, toolchain_probe: dict[str, Any], *, require_rscript: bool = False) -> list[str]:
+        paths = toolchain_probe.get("paths") or {}
+        missing: list[str] = []
+        for tool, _ in self._required_toolchain_checks(require_rscript=require_rscript):
+            tool_key = "pip" if tool == "pip" else tool
+            if not str(paths.get(tool_key) or "").strip():
+                missing.append(tool)
+        return missing
+
+    @staticmethod
+    def _task_spec_requires_r(task_spec_payload: dict[str, Any]) -> bool:
+        for section in ("tasks", "entrypoints"):
+            rows = task_spec_payload.get(section)
+            if not isinstance(rows, list):
+                continue
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                for key in ("entrypoint", "command", "path", "runtime"):
+                    value = str(row.get(key) or "")
+                    lower = value.lower()
+                    if lower.endswith(".r") or "rscript" in lower or ".r " in lower:
+                        return True
+        return False
+
+    @staticmethod
+    def _repo_requires_r(local_repo_dir: str) -> bool:
+        repo_path = Path(str(local_repo_dir or ""))
+        if not repo_path.exists():
+            return False
+        try:
+            return any(repo_path.rglob("*.R"))
+        except Exception:  # noqa: BLE001
+            return False
 
     @staticmethod
     def _dedupe(items: list[str]) -> list[str]:
@@ -143,22 +343,6 @@ class RunCodexExecAgent(BaseAgent):
         if default_reason:
             reason_codes = list(reason_codes) + list(default_reason)
 
-        # Normalize legacy TF1 API failures under TF2 runtime so downstream analysis
-        # is stable even when Codex output is incomplete.
-        combined_tail = f"{stderr_tail}\n{stdout_tail}".lower()
-        tf1_markers = (
-            "tf.placeholder",
-            "tf.set_random_seed",
-            "tf.contrib",
-            "no attribute 'placeholder'",
-            "no attribute 'set_random_seed'",
-            "no attribute 'contrib'",
-        )
-        if rc != 0 and any(marker in combined_tail for marker in tf1_markers):
-            if status != "timeout":
-                status = "failed_dependency"
-            reason_codes = list(reason_codes) + ["TF1_API_INCOMPATIBLE_WITH_TF2"]
-
         deduped_reasons: list[str] = []
         seen_reasons: set[str] = set()
         for rc_item in reason_codes:
@@ -200,7 +384,6 @@ class RunCodexExecAgent(BaseAgent):
         timeout_sec: int,
         reason_codes: list[str],
         capability_snapshot: dict[str, Any] | None = None,
-        dependency_bootstrap_trace: list[str] | None = None,
         local_stream_path: str | None = None,
         stream_sync_every_sec: int = 20,
     ) -> dict[str, Any]:
@@ -226,7 +409,6 @@ class RunCodexExecAgent(BaseAgent):
                 outputs_dir=outputs_dir,
                 reason_codes=reason_codes,
                 capability_snapshot=capability_snapshot,
-                dependency_bootstrap_trace=dependency_bootstrap_trace,
             )
             raise RuntimeError(
                 f"run_codex_exec {label} stage failed: {e}. "
@@ -238,23 +420,14 @@ class RunCodexExecAgent(BaseAgent):
             (
                 f"\n# codex {label}\n"
                 f"$ {cmd}\n"
-                f"pid_path={result['pid_path']}\n"
-                f"exit_path={result['exit_path']}\n"
-                f"polls={result['polls']}\n"
-                f"timed_out={result['timed_out']}\n"
-                f"rc={result['rc']}\n"
+                f"pid_path={result.get('pid_path', '')}\n"
+                f"exit_path={result.get('exit_path', '')}\n"
+                f"polls={result.get('polls', '')}\n"
+                f"timed_out={result.get('timed_out', '')}\n"
+                f"rc={result.get('rc', '')}\n"
             ),
         )
         return result
-
-    def _write_capability_artifacts(self, runtime, *, outputs_dir: str, capability_snapshot: dict[str, Any]) -> None:
-        self.artifacts.write_json("execution/codex_outputs/capability_probe.json", capability_snapshot)
-        runtime.write_text(
-            f"{outputs_dir}/capability_probe.json",
-            self.artifacts.path("execution/codex_outputs/capability_probe.json").read_text(
-                encoding="utf-8", errors="ignore"
-            ),
-        )
 
     def _load_remote_json(self, runtime, path: str) -> dict[str, Any]:
         try:
@@ -263,74 +436,57 @@ class RunCodexExecAgent(BaseAgent):
             return {}
         return obj if isinstance(obj, dict) else {}
 
-    def _build_single_task_spec(self, task_spec: dict[str, Any], task: dict[str, Any]) -> dict[str, Any]:
-        return {
-            "tasks": [task],
-            "constraints": dict(task_spec.get("constraints") or {}),
-            "entrypoints": [],
-            "metric_observers": list(task_spec.get("metric_observers") or []),
-            "run_matrix": [task],
-            "selection_notes": list(task_spec.get("selection_notes") or []) + [
-                f"single_task_session:{task.get('task_id', '')}"
-            ],
-            "reason_codes": self._dedupe(list(task_spec.get("reason_codes") or []) + ["TASK_SERIAL_MODE"]),
-        }
-
-    def _collect_single_task_run(
+    def _collect_autonomous_results(
         self,
         runtime,
         *,
         outputs_dir: str,
-        task: dict[str, Any],
+        tasks: list[dict[str, Any]],
         fallback_rc: int,
-        fallback_reason: list[str] | None = None,
-    ) -> dict[str, Any]:
-        task_id = str(task.get("task_id") or "")
+    ) -> list[dict[str, Any]]:
+        """Collect task results from task_run_results.json written by Codex Stage 2."""
         payload = self._load_remote_json(runtime, f"{outputs_dir}/task_run_results.json")
         runs = payload.get("runs")
-        candidate: dict[str, Any] | None = None
-        if isinstance(runs, list):
+        run_rows: list[dict[str, Any]] = []
+
+        if isinstance(runs, list) and runs:
             for row in runs:
                 if not isinstance(row, dict):
                     continue
-                key = str(row.get("task_id") or row.get("run_id") or "")
-                if key == task_id:
-                    candidate = row
-        if candidate is None:
-            # Backward-compat: some Codex runs only emit run_manifest.json.
+                task_id = str(row.get("task_id") or row.get("run_id") or "")
+                matching_task = next((t for t in tasks if str(t.get("task_id") or "") == task_id), None)
+                run_rows.append(self._normalize_run(row, default_task=matching_task, default_rc=fallback_rc))
+
+        # For any tasks not represented in output, add a fallback row.
+        seen_ids = {str(r.get("task_id") or "") for r in run_rows}
+        for task in tasks:
+            tid = str(task.get("task_id") or "")
+            if tid and tid not in seen_ids:
+                run_rows.append(
+                    self._normalize_run(
+                        {
+                            "task_id": tid,
+                            "entrypoint": task.get("entrypoint"),
+                            "command": task.get("command"),
+                            "exit_code": fallback_rc,
+                            "status": "timeout" if fallback_rc == 124 else "failed",
+                            "reason_codes": ["TASK_RESULT_MISSING_FROM_CODEX"],
+                        },
+                        default_task=task,
+                        default_rc=fallback_rc,
+                    )
+                )
+
+        # Fallback: if no tasks were defined and nothing collected, create a single placeholder.
+        if not run_rows:
             manifest = self._load_remote_json(runtime, f"{outputs_dir}/run_manifest.json")
             manifest_runs = manifest.get("runs")
             if isinstance(manifest_runs, list):
                 for row in manifest_runs:
-                    if not isinstance(row, dict):
-                        continue
-                    key = str(row.get("task_id") or row.get("run_id") or "")
-                    if key == task_id:
-                        candidate = row
-                        break
-                if candidate is None and len(manifest_runs) == 1 and isinstance(manifest_runs[0], dict):
-                    candidate = manifest_runs[0]
-        if candidate is None:
-            return self._normalize_run(
-                {
-                    "run_id": task_id,
-                    "task_id": task_id,
-                    "entrypoint": task.get("entrypoint"),
-                    "command": task.get("command"),
-                    "exit_code": fallback_rc,
-                    "status": "timeout" if int(fallback_rc) == 124 else ("ok" if int(fallback_rc) == 0 else "failed"),
-                    "reason_codes": ["TASK_RESULT_MISSING_FROM_CODEX"],
-                },
-                default_task=task,
-                default_rc=fallback_rc,
-                default_reason=fallback_reason,
-            )
-        return self._normalize_run(
-            candidate,
-            default_task=task,
-            default_rc=fallback_rc,
-            default_reason=fallback_reason,
-        )
+                    if isinstance(row, dict):
+                        run_rows.append(self._normalize_run(row, default_rc=fallback_rc))
+
+        return run_rows
 
     def _build_claim_alignment_local(
         self,
@@ -437,6 +593,7 @@ class RunCodexExecAgent(BaseAgent):
             "dependency_solver.json",
             "pip_install.log",
             "task_run_results.json",
+            "discovery_summary.json",
         ]:
             try:
                 self.artifacts.write_text(f"execution/codex_outputs/{name}", runtime.read_text(f"{outputs_dir}/{name}"))
@@ -464,37 +621,19 @@ class RunCodexExecAgent(BaseAgent):
         missing = [k for k in required_ctx if not ctx.get(k)]
         if missing:
             raise RuntimeError(f"run_codex_exec missing workspace context keys: {missing}")
-        if ctx.get("_dep_gate_terminal"):
-            raise RuntimeError("dependency gate previously failed in this run; see codex_failure.json")
-        runtime_meta = runtime.metadata()
 
         workspace_root = str(ctx["workspace_root"])
         repo_dir = str(ctx["workspace_repo_dir"])
         outputs_dir = str(ctx["workspace_outputs_dir"])
         inputs_dir = str(ctx["workspace_inputs_dir"])
         workspace_bin_dir = str(ctx.get("workspace_bin_dir") or f"{workspace_root}/bin")
+        codex_skill_remote = str(ctx.get("workspace_codex_skill_remote") or "").strip()
 
         budget_minutes = int(ctx.get("budget_minutes", 30))
         global_timeout_sec = min(45 * 60, max(900, budget_minutes * 60 + 300))
-        repair_timeout = min(900, max(300, global_timeout_sec // 2))
         global_deadline = time.time() + global_timeout_sec
-        runtime_started_at = float(ctx.get("_runtime_started_at") or 0.0)
-        runtime_timeout_sec = int(runtime_meta.get("timeout_sec") or 0)
 
-        # Task-level scheduling and retries.
-        task_continue_on_failure = (os.getenv("P2C_TASK_CONTINUE_ON_FAILURE") or "1").strip() != "0"
-        task_rate_limit_retries = int(os.getenv("P2C_TASK_RATE_LIMIT_RETRIES", os.getenv("P2C_RATE_LIMIT_RETRIES", "1")))
-        task_rate_limit_backoff_sec = float(
-            os.getenv("P2C_TASK_RATE_LIMIT_BACKOFF_SEC", os.getenv("P2C_RATE_LIMIT_BACKOFF_SEC", "60"))
-        )
-        task_rate_limit_backoff_multiplier = float(
-            os.getenv(
-                "P2C_TASK_RATE_LIMIT_BACKOFF_MULTIPLIER",
-                os.getenv("P2C_RATE_LIMIT_BACKOFF_MULTIPLIER", "2.0"),
-            )
-        )
-
-        # Local stream sync settings.
+        # Stream sync settings.
         stream_sync_enable = (os.getenv("P2C_STREAM_SYNC_ENABLE") or "1").strip() != "0"
         stream_sync_every_sec = int(os.getenv("P2C_STREAM_SYNC_INTERVAL_SEC", "20"))
         stream_local_path = (os.getenv("P2C_STREAM_LOCAL_PATH") or "execution/codex_outputs/codex_exec.stream.log").strip()
@@ -508,6 +647,23 @@ class RunCodexExecAgent(BaseAgent):
         )
         self.artifacts.write_text(stream_local_path, "")
 
+        task_spec_local_artifact = str(ctx.get("workspace_task_spec_local_artifact") or "").strip()
+        task_spec_payload = (
+            self.artifacts.read_json(task_spec_local_artifact)
+            if task_spec_local_artifact
+            else self.artifacts.read_json("task/task_spec.json")
+        )
+        require_rscript = self._task_spec_requires_r(task_spec_payload) or self._repo_requires_r(ctx.get("repo_dir", ""))
+
+        bootstrap_result = self._bootstrap_toolchain(
+            runtime,
+            workspace_root=workspace_root,
+            workspace_bin_dir=workspace_bin_dir,
+            outputs_dir=outputs_dir,
+            install_rscript=require_rscript,
+        )
+
+        # --- Pre-flight checks ---
         key_probe = runtime.run_command("bash -lc 'test -n \"$OPENAI_API_KEY\"'", cwd=workspace_root, timeout_sec=20)
         if key_probe.rc != 0:
             self.reporter.write_failure_artifact(
@@ -540,22 +696,46 @@ class RunCodexExecAgent(BaseAgent):
             )
             raise RuntimeError("codex CLI is not available inside sandbox (template mismatch or install issue)")
 
+        # Toolchain diagnostic probe (non-blocking).
         toolchain_probe = self._probe_toolchain(
             runtime,
             workspace_root=workspace_root,
             workspace_bin_dir=workspace_bin_dir,
         )
         self._write_toolchain_artifacts(runtime, outputs_dir=outputs_dir, toolchain_probe=toolchain_probe)
+        missing_required_tools = self._missing_required_tools(toolchain_probe, require_rscript=require_rscript)
+        if missing_required_tools:
+            self.reporter.write_failure_artifact(
+                stage="precheck",
+                last_command="toolchain_probe",
+                exit_code=1,
+                stdout_tail="",
+                stderr_tail=f"missing required sandbox toolchain: {', '.join(missing_required_tools)}",
+                codex_exec_log_tail="",
+                pip_log_tail=self.artifacts.path("execution/codex_outputs/dependency_bootstrap.log").read_text(
+                    encoding="utf-8", errors="ignore"
+                )[-1200:],
+                reason_codes=[f"PRECHECK_TOOL_MISSING_{tool.upper()}" for tool in missing_required_tools],
+            )
+            raise RuntimeError(
+                "sandbox toolchain bootstrap incomplete; missing required commands: "
+                + ", ".join(missing_required_tools)
+            )
+
+        # Capability diagnostic probe (non-blocking).
+        capability_snapshot = self.capability_gate.probe_python_capabilities(runtime, workspace_root)
+        self.artifacts.write_json("execution/codex_outputs/capability_probe.json", capability_snapshot)
 
         reason_codes: list[str] = [
-            "RUNNER_TASK_ONLY_MODE",
-            "CLAIMS_LOCAL_ONLY",
-            "DEPENDENCY_SOLVER_STARTED",
+            "AUTONOMOUS_EXECUTION_MODE",
             "CODEX_SKIP_GIT_FLAG_USED",
             "CODEX_DANGEROUS_BYPASS_USED",
-            "P2C_TASK_SERIAL_MODE",
         ]
+        if require_rscript:
+            reason_codes.append("RUNTIME_REQUIRES_RSCRIPT")
+        reason_codes.extend(bootstrap_result.get("reason_codes") or [])
         reason_codes.extend(toolchain_probe.get("reason_codes") or [])
+        reason_codes.extend(capability_snapshot.get("reason_codes") or [])
         if stream_sync_enable:
             reason_codes.append("STREAM_SYNC_ENABLED")
 
@@ -564,300 +744,168 @@ class RunCodexExecAgent(BaseAgent):
             "--dangerously-bypass-approvals-and-sandbox",
         ]
 
-        capability_snapshot = self.capability_gate.probe_python_capabilities(runtime, workspace_root)
-        capability_snapshot["runtime_metadata"] = runtime_meta
-        reason_codes.extend(capability_snapshot.get("reason_codes", []))
-        self._write_capability_artifacts(runtime, outputs_dir=outputs_dir, capability_snapshot=capability_snapshot)
-
-        bootstrap = self.capability_gate.bootstrap_dependencies(
-            runtime,
-            repo_dir=repo_dir,
-            outputs_dir=outputs_dir,
-            workspace_root=workspace_root,
-            capability_snapshot=capability_snapshot,
-        )
-        dependency_bootstrap_trace = list(bootstrap.get("trace") or [])
-        capability_snapshot = dict(bootstrap.get("snapshot_after") or capability_snapshot)
-        capability_snapshot["runtime_metadata"] = runtime_meta
-        capability_snapshot["sudo_diagnostics"] = bootstrap.get("sudo_diag", {})
-        reason_codes.extend(bootstrap.get("reason_codes") or [])
-        reason_codes = self._dedupe(reason_codes)
-        self._write_capability_artifacts(runtime, outputs_dir=outputs_dir, capability_snapshot=capability_snapshot)
-        try:
-            dep_log_text = runtime.read_text(f"{outputs_dir}/dependency_bootstrap.log")
-            self.artifacts.write_text("execution/codex_outputs/dependency_bootstrap.log", dep_log_text)
-        except Exception:  # noqa: BLE001
-            self.artifacts.write_text("execution/codex_outputs/dependency_bootstrap.log", "")
-
+        # Load task spec and claims for context.
         claims_payload = self.artifacts.read_json("fingerprint/claims_ir.json")
         if not isinstance(claims_payload.get("claims"), list) or not claims_payload.get("claims"):
             remote_claims = self._load_remote_json(runtime, f"{inputs_dir}/claims_ir.json")
             if isinstance(remote_claims.get("claims"), list) and remote_claims.get("claims"):
                 claims_payload = remote_claims
-        task_spec_payload = self.artifacts.read_json("task/task_spec.json")
-
-        if not bool(bootstrap.get("ready")):
-            reason_codes.append("DEPENDENCY_UNRESOLVED")
-            probe = self.capability_gate.probe_entrypoints_once(
-                runtime,
-                repo_dir=repo_dir,
-                task_spec_path=f"{inputs_dir}/task_spec.json",
-            )
-            run_rows = list(probe.get("runs") or [])
-            worklog_events = list(bootstrap.get("worklog_events") or []) + list(probe.get("worklog_events") or [])
-            self.capability_gate.render_fallback_outputs(
-                runtime,
-                outputs_dir=outputs_dir,
-                claims_ir_path=f"{inputs_dir}/claims_ir.json",
-                claims_payload=claims_payload,
-                capability_snapshot=capability_snapshot,
-                dependency_bootstrap_trace=dependency_bootstrap_trace,
-                runs=run_rows,
-                worklog_events=worklog_events,
-                reason_codes=reason_codes,
-                dependency_solver_payload=bootstrap.get("dependency_solver"),
-            )
-            self.reporter.write_failure_artifact(
-                stage="precheck",
-                last_command="capability_gate",
-                exit_code=1,
-                stdout_tail="",
-                stderr_tail="Dependency bootstrap could not satisfy required runtime modules",
-                codex_exec_log_tail=self.reporter.safe_remote_log_tail(runtime, f"{outputs_dir}/codex_exec.log"),
-                pip_log_tail=str(self.reporter.collect_pip_log_tail(runtime, outputs_dir).get("tail") or ""),
-                reason_codes=self._dedupe(reason_codes),
-                capability_snapshot=capability_snapshot,
-                dependency_bootstrap_trace=dependency_bootstrap_trace,
-            )
-            ctx["_dep_gate_terminal"] = True
-            raise RuntimeError(
-                "Dependency capability gate failed before codex main execution. "
-                "Fallback outputs were written; see execution/codex_failure.json"
-            )
-
-        if runtime_started_at > 0 and runtime_timeout_sec > 0:
-            min_lifetime_before_task = int(os.getenv("P2C_SANDBOX_MIN_LIFETIME_BEFORE_TASK_SEC", "480"))
-            elapsed = max(0.0, time.time() - runtime_started_at)
-            remaining_lifetime = max(0.0, float(runtime_timeout_sec) - elapsed)
-            self.artifacts.append_text(
-                "execution/run.log",
-                (
-                    "[run_codex_exec] sandbox_lifetime_check "
-                    f"timeout_sec={runtime_timeout_sec} elapsed_sec={elapsed:.1f} "
-                    f"remaining_sec={remaining_lifetime:.1f} threshold_sec={min_lifetime_before_task}\n"
-                ),
-            )
-            if remaining_lifetime < float(min_lifetime_before_task):
-                reason_codes.append("SANDBOX_LIFETIME_TOO_LOW_BEFORE_TASK")
-                self.reporter.write_failure_artifact(
-                    stage="precheck",
-                    last_command="sandbox_lifetime_guard",
-                    exit_code=124,
-                    stdout_tail="",
-                    stderr_tail=(
-                        f"remaining sandbox lifetime {remaining_lifetime:.1f}s below "
-                        f"threshold {min_lifetime_before_task}s"
-                    ),
-                    codex_exec_log_tail=self.reporter.safe_remote_log_tail(runtime, f"{outputs_dir}/codex_exec.log"),
-                    pip_log_tail=str(self.reporter.collect_pip_log_tail(runtime, outputs_dir).get("tail") or ""),
-                    reason_codes=self._dedupe(reason_codes),
-                    capability_snapshot=capability_snapshot,
-                    dependency_bootstrap_trace=dependency_bootstrap_trace,
-                )
-                raise RuntimeError(
-                    "Sandbox lifetime guard failed before task execution. "
-                    "See execution/codex_failure.json"
-                )
-
         tasks = extract_task_items(task_spec_payload)
-        if not tasks:
-            tasks = [
-                {
-                    "task_id": "legacy_task_01",
-                    "entrypoint": "",
-                    "command": "python3 -c 'print(\"phase2 task fallback\")'",
-                    "timeout_class": "short",
-                    "expected_metrics": [],
-                    "hyperparams": {},
-                }
-            ]
-            reason_codes.append("TASKS_MISSING_FALLBACK_SINGLE_SESSION")
 
-        worklog_events: list[dict[str, Any]] = list(bootstrap.get("worklog_events") or [])
-        run_rows: list[dict[str, Any]] = []
-        saw_global_timeout = False
-        last_task_cmd = ""
+        worklog_events: list[dict[str, Any]] = []
 
-        for task in tasks:
-            if time.time() >= global_deadline:
-                saw_global_timeout = True
-                reason_codes.append("GLOBAL_TIMEOUT_45M")
-                break
+        # === Stage 1: Autonomous Discovery ===
+        discovery_timeout = max(300, int((global_deadline - time.time()) * 0.4))
+        discovery_prompt = build_autonomous_discovery_prompt(
+            repo_dir=repo_dir,
+            outputs_dir=outputs_dir,
+            skill_path=codex_skill_remote or None,
+        )
+        discovery_cmd = self._prepend_path(
+            self._build_codex_cmd(discovery_prompt, extra_args=cmd_args),
+            workspace_bin_dir=workspace_bin_dir,
+        )
 
-            task_id = str(task.get("task_id") or f"task_{len(run_rows)+1:02d}")
-            safe_task_id = self._safe_label(task_id)
-            single_spec_path = f"{inputs_dir}/task_spec.single.{safe_task_id}.json"
-            runtime.write_text(
-                single_spec_path,
-                json.dumps(self._build_single_task_spec(task_spec_payload, task), ensure_ascii=False, indent=2),
-            )
+        worklog_events.append(
+            {
+                "type": "run",
+                "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "details": {"stage": "discovery", "command": discovery_cmd},
+                "result": {"status": "start", "timeout_sec": discovery_timeout},
+            }
+        )
 
-            task_prompt = build_codex_single_task_prompt(
-                repo_dir=repo_dir,
-                inputs_task_spec=single_spec_path,
-                inputs_metric_contract=f"{inputs_dir}/metric_contract.json",
+        self.log("PROGRESS", "Stage 1: Autonomous discovery and dependency installation...")
+        discovery_result = self._run_stage(
+            runtime,
+            label="discovery_main",
+            cmd=discovery_cmd,
+            repo_dir=repo_dir,
+            outputs_dir=outputs_dir,
+            workspace_root=workspace_root,
+            timeout_sec=discovery_timeout,
+            reason_codes=reason_codes,
+            capability_snapshot=capability_snapshot,
+            local_stream_path=stream_local_path if stream_sync_enable else None,
+            stream_sync_every_sec=stream_sync_every_sec,
+        )
+
+        worklog_events.append(
+            {
+                "type": "run",
+                "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "details": {"stage": "discovery"},
+                "result": {
+                    "status": "end",
+                    "rc": int(discovery_result.get("rc", 1)),
+                    "timed_out": bool(discovery_result.get("timed_out")),
+                },
+            }
+        )
+
+        # Collect discovery summary (non-blocking — Stage 2 proceeds regardless).
+        discovery_summary, discovery_issues = self.validator.validate_discovery_summary(runtime, outputs_dir)
+        if discovery_summary:
+            self.artifacts.write_json("execution/codex_outputs/discovery_summary.json", discovery_summary)
+            self.log("PROGRESS", f"Discovery: project_type={discovery_summary.get('project_type')}, "
+                      f"env_ready={discovery_summary.get('environment_ready')}")
+        if discovery_issues:
+            reason_codes.extend(discovery_issues)
+
+        if bool(discovery_result.get("timed_out")):
+            reason_codes.append("DISCOVERY_STAGE_TIMEOUT")
+
+        # === Stage 2: Task Execution ===
+        remaining = max(300, int(global_deadline - time.time()))
+        execution_prompt = build_autonomous_execution_prompt(
+            repo_dir=repo_dir,
+            outputs_dir=outputs_dir,
+            task_spec_path=f"{inputs_dir}/task_spec.json",
+            metric_contract_path=f"{inputs_dir}/metric_contract.json",
+            skill_path=codex_skill_remote or None,
+        )
+        execution_cmd = self._prepend_path(
+            self._build_codex_cmd(execution_prompt, extra_args=cmd_args),
+            workspace_bin_dir=workspace_bin_dir,
+        )
+
+        worklog_events.append(
+            {
+                "type": "run",
+                "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "details": {"stage": "execution", "command": execution_cmd},
+                "result": {"status": "start", "timeout_sec": remaining},
+            }
+        )
+
+        self.log("PROGRESS", "Stage 2: Executing tasks from task_spec...")
+        execution_result = self._run_stage(
+            runtime,
+            label="execution_main",
+            cmd=execution_cmd,
+            repo_dir=repo_dir,
+            outputs_dir=outputs_dir,
+            workspace_root=workspace_root,
+            timeout_sec=remaining,
+            reason_codes=reason_codes,
+            capability_snapshot=capability_snapshot,
+            local_stream_path=stream_local_path if stream_sync_enable else None,
+            stream_sync_every_sec=stream_sync_every_sec,
+        )
+
+        worklog_events.append(
+            {
+                "type": "run",
+                "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "details": {"stage": "execution"},
+                "result": {
+                    "status": "end",
+                    "rc": int(execution_result.get("rc", 1)),
+                    "timed_out": bool(execution_result.get("timed_out")),
+                },
+            }
+        )
+
+        saw_global_timeout = bool(execution_result.get("timed_out"))
+        if saw_global_timeout:
+            reason_codes.append("GLOBAL_TIMEOUT_45M")
+
+        # Repair attempt if Stage 2 failed.
+        if int(execution_result.get("rc", 1)) != 0 and not saw_global_timeout:
+            repair_remaining = max(60, int(global_deadline - time.time()))
+            repair_timeout = min(900, repair_remaining)
+            repair_prompt = build_autonomous_repair_prompt(
                 outputs_dir=outputs_dir,
-                task_id=task_id,
+                task_spec_path=f"{inputs_dir}/task_spec.json",
+                skill_path=codex_skill_remote or None,
             )
-            task_cmd = self._prepend_path(
-                self._build_codex_cmd(task_prompt, extra_args=cmd_args),
+            repair_cmd = self._prepend_path(
+                self._build_codex_cmd(repair_prompt, extra_args=cmd_args),
                 workspace_bin_dir=workspace_bin_dir,
             )
-            last_task_cmd = task_cmd
-
-            task_timeout_cap = timeout_for_class(str(task.get("timeout_class") or "medium"), fallback_sec=600)
-            remaining = max(1, int(global_deadline - time.time()))
-            task_timeout = max(60, min(task_timeout_cap, remaining))
-
-            worklog_events.append(
-                {
-                    "type": "run",
-                    "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                    "details": {"stage": "main", "task_id": task_id, "command": task_cmd},
-                    "result": {"status": "start", "timeout_sec": task_timeout},
-                }
-            )
-
-            main_result: dict[str, Any] | None = None
-            task_reason_codes: list[str] = []
-            for attempt in range(task_rate_limit_retries + 1):
-                label = f"task_{safe_task_id}_main" if attempt == 0 else f"task_{safe_task_id}_retry_{attempt}"
-                main_result = self._run_stage(
-                    runtime,
-                    label=label,
-                    cmd=task_cmd,
-                    repo_dir=repo_dir,
-                    outputs_dir=outputs_dir,
-                    workspace_root=workspace_root,
-                    timeout_sec=task_timeout,
-                    reason_codes=reason_codes,
-                    capability_snapshot=capability_snapshot,
-                    dependency_bootstrap_trace=dependency_bootstrap_trace,
-                    local_stream_path=stream_local_path if stream_sync_enable else None,
-                    stream_sync_every_sec=stream_sync_every_sec,
-                )
-                if int(main_result.get("rc", 1)) == 0:
-                    break
-
-                stage_tail = self.reporter.safe_remote_log_tail(runtime, str(main_result.get("log_path") or ""))
-                if is_rate_limit_failure(stage_tail):
-                    task_reason_codes.append("STREAM_DISCONNECT_CONTINUE_POLL")
-                    reason_codes.append("STREAM_DISCONNECT_CONTINUE_POLL")
-                    if attempt < task_rate_limit_retries:
-                        backoff = task_rate_limit_backoff_sec * (task_rate_limit_backoff_multiplier**attempt)
-                        reason_codes.append(f"TASK_RATE_LIMIT_BACKOFF_RETRY_{attempt + 1}")
-                        reason_codes.append(f"CODEX_RATE_LIMIT_BACKOFF_RETRY_{attempt + 1}")
-                        sleep_sec = max(0.0, min(backoff, max(0.0, global_deadline - time.time() - 1.0)))
-                        if sleep_sec > 0:
-                            self.log("PROGRESS", f"task {task_id}: rate-limit detected; backoff {sleep_sec:.1f}s")
-                            time.sleep(sleep_sec)
-                        continue
-                    reason_codes.append("TASK_RATE_LIMIT_BACKOFF_EXHAUSTED")
-                    reason_codes.append("CODEX_RATE_LIMIT_BACKOFF_EXHAUSTED")
-                break
-
-            if main_result is None:
-                main_result = {
-                    "rc": 1,
-                    "polls": 0,
-                    "timed_out": False,
-                    "pid_path": "",
-                    "exit_path": "",
-                    "log_path": "",
-                    "launch_stdout": "",
-                    "launch_stderr": "",
-                }
-
-            if bool(main_result.get("timed_out")):
-                task_reason_codes.append("TASK_TIMEOUT")
-                reason_codes.append("GLOBAL_TIMEOUT_45M")
-
-            if int(main_result.get("rc", 1)) != 0 and not bool(main_result.get("timed_out")):
-                repair_cmd = self._build_codex_cmd(
-                    build_codex_single_task_repair_prompt(
-                        outputs_dir=outputs_dir,
-                        task_id=task_id,
-                        task_spec_path=single_spec_path,
-                    ),
-                    extra_args=cmd_args,
-                )
-                repair_cmd = self._prepend_path(repair_cmd, workspace_bin_dir=workspace_bin_dir)
-                remaining_after_main = max(1, int(global_deadline - time.time()))
-                task_repair_timeout = max(60, min(repair_timeout, remaining_after_main))
-                _ = self._run_stage(
-                    runtime,
-                    label=f"task_{safe_task_id}_repair",
-                    cmd=repair_cmd,
-                    repo_dir=repo_dir,
-                    outputs_dir=outputs_dir,
-                    workspace_root=workspace_root,
-                    timeout_sec=task_repair_timeout,
-                    reason_codes=reason_codes,
-                    capability_snapshot=capability_snapshot,
-                    dependency_bootstrap_trace=dependency_bootstrap_trace,
-                    local_stream_path=stream_local_path if stream_sync_enable else None,
-                    stream_sync_every_sec=stream_sync_every_sec,
-                )
-
-            row = self._collect_single_task_run(
+            self.log("PROGRESS", "Stage 2 failed, attempting repair...")
+            _ = self._run_stage(
                 runtime,
+                label="execution_repair",
+                cmd=repair_cmd,
+                repo_dir=repo_dir,
                 outputs_dir=outputs_dir,
-                task=task,
-                fallback_rc=int(main_result.get("rc", 1)),
-                fallback_reason=task_reason_codes,
-            )
-            if bool(main_result.get("timed_out")):
-                row["exit_code"] = 124
-                row["status"] = "timeout"
-                row["reason_codes"] = self._dedupe(list(row.get("reason_codes") or []) + ["TASK_TIMEOUT"])
-
-            run_rows.append(row)
-            worklog_events.append(
-                {
-                    "type": "run",
-                    "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                    "details": {"stage": "main", "task_id": task_id},
-                    "result": {
-                        "status": "end",
-                        "rc": int(main_result.get("rc", 1)),
-                        "timed_out": bool(main_result.get("timed_out")),
-                        "log_path": str(main_result.get("log_path") or ""),
-                    },
-                }
+                workspace_root=workspace_root,
+                timeout_sec=repair_timeout,
+                reason_codes=reason_codes,
+                capability_snapshot=capability_snapshot,
+                local_stream_path=stream_local_path if stream_sync_enable else None,
+                stream_sync_every_sec=stream_sync_every_sec,
             )
 
-            if int(row.get("exit_code", 1)) != 0 and not task_continue_on_failure:
-                reason_codes.append("TASK_STOP_ON_FAILURE")
-                break
-
-        # If global timeout happened, mark pending tasks explicitly.
-        if saw_global_timeout and len(run_rows) < len(tasks):
-            for task in tasks[len(run_rows) :]:
-                run_rows.append(
-                    self._normalize_run(
-                        {
-                            "run_id": str(task.get("task_id") or "task_unknown"),
-                            "task_id": str(task.get("task_id") or "task_unknown"),
-                            "entrypoint": str(task.get("entrypoint") or ""),
-                            "command": str(task.get("command") or ""),
-                            "exit_code": 124,
-                            "status": "timeout",
-                            "reason_codes": ["TASK_SKIPPED_GLOBAL_TIMEOUT"],
-                        },
-                        default_task=task,
-                        default_rc=124,
-                    )
-                )
+        # === Collect Results ===
+        fallback_rc = 124 if saw_global_timeout else int(execution_result.get("rc", 1))
+        run_rows = self._collect_autonomous_results(
+            runtime,
+            outputs_dir=outputs_dir,
+            tasks=tasks,
+            fallback_rc=fallback_rc,
+        )
 
         run_manifest = {
             "runs": run_rows,
@@ -880,6 +928,7 @@ class RunCodexExecAgent(BaseAgent):
                         "claim_alignment.json",
                         "codex_worklog.jsonl",
                         "patches.diff",
+                        "discovery_summary.json",
                         stream_local_path,
                     ]
                 },
@@ -896,47 +945,38 @@ class RunCodexExecAgent(BaseAgent):
         )
 
         success_count = sum(1 for row in run_rows if int(row.get("exit_code", 1)) == 0)
-        dep_failed_count = 0
-        for row in run_rows:
-            if int(row.get("exit_code", 0)) == 0:
-                continue
-            status = str(row.get("status") or "").lower()
-            row_reasons = [str(x).lower() for x in (row.get("reason_codes") or [])]
-            row_text = " ".join([status] + row_reasons + [str(row.get("stderr_tail") or "").lower()])
-            if "dependency" in row_text or "module not found" in row_text or "modulenotfounderror" in row_text:
-                dep_failed_count += 1
-        if run_rows and success_count == 0 and dep_failed_count == len(run_rows):
-            reason_codes.append("DEPENDENCY_UNRESOLVED")
-        run_manifest["reason_codes"] = self._dedupe(reason_codes)
-        claim_alignment["reason_codes"] = self._dedupe(reason_codes)
 
-        if saw_global_timeout or success_count == 0 or not run_rows:
+        if saw_global_timeout:
             pip_diag = self.reporter.collect_pip_log_tail(runtime, outputs_dir)
-            final_reason_codes = self._dedupe(reason_codes)
-            if pip_diag.get("has_conflict_signal", False):
-                final_reason_codes.append("DEPENDENCY_INSTALL_CONFLICT")
-            elif pip_diag.get("has_pip_activity", False):
-                final_reason_codes.append("DEPENDENCY_INSTALL_ACTIVITY_DETECTED")
-            final_reason_codes = self._dedupe(final_reason_codes)
             self.reporter.write_failure_artifact(
                 stage="main",
-                last_command=last_task_cmd or "task_serial_execution",
-                exit_code=124 if saw_global_timeout else 1,
+                last_command="autonomous_execution",
+                exit_code=124,
                 stdout_tail="",
-                stderr_tail=(
-                    "global timeout reached" if saw_global_timeout else "no successful tasks in serial execution"
-                ),
+                stderr_tail="global timeout reached during autonomous execution",
                 codex_exec_log_tail=self.reporter.safe_remote_log_tail(runtime, f"{outputs_dir}/codex_exec.log"),
                 pip_log_tail=str(pip_diag.get("tail") or ""),
-                reason_codes=final_reason_codes,
+                reason_codes=self._dedupe(reason_codes),
                 capability_snapshot=capability_snapshot,
-                dependency_bootstrap_trace=dependency_bootstrap_trace,
             )
-            if saw_global_timeout:
-                raise RuntimeError(
-                    "Codex execution exceeded the 45-minute global timeout. "
-                    "Partial artifacts were written to execution/codex_outputs/*"
-                )
+            raise RuntimeError(
+                "Codex execution exceeded the global timeout. "
+                "Partial artifacts were written to execution/codex_outputs/*"
+            )
+
+        if success_count == 0 and run_rows:
+            pip_diag = self.reporter.collect_pip_log_tail(runtime, outputs_dir)
+            self.reporter.write_failure_artifact(
+                stage="main",
+                last_command="autonomous_execution",
+                exit_code=1,
+                stdout_tail="",
+                stderr_tail="no successful tasks in autonomous execution",
+                codex_exec_log_tail=self.reporter.safe_remote_log_tail(runtime, f"{outputs_dir}/codex_exec.log"),
+                pip_log_tail=str(pip_diag.get("tail") or ""),
+                reason_codes=self._dedupe(reason_codes),
+                capability_snapshot=capability_snapshot,
+            )
             raise RuntimeError(
                 "Codex execution finished but no task succeeded. "
                 "See execution/codex_failure.json and execution/codex_outputs/*"

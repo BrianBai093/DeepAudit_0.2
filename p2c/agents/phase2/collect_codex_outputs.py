@@ -46,6 +46,7 @@ class CollectCodexOutputsAgent(BaseAgent):
             f"{outputs_dir}/dependency_bootstrap.log": "execution/codex_outputs/dependency_bootstrap.log",
             f"{outputs_dir}/codex_failure.json": "execution/codex_outputs/codex_failure.json",
             f"{outputs_dir}/toolchain_probe.json": "execution/codex_outputs/toolchain_probe.json",
+            f"{outputs_dir}/discovery_summary.json": "execution/codex_outputs/discovery_summary.json",
         }
 
         reason_codes: list[str] = []
