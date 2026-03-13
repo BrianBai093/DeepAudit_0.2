@@ -1,8 +1,0 @@
-{
-  "status": "INCONCLUSIVE",
-  "claim_verdicts": [],
-  "reason_codes": [
-    "PHASE_1_ONLY"
-  ],
-  "summary": "Pipeline finished before full verification: PHASE_1_ONLY"
-}

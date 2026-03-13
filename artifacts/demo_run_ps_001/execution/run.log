@@ -1,8 +1,0 @@
-[2026-02-19T01:09:05.944042+00:00] [agent=orchestrator] [state=START] [step=0/3] phase=1 run_id=demo_run_ps_001
-[2026-02-19T01:09:05.945047+00:00] [agent=orchestrator] [state=PROGRESS] [step=1/3] running phase 1 ingestion + fingerprint extraction
-[2026-02-19T01:09:05.945047+00:00] [agent=ingest_paper] [state=START] [step=1/14] starting with ctx keys=['artifacts_dir', 'budget_minutes', 'max_self_heal_iters', 'paper_md', 'paper_md_out', 'phase', 'repo_dir', 'run_id']
-[2026-02-19T01:09:05.946046+00:00] [agent=ingest_paper] [state=PROGRESS] [step=1/14] converting markdown images to text: Target\paper\full.md -> output\paper.md
-[2026-02-19T01:09:05.947046+00:00] [agent=ingest_paper] [state=DONE] [step=1/14] completed in 0.00s
-[2026-02-19T01:09:05.947046+00:00] [agent=extract_fingerprint_guide] [state=START] [step=2/14] starting with ctx keys=['artifacts_dir', 'budget_minutes', 'max_self_heal_iters', 'paper_md', 'paper_md_out', 'phase', 'repo_dir', 'run_id']
-[2026-02-19T01:11:19.465323+00:00] [agent=extract_fingerprint_guide] [state=DONE] [step=2/14] completed in 133.52s
-[2026-02-19T01:11:19.466319+00:00] [agent=extract_fingerprint_atomic] [state=START] [step=3/14] starting with ctx keys=['artifacts_dir', 'budget_minutes', 'max_self_heal_iters', 'paper_md', 'paper_md_out', 'phase', 'repo_dir', 'run_id']

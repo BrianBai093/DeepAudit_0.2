@@ -1,8 +1,0 @@
-{
-  "status": "INCONCLUSIVE",
-  "claim_verdicts": [],
-  "reason_codes": [
-    "PIPELINE_ERROR:prepare_sandbox failed after retries: E2B SDK not installed or incompatible: No module named 'e2b_code_interpreter'"
-  ],
-  "summary": "Pipeline finished before full verification: PIPELINE_ERROR:prepare_sandbox failed after retries: E2B SDK not installed or incompatible: No module named 'e2b_code_interpreter'"
-}

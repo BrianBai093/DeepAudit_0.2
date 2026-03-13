@@ -1,8 +1,0 @@
-{
-  "required_metrics": [],
-  "parsers": [],
-  "normalization": {},
-  "reason_codes": [
-    "INITIALIZED_PLACEHOLDER"
-  ]
-}

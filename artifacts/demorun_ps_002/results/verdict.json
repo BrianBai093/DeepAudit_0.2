@@ -1,8 +1,0 @@
-{
-  "status": "INCONCLUSIVE",
-  "claim_verdicts": [],
-  "reason_codes": [
-    "PIPELINE_ERROR:Phase 2 requires phase 1 outputs with non-empty entrypoints. Run: python -m p2c.main --phase 1 ..."
-  ],
-  "summary": "Pipeline finished before full verification: PIPELINE_ERROR:Phase 2 requires phase 1 outputs with non-empty entrypoints. Run: python -m p2c.main --phase 1 ..."
-}
