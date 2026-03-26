@@ -286,38 +286,6 @@ class ExtractFingerprintAtomicAgent(BaseAgent):
 
         return out, rej
 
-    def _heuristic_atomic(self, text: str, unit_id: str) -> list[dict]:
-        text = re.sub(r"\s+", " ", text).strip()
-        facet = self._facet_of(text)
-        metric_name = self._extract_metric_name(text)
-        metric_value, metric_unit = self._extract_metric_value(text)
-        comparator = self._extract_comparator(text)
-        entity = self._extract_entity(text)
-        dataset_scope = self._extract_dataset_scope(text, "")
-
-        scope = "from paper context"
-        if dataset_scope:
-            scope = dataset_scope
-
-        return [
-            {
-                "criterion": f"<fact>{text}</fact> <scope>{scope}</scope>",
-                "fact": text,
-                "scope": scope,
-                "facet": facet,
-                "source_type": "text_metric" if facet == "metric" else "text_statement",
-                "metric_name": metric_name,
-                "metric_value": metric_value,
-                "metric_unit": metric_unit,
-                "entity": entity,
-                "comparator": comparator,
-                "dataset_scope": dataset_scope,
-                "table_anchor": None,
-                "input_unit_id": unit_id,
-                "reason_codes": ["HEURISTIC_FALLBACK"],
-            }
-        ]
-
     def execute(self, ctx: dict) -> dict:
         guide = self.artifacts.read_json("fingerprint/guide_sentences.json")
         units = [u for u in guide.get("units", []) if isinstance(u, dict)]
@@ -389,13 +357,31 @@ class ExtractFingerprintAtomicAgent(BaseAgent):
                     llm_enabled = False
                     reason_codes.append("LLM_CIRCUIT_BREAKER")
                 if not candidates:
-                    candidates = self._heuristic_atomic(text, unit_id)
-                    reason_codes.append("HEURISTIC_FALLBACK")
+                    rejected.append(
+                        {
+                            "unit_id": unit_id,
+                            "raw": text,
+                            "reason_codes": ["LLM_EXTRACTION_EMPTY"],
+                        }
+                    )
             else:
-                candidates = self._heuristic_atomic(text, unit_id)
-                reason_codes.append("HEURISTIC_FALLBACK")
                 if llm_calls >= llm_budget:
                     reason_codes.append("LLM_BUDGET_EXCEEDED")
+                    rejected.append(
+                        {
+                            "unit_id": unit_id,
+                            "raw": text,
+                            "reason_codes": ["LLM_BUDGET_EXCEEDED"],
+                        }
+                    )
+                else:
+                    rejected.append(
+                        {
+                            "unit_id": unit_id,
+                            "raw": text,
+                            "reason_codes": ["LLM_UNAVAILABLE"],
+                        }
+                    )
 
             for row in candidates:
                 criterion, fact, scope = self._fact_scope_from_row(row)

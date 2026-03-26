@@ -86,26 +86,6 @@ class ExtractFingerprintFilterAgent(BaseAgent):
         )
 
     @staticmethod
-    def _select_rep_heuristic(cluster_rows: list[dict]) -> int:
-        best_idx = 0
-        best_score = -10_000.0
-        for i, row in enumerate(cluster_rows):
-            score = 0.0
-            scope = str(row.get("scope") or "")
-            fact = str(row.get("fact") or "")
-            if row.get("metric_value") is not None:
-                score += 3.0
-            if scope and "from paper context" not in scope.lower():
-                score += 2.0
-            if row.get("facet") in {"hyperparameter", "architecture", "algorithm", "metric"}:
-                score += 2.0
-            score += min(len(fact), 200) / 200.0
-            if score > best_score:
-                best_score = score
-                best_idx = i
-        return best_idx
-
-    @staticmethod
     def _claim_type(row: dict) -> str:
         facet = str(row.get("facet") or "other")
         comparator = row.get("comparator")
@@ -316,7 +296,7 @@ class ExtractFingerprintFilterAgent(BaseAgent):
         for key, indices in clusters.items():
             cluster_rows = [criteria[i] for i in indices]
             selected_local = 0
-            selection_reason = "heuristic"
+            selection_reason = "deterministic_first"
 
             if len(indices) > 1 and llm_calls < llm_budget:
                 llm_calls += 1
@@ -337,16 +317,12 @@ class ExtractFingerprintFilterAgent(BaseAgent):
                         selected_local = picked
                         selection_reason = str(llm_data.get("reason") or "llm")
                     else:
-                        selected_local = self._select_rep_heuristic(cluster_rows)
-                        selection_reason = "llm_out_of_range_fallback"
+                        selection_reason = "llm_out_of_range"
                 else:
-                    selected_local = self._select_rep_heuristic(cluster_rows)
-                    selection_reason = "llm_empty_fallback"
+                    selection_reason = "llm_empty"
 
                 if llm_err:
                     reason_codes.append("LLM_UNAVAILABLE")
-            else:
-                selected_local = self._select_rep_heuristic(cluster_rows)
 
             selected_global = indices[selected_local]
             selected_indices.append(selected_global)

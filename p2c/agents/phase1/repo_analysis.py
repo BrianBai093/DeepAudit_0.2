@@ -50,7 +50,7 @@ _SOURCE_PRIORITY = {
     "code_cli": 400,
     "readme_verified": 300,
     "wrapper_target": 200,
-    "heuristic": 100,
+    "unspecified": 0,
 }
 
 
@@ -371,11 +371,8 @@ class SystemRepoAnalyzer:
             has_main_guard = bool(parsed.get("has_main_guard"))
             has_main_fn = bool(parsed.get("has_main_fn"))
             cli_import = any(x in imports for x in {"argparse", "click", "typer", "fire"})
-            filename = path.name.lower()
-            heuristic_name = bool(re.match(r"(main|train|run|eval|serve).*\.py$", filename))
-            if not (has_main_guard or cli_import or has_main_fn or heuristic_name):
+            if not (has_main_guard or cli_import or has_main_fn):
                 continue
-            source = "code_cli" if (has_main_guard or cli_import or has_main_fn) else "heuristic"
             confidence = 0.72
             if has_main_guard:
                 confidence = 0.93
@@ -383,8 +380,6 @@ class SystemRepoAnalyzer:
                 confidence = 0.90
             elif cli_import or has_main_fn:
                 confidence = 0.86
-            elif heuristic_name:
-                confidence = 0.62
             profile = self._match_profile(path, "python", profile_map)
             reason_codes: list[str] = []
             cwd = profile.cwd if profile else "."
@@ -399,7 +394,7 @@ class SystemRepoAnalyzer:
                     runtime="python",
                     dependency_profile_id=profile.profile_id if profile else None,
                     confidence=confidence,
-                    evidence="python CLI entrypoint detected" if source == "code_cli" else "python heuristic fallback",
+                    evidence="python CLI entrypoint detected",
                     reason_codes=reason_codes,
                 )
             )
@@ -595,7 +590,7 @@ class SystemRepoAnalyzer:
 
     def _candidate_sort_key(self, candidate: Entrypoint, profile_map: dict[str, DependencyProfile]) -> tuple[int, float, int, int, str]:
         profile = profile_map.get(str(candidate.dependency_profile_id or ""))
-        source_kind = "heuristic"
+        source_kind = "unspecified"
         evidence = str(candidate.evidence or "").lower()
         if "console script" in evidence or "package.json script" in evidence or "main" in evidence:
             source_kind = "manifest_explicit"

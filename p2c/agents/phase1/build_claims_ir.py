@@ -13,7 +13,7 @@ SYSTEM_PROMPT = (
 )
 
 USER_PROMPT_TEMPLATE = (
-    "Input file: fingerprint/fingerprint.json (preferred) or output/paper.md fallback\n"
+    "Input file: fingerprint/fingerprint.json (preferred) or output/paper.md when fingerprint is unavailable\n"
     "Output file: fingerprint/claims_ir.json\n"
     "Fields required per claim: claim_id,type,predicate,metric,target,baseline,conditions,aggregation,evidence_set,tolerance_policy."
 )
@@ -36,65 +36,6 @@ EXECUTABLE_METHOD_KEYS = [
 class BuildClaimsIRAgent(BaseAgent):
     def __init__(self, *args, **kwargs):
         super().__init__(name="build_claims_ir", *args, **kwargs)
-
-    def _heuristic_claims(self, text: str) -> list[ClaimItem]:
-        claims: list[ClaimItem] = []
-        percentages = re.findall(r"(\d{1,3}(?:\.\d+)?)\s*%", text)
-        numeric = [float(x) / 100.0 for x in percentages]
-        if len(numeric) >= 2:
-            target = max(numeric)
-            baseline = min(numeric)
-            claims.append(
-                ClaimItem(
-                    claim_id="C1",
-                    type="relative",
-                    predicate="Model improves over baseline in test accuracy",
-                    metric="accuracy",
-                    target=target,
-                    baseline=baseline,
-                    conditions={"split": "reported in paper"},
-                    aggregation="average",
-                    evidence_set=["paper_text"],
-                    tolerance_policy={"abs_eps": 0.02, "rel_eps": 0.03},
-                    code_verifiable=True,
-                )
-            )
-        if "federated" in text.lower():
-            claims.append(
-                ClaimItem(
-                    claim_id=f"C{len(claims)+1}",
-                    type="absolute",
-                    predicate="Federated setting reaches reported top accuracy",
-                    metric="accuracy",
-                    target=0.738,
-                    baseline=None,
-                    conditions={"setting": "federated"},
-                    aggregation="best",
-                    evidence_set=["paper_text"],
-                    tolerance_policy={"abs_eps": 0.02, "rel_eps": 0.03},
-                    unverifiable_from_paper=False,
-                    code_verifiable=True,
-                )
-            )
-        if not claims:
-            claims.append(
-                ClaimItem(
-                    claim_id="C1",
-                    type="other",
-                    predicate="Unable to locate numeric claims from paper",
-                    metric=None,
-                    target=None,
-                    baseline=None,
-                    conditions={},
-                    aggregation=None,
-                    evidence_set=[],
-                    tolerance_policy={"abs_eps": 0.02, "rel_eps": 0.03},
-                    unverifiable_from_paper=True,
-                    code_verifiable=False,
-                    reason_codes=["NO_NUMERIC_CLAIMS_FOUND"],
-                )
-            )
-        return claims
 
     @staticmethod
     def _infer_code_verifiable(
@@ -248,8 +189,7 @@ class BuildClaimsIRAgent(BaseAgent):
                 except Exception:  # noqa: BLE001
                     continue
             if not claims:
-                claims = self._heuristic_claims(raw_text)
-                rc = ["LLM_OUTPUT_EMPTY", "HEURISTIC_FALLBACK"]
+                rc = ["LLM_OUTPUT_EMPTY"]
             else:
                 rc = list(llm_data.get("reason_codes", []))
                 if llm_err:
@@ -257,8 +197,8 @@ class BuildClaimsIRAgent(BaseAgent):
             claims_ir = ClaimsIR(claims=claims, reason_codes=rc)
         else:
             claims_ir = ClaimsIR(
-                claims=self._heuristic_claims(raw_text),
-                reason_codes=["LLM_UNAVAILABLE", "HEURISTIC_FALLBACK"],
+                claims=[],
+                reason_codes=["LLM_UNAVAILABLE"],
             )
 
         self.artifacts.write_json("fingerprint/claims_ir.json", claims_ir.model_dump())
