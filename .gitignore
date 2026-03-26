@@ -1,3 +1,26 @@
-/Target
-/artifacts
-/.vscode
+# Local IDE / OS files
+/.vscode/
+.DS_Store
+
+# Python cache / test cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+# Local virtual environments
+.venv/
+venv/
+
+# Paper inputs / non-code working data
+/Target/
+/output/
+
+# Run artifacts
+/artifacts/
+*.log
+*.diff
+*.jsonl
+
+# Local scratch files
+*.tmp
+*.swp
