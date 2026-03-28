@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import re
-from pathlib import Path
 
 from p2c.agents.base import BaseAgent
 from p2c.agents.phase1.fingerprint_prompt_templates import FILTER_SYSTEM_PROMPT, FILTER_USER_PROMPT_TEMPLATE
@@ -11,38 +10,10 @@ from p2c.schemas import (
     FingerprintClaim,
     FingerprintConfigurations,
     FingerprintEvidenceAnchors,
-    FingerprintMetadata,
     FingerprintTolerance,
 )
 
-DOI_RE = re.compile(r"10\.\d{4,9}/[-._;()/:A-Z0-9]+", flags=re.I)
-ARXIV_RE = re.compile(r"arXiv:\s*\d{4}\.\d{4,5}", flags=re.I)
-YEAR_RE = re.compile(r"\b(19\d{2}|20\d{2})\b")
-URL_RE = re.compile(r"https?://[^\s)]+|github\.com/[^\s)]+", flags=re.I)
 NUMBER_RE = re.compile(r"\d+(?:\.\d+)?")
-DATASET_ACTIONABLE_HINTS = [
-    "split",
-    "train",
-    "test",
-    "validation",
-    "preprocess",
-    "normalize",
-    "augmentation",
-    "tokenization",
-    "partition",
-    "fold",
-    "version",
-    "class",
-]
-DATASET_NOISE_HINTS = [
-    "future work",
-    "leading cause",
-    "mortality",
-    "importance",
-    "literature",
-    "benchmark for further development",
-    "addresses the need",
-]
 
 
 class ExtractFingerprintFilterAgent(BaseAgent):
@@ -59,7 +30,7 @@ class ExtractFingerprintFilterAgent(BaseAgent):
         return re.sub(r"\d+(?:\.\d+)?", "#", lower)
 
     def _cluster_key(self, row: dict) -> str:
-        facet = self._norm(str(row.get("facet") or "other"))
+        facet = self._norm(str(row.get("facet") or "execution_param"))
         metric = self._norm(str(row.get("metric_name") or ""))
         entity = self._norm(str(row.get("entity") or ""))
         dataset_scope = self._norm(str(row.get("dataset_scope") or row.get("scope") or ""))
@@ -71,7 +42,7 @@ class ExtractFingerprintFilterAgent(BaseAgent):
         comparator = self._norm(str(row.get("comparator") or ""))
 
         # For metric rows, prioritize semantic signature over raw wording so paraphrases dedup.
-        if facet == "metric":
+        if facet == "metric_result":
             fact_core = metric or "metric"
         return "|".join(
             [
@@ -87,23 +58,13 @@ class ExtractFingerprintFilterAgent(BaseAgent):
 
     @staticmethod
     def _claim_type(row: dict) -> str:
-        facet = str(row.get("facet") or "other")
-        comparator = row.get("comparator")
-        fact = str(row.get("fact") or "")
-        has_metric_value = row.get("metric_value") is not None or bool(re.search(r"\d+(?:\.\d+)?\s*%", fact))
-        has_comparative_text = bool(
-            re.search(r"\b(vs\\.?|versus|better than|outperform|highest|lower than|improves over)\b", fact, flags=re.I)
-        )
-        if facet == "metric" and (comparator or has_comparative_text):
-            return "Comparative"
-        if facet == "metric" and has_metric_value:
-            return "Empirical"
-        return "Methodological"
+        facet = str(row.get("facet") or "")
+        if facet == "metric_result":
+            return "result"
+        return "config"
 
     @staticmethod
     def _verification_logic(claim_type: str) -> str:
-        if claim_type == "Comparative":
-            return "greater_than_margin"
         return "exact_match"
 
     @staticmethod
@@ -150,17 +111,16 @@ class ExtractFingerprintFilterAgent(BaseAgent):
     def _build_configurations(self, selected_rows: list[dict]) -> FingerprintConfigurations:
         dataset_specs: list[dict] = []
         hyperparameters: dict[str, object] = {}
-        model_arch: list[str] = []
         environment: dict[str, object] = {}
         evaluation_metrics: list[str] = []
 
         for row in selected_rows:
             fact = str(row.get("fact") or "")
             scope = str(row.get("scope") or "")
-            facet = str(row.get("facet") or "other")
+            facet = str(row.get("facet") or "execution_param")
             source = f"{fact} {scope}".strip()
 
-            if facet in {"dataset_task", "preprocess"}:
+            if facet == "execution_param":
                 self._append_unique_dict(
                     dataset_specs,
                     {
@@ -173,24 +133,18 @@ class ExtractFingerprintFilterAgent(BaseAgent):
             for k, v in self._extract_hparams(source).items():
                 hyperparameters[k] = v
 
-            if facet == "architecture":
-                item = fact.strip()
-                if item and item not in model_arch:
-                    model_arch.append(item)
-
             lower = source.lower()
-            if facet == "environment":
-                if "pytorch" in lower:
-                    environment["framework"] = "pytorch"
-                if "tensorflow" in lower:
-                    environment["framework"] = "tensorflow"
-                cuda = re.search(r"cuda\s*(\d+(?:\.\d+)?)", lower)
-                if cuda:
-                    environment["cuda"] = cuda.group(1)
-                if "a100" in lower:
-                    environment["hardware"] = "A100"
-                if "v100" in lower:
-                    environment["hardware"] = "V100"
+            if "pytorch" in lower:
+                environment["framework"] = "pytorch"
+            if "tensorflow" in lower:
+                environment["framework"] = "tensorflow"
+            cuda = re.search(r"cuda\s*(\d+(?:\.\d+)?)", lower)
+            if cuda:
+                environment["cuda"] = cuda.group(1)
+            if "a100" in lower:
+                environment["hardware"] = "A100"
+            if "v100" in lower:
+                environment["hardware"] = "V100"
 
             metric_name = row.get("metric_name")
             if isinstance(metric_name, str) and metric_name and metric_name not in evaluation_metrics:
@@ -199,7 +153,6 @@ class ExtractFingerprintFilterAgent(BaseAgent):
         return FingerprintConfigurations(
             dataset_specs=dataset_specs,
             hyperparameters=hyperparameters,
-            model_arch=model_arch,
             environment=environment,
             evaluation_metrics=evaluation_metrics,
         )
@@ -210,39 +163,13 @@ class ExtractFingerprintFilterAgent(BaseAgent):
         if source_type == "table_metric":
             return True
 
-        facet = str(row.get("facet") or "other")
+        facet = str(row.get("facet") or "")
         fact = str(row.get("fact") or "")
-        scope = str(row.get("scope") or "")
-        text = f"{fact} {scope}".lower()
-        has_number = bool(re.search(r"\d", text))
 
-        if facet == "metric":
-            if row.get("metric_value") is not None:
-                return True
-            return bool(
-                re.search(
-                    r"\b(vs\\.?|versus|better than|outperform|highest|lower than|improves over)\b",
-                    text,
-                    flags=re.I,
-                )
-            )
-        if facet == "hyperparameter":
-            return has_number
-        if facet == "architecture":
-            return has_number or any(k in text for k in ["resnet", "transformer", "cnn", "lstm", "svm"])
-        if facet == "preprocess":
-            return any(k in text for k in ["normalize", "augmentation", "tokenization", "preprocess"])
-        if facet == "environment":
-            return has_number or any(k in text for k in ["pytorch", "tensorflow", "cuda", "gpu", "python"])
-        if facet == "algorithm":
-            has_formula = any(k in text for k in ["=", "\\sum", "loss", "objective", "fedavg", "fedadam", "fedyogi"])
-            return has_formula
-        if facet in {"dataset_task"}:
-            if any(n in text for n in DATASET_NOISE_HINTS):
-                return False
-            return any(h in text for h in DATASET_ACTIONABLE_HINTS)
-        if facet in {"other"}:
-            return False
+        if facet == "metric_result":
+            return row.get("metric_value") is not None or bool(re.search(r"\d", fact))
+        if facet == "execution_param":
+            return bool(re.search(r"\d", fact))
         return False
 
     def execute(self, ctx: dict) -> dict:
@@ -339,24 +266,6 @@ class ExtractFingerprintFilterAgent(BaseAgent):
 
         selected_rows = [criteria[i] for i in selected_indices]
 
-        paper_md = Path(ctx["paper_md_out"])
-        raw_text = paper_md.read_text(encoding="utf-8", errors="ignore") if paper_md.exists() else ""
-        doi = DOI_RE.search(raw_text)
-        arxiv = ARXIV_RE.search(raw_text)
-        urls = URL_RE.findall(raw_text)
-        year_candidates = [int(m.group(1)) for m in YEAR_RE.finditer(raw_text)]
-        year = None
-        if year_candidates:
-            modern = [y for y in year_candidates if 1990 <= y <= 2035]
-            year = min(modern) if modern else min(year_candidates)
-
-        metadata = FingerprintMetadata(
-            paper_id=(doi.group(0) if doi else (arxiv.group(0) if arxiv else None)),
-            repository_url=(urls[0] if urls else None),
-            venue=None,
-            year=year,
-        )
-
         claims: list[FingerprintClaim] = []
         for out_idx, crit_idx in enumerate(selected_indices, start=1):
             row = criteria[crit_idx]
@@ -365,11 +274,11 @@ class ExtractFingerprintFilterAgent(BaseAgent):
             claim_type = self._claim_type(row)
             verification_logic = self._verification_logic(claim_type)
 
-            is_metric = claim_type in {"Empirical", "Comparative"}
+            is_result = claim_type == "result"
             tolerance = FingerprintTolerance(
-                abs=0.005 if is_metric else None,
-                rel=0.02 if is_metric else None,
-                text="default metric tolerance" if is_metric else "exact config/value match",
+                abs=0.005 if is_result else None,
+                rel=0.02 if is_result else None,
+                text="default metric tolerance" if is_result else "exact config/value match",
             )
 
             claims.append(
@@ -393,12 +302,11 @@ class ExtractFingerprintFilterAgent(BaseAgent):
         configurations = self._build_configurations(selected_rows)
 
         fingerprint = Fingerprint(
-            fingerprint_id=metadata.paper_id,
-            metadata=metadata,
+            fingerprint_id=None,
             configurations=configurations,
             claims=claims,
             reason_codes=sorted(set(reason_codes)),
-            notes="Generated via strict guide -> atomic -> filter pipeline aligned with paper_fingerprint_schema.md",
+            notes="Generated via strict guide -> atomic -> filter pipeline focused on results and execution parameters",
         )
 
         self.artifacts.write_json("fingerprint/filter_clusters.json", {"clusters": cluster_debug, "reason_codes": []})

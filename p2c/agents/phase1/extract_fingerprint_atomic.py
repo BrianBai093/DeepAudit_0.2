@@ -16,55 +16,17 @@ TD_RE = re.compile(r"<t[dh]>(.*?)</t[dh]>", flags=re.I | re.S)
 TAG_RE = re.compile(r"<[^>]+>")
 TABLE_ID_RE = re.compile(r"\btable\s+([ivxlcdm\d]+)", flags=re.I)
 
-SUBJECTIVE_WORDS = ["uncommon", "efficient", "promising", "novel", "state-of-the-art", "sota"]
-DATASET_ACTIONABLE_HINTS = [
-    "split",
-    "train",
-    "test",
-    "validation",
-    "preprocess",
-    "normalize",
-    "augmentation",
-    "tokenization",
-    "partition",
-    "fold",
-    "version",
-    "class",
-]
-DATASET_NOISE_HINTS = [
-    "future work",
-    "leading cause",
-    "mortality",
-    "importance",
-    "literature",
-    "benchmark for further development",
-    "addresses the need",
-]
-
 FACET_KEYWORDS = {
-    "metric": ["accuracy", "f1", "auc", "bleu", "loss", "precision", "recall", "mse", "mae"],
-    "hyperparameter": ["learning rate", "lr", "batch", "epoch", "dropout", "weight decay", "seed", "optimizer"],
-    "architecture": ["layer", "transformer", "resnet", "cnn", "lstm", "backbone", "encoder", "decoder"],
-    "algorithm": ["algorithm", "federated", "aggregation", "gradient", "objective", "cross-entropy"],
-    "dataset_task": ["dataset", "split", "train", "test", "validation", "task", "classification", "regression"],
-    "preprocess": ["normalize", "normalization", "augment", "augmentation", "tokenization", "preprocess"],
-    "environment": ["pytorch", "tensorflow", "cuda", "gpu", "a100", "v100", "cpu", "python"],
+    "metric_result": [
+        "accuracy", "acc", "f1", "auc", "bleu", "loss", "precision", "recall",
+        "mse", "mae", "perplexity", "rmse", "map", "ndcg", "rouge", "error rate",
+    ],
+    "execution_param": [
+        "learning rate", "lr", "batch", "epoch", "dropout", "weight decay", "seed",
+        "optimizer", "dataset", "split", "train", "test", "validation",
+        "pytorch", "tensorflow", "cuda", "gpu", "python",
+    ],
 }
-
-MODEL_HINTS = [
-    "svm",
-    "rf",
-    "knn",
-    "nb",
-    "dt",
-    "lr",
-    "resnet",
-    "transformer",
-    "cnn",
-    "lstm",
-]
-
-DATASET_HINTS = ["cifar", "imagenet", "mnist", "uci", "coco", "squad", "dataset", "test set", "validation set"]
 
 
 class ExtractFingerprintAtomicAgent(BaseAgent):
@@ -127,7 +89,10 @@ class ExtractFingerprintAtomicAgent(BaseAgent):
     @staticmethod
     def _extract_metric_name(text: str) -> str | None:
         lower = text.lower()
-        for name in ["accuracy", "f1", "auc", "bleu", "loss", "precision", "recall", "mse", "mae"]:
+        for name in [
+            "accuracy", "f1", "auc", "bleu", "loss", "precision", "recall",
+            "mse", "mae", "perplexity", "rmse", "rouge", "error rate",
+        ]:
             if name in lower:
                 return name
         return None
@@ -143,29 +108,6 @@ class ExtractFingerprintAtomicAgent(BaseAgent):
         return None, None
 
     @staticmethod
-    def _extract_comparator(text: str) -> str | None:
-        m = re.search(r"\b(?:vs\.?|versus|better than|outperform(?:s|ed)?|improves over)\s+([^,.;]+)", text, flags=re.I)
-        if not m:
-            return None
-        return m.group(1).strip()
-
-    @staticmethod
-    def _extract_entity(text: str) -> str | None:
-        lower = text.lower()
-        for hint in MODEL_HINTS:
-            if re.search(rf"\b{re.escape(hint)}\b", lower):
-                return hint.upper() if len(hint) <= 4 else hint
-        return None
-
-    @staticmethod
-    def _extract_dataset_scope(text: str, scope: str) -> str | None:
-        joined = f"{text} {scope}".lower()
-        for hint in DATASET_HINTS:
-            if hint in joined:
-                return hint
-        return None
-
-    @staticmethod
     def _contains_malformed_numeric(text: str) -> bool:
         lower = text.lower()
         if "%$" in lower or "$%" in lower:
@@ -173,22 +115,6 @@ class ExtractFingerprintAtomicAgent(BaseAgent):
         if re.search(r"\$\s*\d", lower) and "%" in lower:
             return True
         if re.search(r"\d\s*\\%\$", lower):
-            return True
-        return False
-
-    @staticmethod
-    def _is_subjective_noise(fact: str, scope: str) -> bool:
-        text = f"{fact} {scope}".lower()
-        if any(w in text for w in SUBJECTIVE_WORDS) and not (PERCENT_RE.search(text) or DECIMAL_RE.search(text)):
-            return True
-        return False
-
-    @staticmethod
-    def _is_actionable_dataset_fact(fact: str, scope: str) -> bool:
-        text = f"{fact} {scope}".lower()
-        if any(h in text for h in DATASET_NOISE_HINTS):
-            return False
-        if any(h in text for h in DATASET_ACTIONABLE_HINTS):
             return True
         return False
 
@@ -270,7 +196,7 @@ class ExtractFingerprintAtomicAgent(BaseAgent):
                         "criterion": f"<fact>{fact}</fact> <scope>{scope}</scope>",
                         "fact": fact,
                         "scope": scope,
-                        "facet": "metric",
+                        "facet": "metric_result",
                         "source_type": "table_metric",
                         "metric_name": metric_name,
                         "metric_value": value,
@@ -405,26 +331,9 @@ class ExtractFingerprintAtomicAgent(BaseAgent):
                     )
                     continue
 
-                if self._is_subjective_noise(fact, scope):
-                    rejected.append(
-                        {
-                            "unit_id": unit_id,
-                            "raw": row,
-                            "reason_codes": ["SUBJECTIVE_UNVERIFIABLE"],
-                        }
-                    )
-                    continue
-
                 facet = self._facet_of(f"{fact} {scope}")
                 metric_name = self._extract_metric_name(f"{fact} {scope}")
                 metric_value, metric_unit = self._extract_metric_value(fact)
-                comparator = self._extract_comparator(f"{fact} {scope}")
-                entity = self._extract_entity(f"{fact} {scope}")
-                dataset_scope = self._extract_dataset_scope(fact, scope)
-
-                source_type = "text_statement"
-                if facet == "metric":
-                    source_type = "text_metric"
 
                 if facet == "other":
                     rejected.append(
@@ -436,25 +345,7 @@ class ExtractFingerprintAtomicAgent(BaseAgent):
                     )
                     continue
 
-                if facet == "dataset_task" and not self._is_actionable_dataset_fact(fact, scope):
-                    rejected.append(
-                        {
-                            "unit_id": unit_id,
-                            "raw": row,
-                            "reason_codes": ["NON_ACTIONABLE_DATASET_FACT"],
-                        }
-                    )
-                    continue
-
-                if len(fact) > 320 and facet in {"dataset_task", "algorithm"} and source_type == "text_statement":
-                    rejected.append(
-                        {
-                            "unit_id": unit_id,
-                            "raw": row,
-                            "reason_codes": ["OVERLONG_NON_ATOMIC_FACT"],
-                        }
-                    )
-                    continue
+                source_type = "text_metric" if facet == "metric_result" else "text_statement"
 
                 accepted.append(
                     {
@@ -466,9 +357,9 @@ class ExtractFingerprintAtomicAgent(BaseAgent):
                         "metric_name": metric_name,
                         "metric_value": metric_value,
                         "metric_unit": metric_unit,
-                        "entity": entity,
-                        "comparator": comparator,
-                        "dataset_scope": dataset_scope,
+                        "entity": None,
+                        "comparator": None,
+                        "dataset_scope": None,
                         "table_anchor": None,
                         "input_unit_id": unit_id,
                         "reason_codes": [str(x) for x in row.get("reason_codes", [])],

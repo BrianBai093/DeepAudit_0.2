@@ -36,12 +36,12 @@ def evaluate_claim(claim: dict[str, Any], matched_records: list[MetricRecord]) -
 
     x_rep = max(values)
 
-    if ctype == "absolute":
+    if ctype == "result":
         if target is None:
             return ClaimVerdict(
                 claim_id=claim_id,
                 status="INCONCLUSIVE",
-                detail="Target value missing for absolute claim",
+                detail="Target value missing for result claim",
                 reason_codes=["MISSING_TARGET"],
             )
         threshold = max(abs_eps, rel_eps * abs(float(target)))
@@ -55,41 +55,13 @@ def evaluate_claim(claim: dict[str, Any], matched_records: list[MetricRecord]) -
             reason_codes=[],
         )
 
-    if ctype == "relative":
-        if target is None:
-            return ClaimVerdict(
-                claim_id=claim_id,
-                status="INCONCLUSIVE",
-                detail="Target missing for relative claim",
-                reason_codes=["MISSING_TARGET"],
-            )
-        if baseline is None:
-            ok = x_rep >= float(target) - abs_eps
-            return ClaimVerdict(
-                claim_id=claim_id,
-                status="SUPPORTED" if ok else "NOT_SUPPORTED",
-                detail="Baseline missing; fallback to x_rep >= target - eps",
-                compared_value=x_rep,
-                target_value=float(target),
-            )
-        delta_paper = float(target) - float(baseline)
-        delta_rep = x_rep - float(baseline)
-        ok = delta_rep >= delta_paper - abs_eps
-        return ClaimVerdict(
-            claim_id=claim_id,
-            status="SUPPORTED" if ok else "NOT_SUPPORTED",
-            detail="Checked delta_rep >= delta_paper - eps",
-            compared_value=delta_rep,
-            target_value=delta_paper,
-        )
-
-    if ctype == "ranking":
+    if ctype == "config":
         return ClaimVerdict(
             claim_id=claim_id,
             status="INCONCLUSIVE",
-            detail="Ranking evidence requires labeled model leaderboard records",
+            detail="Config claim; verified by successful execution",
             compared_value=x_rep,
-            reason_codes=["RANKING_EVIDENCE_INSUFFICIENT"],
+            reason_codes=["CONFIG_CLAIM"],
         )
 
     return ClaimVerdict(

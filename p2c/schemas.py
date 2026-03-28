@@ -31,27 +31,9 @@ class PaperText(BaseModel):
     reason_codes: list[str] = Field(default_factory=list)
 
 
-class Citation(BaseModel):
-    marker: str
-    context: str
-
-
-class CitationsDoc(BaseModel):
-    citations: list[Citation] = Field(default_factory=list)
-    reason_codes: list[str] = Field(default_factory=list)
-
-
-class FingerprintMetadata(BaseModel):
-    paper_id: str | None = None
-    repository_url: str | None = None
-    venue: str | None = None
-    year: int | None = None
-
-
 class FingerprintConfigurations(BaseModel):
     dataset_specs: list[dict[str, Any]] = Field(default_factory=list)
     hyperparameters: dict[str, Any] = Field(default_factory=dict)
-    model_arch: list[str] = Field(default_factory=list)
     environment: dict[str, Any] = Field(default_factory=dict)
     evaluation_metrics: list[str] = Field(default_factory=list)
 
@@ -70,7 +52,7 @@ class FingerprintEvidenceAnchors(BaseModel):
 
 class FingerprintClaim(BaseModel):
     id: str
-    claim_type: Literal["Empirical", "Methodological", "Comparative", "Unknown"] = "Unknown"
+    claim_type: Literal["result", "config"] = "config"
     fact: str
     scope: str
     comparator: str | None = None
@@ -82,7 +64,6 @@ class FingerprintClaim(BaseModel):
 
 class Fingerprint(BaseModel):
     fingerprint_id: str | None = None
-    metadata: FingerprintMetadata = Field(default_factory=FingerprintMetadata)
     configurations: FingerprintConfigurations = Field(default_factory=FingerprintConfigurations)
     claims: list[FingerprintClaim] = Field(default_factory=list)
     reason_codes: list[str] = Field(default_factory=list)
@@ -110,16 +91,7 @@ class AtomicCriterion(BaseModel):
     criterion: str
     fact: str
     scope: str
-    facet: Literal[
-        "metric",
-        "hyperparameter",
-        "architecture",
-        "algorithm",
-        "dataset_task",
-        "preprocess",
-        "environment",
-        "other",
-    ] = "other"
+    facet: Literal["metric_result", "execution_param"] = "execution_param"
     source_type: Literal["table_metric", "text_metric", "text_statement"] = "text_statement"
     metric_name: str | None = None
     metric_value: float | None = None
@@ -151,7 +123,7 @@ class AtomicRejectedDoc(BaseModel):
 
 class ClaimItem(BaseModel):
     claim_id: str
-    type: Literal["absolute", "relative", "ranking", "other"] = "other"
+    type: Literal["result", "config"] = "config"
     predicate: str
     metric: str | None = None
     target: float | None = None
@@ -429,11 +401,6 @@ class EvaluabilityVerdictDoc(BaseModel):
     summary: str | None = None
 
 
-class PaperIngestOutput(BaseModel):
-    paper_text: PaperText
-    citations: CitationsDoc
-
-
 class ClaimExtractionOutput(BaseModel):
     fingerprint: Fingerprint
     claims_ir: ClaimsIR
@@ -442,3 +409,136 @@ class ClaimExtractionOutput(BaseModel):
 class TaskCompileOutput(BaseModel):
     task_spec: TaskSpec
     metric_contract: MetricContract
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 local execution schemas
+# ---------------------------------------------------------------------------
+
+
+class CondaDependency(BaseModel):
+    """A single conda or pip-fallback dependency."""
+
+    package: str
+    version_constraint: str | None = None
+    channel: str = "defaults"
+    pip_fallback: bool = False
+
+
+class ExecutionStep(BaseModel):
+    """One atomic step in the execution plan."""
+
+    step_id: str
+    description: str
+    command: str
+    cwd: str = "."
+    timeout_sec: int = 600
+    depends_on: list[str] = Field(default_factory=list)
+    expected_metrics: list[str] = Field(default_factory=list)
+    is_setup: bool = False
+    retry_on_failure: bool = True
+    fallback_commands: list[str] = Field(default_factory=list)
+
+
+class CompatibilityIssue(BaseModel):
+    issue_type: Literal[
+        "python_version", "cuda_version", "package_conflict", "os_dependency", "other"
+    ]
+    description: str
+    resolution: str
+
+
+class ExpectedResult(BaseModel):
+    """Maps a paper claim to the metric the executor should capture."""
+
+    claim_id: str
+    metric_name: str
+    target_value: float | None = None
+    extraction_hint: str | None = None
+
+
+class ExecutionPlan(BaseModel):
+    """Output of the PlannerAgent — drives ToolAgent + CodexExecutor."""
+
+    plan_id: str
+    plan_version: int = 1
+    python_version: str = "3.10"
+    conda_dependencies: list[CondaDependency] = Field(default_factory=list)
+    pip_dependencies: list[str] = Field(default_factory=list)
+    system_packages: list[str] = Field(default_factory=list)
+    pre_install_commands: list[str] = Field(default_factory=list)
+    execution_steps: list[ExecutionStep] = Field(default_factory=list)
+    expected_results: list[ExpectedResult] = Field(default_factory=list)
+    compatibility_issues: list[CompatibilityIssue] = Field(default_factory=list)
+    env_name: str
+    codex_autonomous_fallback: bool = True
+    total_budget_sec: int = 1800
+    reason_codes: list[str] = Field(default_factory=list)
+    notes: str | None = None
+
+
+class EnvSetupResult(BaseModel):
+    """Output of the ToolAgent — conda/venv environment readiness."""
+
+    env_name: str
+    env_path: str = ""
+    python_version: str = ""
+    install_commands: list[str] = Field(default_factory=list)
+    conda_install_log: list[str] = Field(default_factory=list)
+    pip_install_log: list[str] = Field(default_factory=list)
+    system_install_log: list[str] = Field(default_factory=list)
+    validation_passed: bool = False
+    failed_packages: list[str] = Field(default_factory=list)
+    installed_packages_snapshot: str = ""
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+class StepFailure(BaseModel):
+    """Failure record for a single execution step."""
+
+    step_id: str
+    command: str
+    exit_code: int
+    error_type: Literal[
+        "dependency", "import", "runtime", "timeout", "data_missing", "permission", "unknown"
+    ]
+    error_message: str
+    stdout_tail: str = ""
+    stderr_tail: str = ""
+    traceback: str | None = None
+    suggested_fix: str | None = None
+    # --- v2 taxonomy fields (populated when classify_error_v2 is used) ---
+    failure_code: str | None = None  # e.g. "DEP_MISSING_PACKAGE"
+    failure_layer: str | None = None  # e.g. "dependency"
+    repair_strategy: str | None = None  # e.g. "inline_fix"
+    repair_action: str | None = None  # human-readable suggested action
+    auto_repair_confidence: float | None = None  # 0.0-1.0
+
+
+class ExecutionFailure(BaseModel):
+    """Aggregated failure for one planner→execute cycle."""
+
+    attempt: int
+    plan_version: int = 1
+    stage: Literal["planning", "env_setup", "execution", "autonomous"]
+    step_failures: list[StepFailure] = Field(default_factory=list)
+    overall_error: str = ""
+    is_dependency_issue: bool = False
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+class Phase2State(BaseModel):
+    """Orchestrator bookkeeping — persisted as phase2_state.json."""
+
+    status: Literal[
+        "planning", "env_setup", "executing", "replanning", "autonomous", "success", "failed"
+    ] = "planning"
+    attempt: int = 0
+    max_attempts: int = 3
+    total_budget_sec: int = 1800
+    elapsed_sec: float = 0.0
+    plan: ExecutionPlan | None = None
+    env_result: EnvSetupResult | None = None
+    failures: list[ExecutionFailure] = Field(default_factory=list)
+    final_manifest: RunManifestDoc | None = None
+    final_alignment: ClaimAlignmentDoc | None = None

@@ -18,20 +18,6 @@ USER_PROMPT_TEMPLATE = (
     "Fields required per claim: claim_id,type,predicate,metric,target,baseline,conditions,aggregation,evidence_set,tolerance_policy."
 )
 
-EXECUTABLE_METHOD_KEYS = [
-    "learning rate",
-    "lr",
-    "batch",
-    "epoch",
-    "optimizer",
-    "dropout",
-    "seed",
-    "layer",
-    "backbone",
-    "transformer",
-    "resnet",
-]
-
 
 class BuildClaimsIRAgent(BaseAgent):
     def __init__(self, *args, **kwargs):
@@ -43,13 +29,11 @@ class BuildClaimsIRAgent(BaseAgent):
         mapped_type: str,
         metric: str | None,
         target: float | None,
-        scope: str,
-        predicate: str,
+        **_,
     ) -> bool:
-        if mapped_type in {"absolute", "relative"} and metric and target is not None:
+        if mapped_type == "result" and metric and target is not None:
             return True
-        text = f"{scope} {predicate}".lower()
-        if any(k in text for k in EXECUTABLE_METHOD_KEYS):
+        if mapped_type == "config":
             return True
         return False
 
@@ -57,14 +41,10 @@ class BuildClaimsIRAgent(BaseAgent):
     def _extract_metric_and_target(text: str) -> tuple[str | None, float | None]:
         lower = text.lower()
         metric = None
-        if "accuracy" in lower or "acc" in lower:
-            metric = "accuracy"
-        elif "f1" in lower:
-            metric = "f1"
-        elif "bleu" in lower:
-            metric = "bleu"
-        elif "auc" in lower:
-            metric = "auc"
+        for name in ["accuracy", "acc", "f1", "bleu", "auc", "loss", "precision", "recall", "mse", "mae", "perplexity", "rmse", "rouge"]:
+            if name in lower:
+                metric = name
+                break
 
         m_pct = re.search(r"(\d+(?:\.\d+)?)\s*%", text)
         if m_pct:
@@ -74,56 +54,23 @@ class BuildClaimsIRAgent(BaseAgent):
             return metric, float(m_dec.group(1))
         return metric, None
 
-    @staticmethod
-    def _is_executable_methodological(fact: str, scope: str) -> bool:
-        text = f"{fact} {scope}".lower()
-        return any(k in text for k in EXECUTABLE_METHOD_KEYS)
-
     def _claims_from_fingerprint(self, fingerprint: dict) -> tuple[list[ClaimItem], list[str]]:
         rows = [r for r in fingerprint.get("claims", []) if isinstance(r, dict)]
         if not rows:
             return [], []
 
-        prioritized: list[dict] = []
-        deprioritized: list[dict] = []
-        for row in rows:
-            claim_type = str(row.get("claim_type") or "Unknown")
-            fact = str(row.get("fact") or "")
-            scope = str(row.get("scope") or "")
-            if claim_type in {"Empirical", "Comparative"}:
-                prioritized.append(row)
-            elif claim_type == "Methodological" and self._is_executable_methodological(fact, scope):
-                prioritized.append(row)
-            else:
-                deprioritized.append(row)
-
-        source_rows = prioritized
         reason_codes = ["SOURCE_FINGERPRINT_CLAIMS"]
-        if deprioritized:
-            reason_codes.append("NON_EXECUTABLE_METHOD_CLAIMS_SKIPPED")
-
         out: list[ClaimItem] = []
-        for idx, row in enumerate(source_rows, start=1):
+
+        for idx, row in enumerate(rows, start=1):
             claim_id = str(row.get("id") or f"C{idx}")
             fact = str(row.get("fact") or "").strip()
             scope = str(row.get("scope") or "").strip()
-            claim_type = str(row.get("claim_type") or "Unknown")
-            comparator = row.get("comparator")
-            verification_logic = str(row.get("verification_logic") or "unknown")
+            claim_type = str(row.get("claim_type") or "config")
             tol = row.get("tolerance") or {}
 
             metric, target = self._extract_metric_and_target(fact)
-            mapped_type = "absolute"
-            if claim_type == "Comparative":
-                mapped_type = "relative"
-            elif verification_logic == "trend_match":
-                mapped_type = "ranking"
-            elif claim_type == "Methodological":
-                mapped_type = "other"
-
-            baseline = None
-            if comparator:
-                _, baseline = self._extract_metric_and_target(str(comparator))
+            mapped_type = "result" if claim_type == "result" else "config"
 
             out.append(
                 ClaimItem(
@@ -132,21 +79,19 @@ class BuildClaimsIRAgent(BaseAgent):
                     predicate=fact or "fingerprint claim",
                     metric=metric,
                     target=target,
-                    baseline=baseline,
+                    baseline=None,
                     conditions={"scope": scope} if scope else {},
-                    aggregation="best" if mapped_type == "absolute" else "average",
+                    aggregation="best" if mapped_type == "result" else None,
                     evidence_set=[str((row.get("evidence_anchors") or {}).get("text_anchor") or "fingerprint")],
                     tolerance_policy={
                         "abs_eps": float(tol.get("abs", 0.02) or 0.02),
                         "rel_eps": float(tol.get("rel", 0.03) or 0.03),
                     },
-                    unverifiable_from_paper=(target is None and mapped_type != "other"),
+                    unverifiable_from_paper=(target is None and mapped_type == "result"),
                     code_verifiable=self._infer_code_verifiable(
                         mapped_type=mapped_type,
                         metric=metric,
                         target=target,
-                        scope=scope,
-                        predicate=fact,
                     ),
                     reason_codes=[str(x) for x in row.get("reason_codes", [])],
                     notes=str(fingerprint.get("notes") or "") or None,

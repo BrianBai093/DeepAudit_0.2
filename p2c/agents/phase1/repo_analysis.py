@@ -4,6 +4,7 @@ import ast
 import json
 import os
 import re
+import shlex
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +49,7 @@ _SCRIPT_PRIORITY = {
 _SOURCE_PRIORITY = {
     "manifest_explicit": 500,
     "code_cli": 400,
+    "notebook_explicit": 350,
     "readme_verified": 300,
     "wrapper_target": 200,
     "unspecified": 0,
@@ -400,6 +402,47 @@ class SystemRepoAnalyzer:
             )
         return candidates
 
+    def _build_notebook_candidates(self, profile_map: dict[str, DependencyProfile]) -> list[Entrypoint]:
+        candidates: list[Entrypoint] = []
+        for path in self._iter_files("*.ipynb"):
+            rel = _safe_rel(path, self.repo_dir)
+            if rel.startswith("tests/") or "/tests/" in rel or ".ipynb_checkpoints/" in rel:
+                continue
+
+            rel_dir = _safe_rel(path.parent, self.repo_dir) or "."
+            profile = self._match_profile(path, "python", profile_map)
+            cwd = rel_dir
+            if cwd == ".":
+                notebook_ref = rel
+            else:
+                notebook_ref = path.name
+
+            output_name = f"{path.stem}.executed.ipynb"
+            command = (
+                "python3 -m jupyter nbconvert "
+                f"--to notebook --execute {shlex.quote(notebook_ref)} "
+                f"--output {shlex.quote(output_name)}"
+            )
+            confidence = 0.83 if "code/" in rel or rel_dir == "code" else 0.78
+            reason_codes: list[str] = []
+            if cwd != ".":
+                reason_codes.append("ENTRYPOINT_CWD_INFERRED")
+
+            candidates.append(
+                Entrypoint(
+                    entrypoint_id=f"notebook:{rel}",
+                    path=rel,
+                    command=command,
+                    cwd=cwd,
+                    runtime="python",
+                    dependency_profile_id=profile.profile_id if profile else None,
+                    confidence=confidence,
+                    evidence="jupyter notebook entrypoint detected",
+                    reason_codes=reason_codes,
+                )
+            )
+        return candidates
+
     def _build_node_candidates(self, profile_map: dict[str, DependencyProfile]) -> list[Entrypoint]:
         candidates: list[Entrypoint] = []
         for package_json in self._iter_roots("package.json"):
@@ -511,6 +554,7 @@ class SystemRepoAnalyzer:
     def _build_entrypoint_candidates(self, profile_map: dict[str, DependencyProfile]) -> list[Entrypoint]:
         merged = (
             self._build_python_candidates(profile_map)
+            + self._build_notebook_candidates(profile_map)
             + self._build_node_candidates(profile_map)
             + self._build_shell_candidates(profile_map)
             + self._build_make_candidates(profile_map)
@@ -594,6 +638,8 @@ class SystemRepoAnalyzer:
         evidence = str(candidate.evidence or "").lower()
         if "console script" in evidence or "package.json script" in evidence or "main" in evidence:
             source_kind = "manifest_explicit"
+        elif "notebook" in evidence:
+            source_kind = "notebook_explicit"
         elif "readme verified" in evidence:
             source_kind = "readme_verified"
         elif "makefile target" in evidence or "shell script" in evidence:
