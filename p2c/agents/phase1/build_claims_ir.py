@@ -48,10 +48,26 @@ class BuildClaimsIRAgent(BaseAgent):
 
         m_pct = re.search(r"(\d+(?:\.\d+)?)\s*%", text)
         if m_pct:
-            return metric, float(m_pct.group(1)) / 100.0
+            val = float(m_pct.group(1)) / 100.0
+            # Sanity check: bounded metrics (accuracy, f1, etc.) should be in [0, 1] after conversion
+            if metric in {"accuracy", "acc", "f1", "auc", "precision", "recall", "bleu", "rouge"} and val > 1.0:
+                return metric, None  # Implausible — likely a sample count, not a metric
+            return metric, val
         m_dec = re.search(r"\b(0\.\d+|1\.0+)\b", text)
         if m_dec:
             return metric, float(m_dec.group(1))
+
+        # Fallback: try raw integer (e.g. "accuracy = 97")
+        m_int = re.search(r"\b(\d+)\b", text)
+        if m_int and metric:
+            val = float(m_int.group(1))
+            # Only accept if plausible for the metric type
+            BOUNDED = {"accuracy", "acc", "f1", "auc", "precision", "recall", "bleu", "rouge"}
+            if metric in BOUNDED and val > 100.0:
+                return metric, None  # Sample count, not a metric value
+            if metric in BOUNDED and 1.0 < val <= 100.0:
+                return metric, val / 100.0  # Likely a percentage without % sign
+
         return metric, None
 
     def _claims_from_fingerprint(self, fingerprint: dict) -> tuple[list[ClaimItem], list[str]]:

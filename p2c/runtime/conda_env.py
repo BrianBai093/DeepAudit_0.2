@@ -26,6 +26,34 @@ from p2c.schemas import CondaDependency
 logger = logging.getLogger(__name__)
 
 
+def _conda_spec(dep: CondaDependency) -> str:
+    """Build a proper conda spec string like ``python=3.10`` or ``numpy>=1.24``.
+
+    Handles the common case where ``version_constraint`` is a bare version
+    (e.g. ``"3.10"``) without an operator prefix — conda requires ``=`` as
+    the separator.
+    """
+    vc = dep.version_constraint
+    if not vc:
+        return dep.package
+    # Already has an operator (=, ==, >=, <=, !=, ~=, etc.)
+    if vc[0] in ("=", ">", "<", "!", "~"):
+        return f"{dep.package}{vc}"
+    # Bare version like "3.10" → conda uses single "="
+    return f"{dep.package}={vc}"
+
+
+def _pip_spec(dep: CondaDependency) -> str:
+    """Build a pip spec string like ``numpy==1.26.4`` or ``tensorflow>=2.12``."""
+    vc = dep.version_constraint
+    if not vc:
+        return dep.package
+    if vc[0] in ("=", ">", "<", "!", "~"):
+        return f"{dep.package}{vc}"
+    # Bare version → pip uses "=="
+    return f"{dep.package}=={vc}"
+
+
 # ---------------------------------------------------------------------------
 # Layered install data structures
 # ---------------------------------------------------------------------------
@@ -93,7 +121,30 @@ class CondaEnvManager:
              f"python={self.python_version}", "-y", "--quiet"],
             capture_output=True, text=True, timeout=300,
         )
-        return {"ok": proc.returncode == 0, "log": (proc.stdout + proc.stderr).strip()}
+        ok = proc.returncode == 0
+        if ok:
+            self._ensure_python3_symlink()
+        return {"ok": ok, "log": (proc.stdout + proc.stderr).strip()}
+
+    def _ensure_python3_symlink(self) -> None:
+        """Ensure ``python3`` exists in the env's bin dir.
+
+        Some conda builds only install ``python`` and not ``python3``.  Repo
+        scripts, Makefiles, and shebangs commonly use ``python3``, so this
+        symlink prevents a confusing fallback to ``/usr/bin/python3``.
+        """
+        env_path = self.env_path_actual()
+        if not env_path:
+            return
+        bin_dir = Path(env_path) / "bin"
+        python3 = bin_dir / "python3"
+        python_ = bin_dir / "python"
+        if python_.exists() and not python3.exists():
+            try:
+                python3.symlink_to(python_)
+                logger.info("created python3 symlink in %s", bin_dir)
+            except OSError:
+                logger.warning("could not create python3 symlink in %s", bin_dir)
 
     def _create_venv(self) -> dict[str, Any]:
         self._venv_path.mkdir(parents=True, exist_ok=True)
@@ -131,7 +182,7 @@ class CondaEnvManager:
         """Install conda dependencies grouped by channel.  Falls back to pip when allowed."""
         if self._use_venv_fallback:
             # All go through pip
-            specs = [f"{d.package}{d.version_constraint or ''}" for d in deps]
+            specs = [_pip_spec(d) for d in deps]
             if specs:
                 proc = self.run_in_env(f"pip install {' '.join(shlex.quote(s) for s in specs)}")
                 return [{"channel": "pip", "specs": specs, "rc": proc.returncode, "log": proc.stderr[:2000]}]
@@ -140,7 +191,7 @@ class CondaEnvManager:
         from collections import defaultdict
         by_channel: dict[str, list[tuple[str, CondaDependency]]] = defaultdict(list)
         for d in deps:
-            spec = f"{d.package}{d.version_constraint or ''}"
+            spec = _conda_spec(d)
             by_channel[d.channel].append((spec, d))
 
         results: list[dict[str, Any]] = []
@@ -351,7 +402,7 @@ class CondaEnvManager:
         from collections import defaultdict
         by_channel: dict[str, list[tuple[str, CondaDependency]]] = defaultdict(list)
         for d in deps:
-            spec = f"{d.package}{d.version_constraint or ''}"
+            spec = _conda_spec(d)
             by_channel[d.channel].append((spec, d))
 
         results: list[dict[str, Any]] = []
@@ -407,6 +458,44 @@ class CondaEnvManager:
             result = self.run_in_env(f"python -c 'import {pkg}'", timeout_sec=30)
             if result.returncode != 0:
                 return False
+        return True
+
+    def validate_abi(self) -> bool:
+        """Check numpy / DL-framework ABI compatibility.
+
+        A conda-forge numpy paired with a pip tensorflow/torch can cause
+        ``numpy.dtype size changed`` crashes.  This runs a quick import
+        probe that catches the error early.
+        """
+        check_script = (
+            "import numpy; "
+            "try:\n"
+            "  import tensorflow\n"
+            "except ImportError:\n"
+            "  pass\n"
+            "try:\n"
+            "  import torch\n"
+            "except ImportError:\n"
+            "  pass\n"
+            "print('ABI_OK')"
+        )
+        # Use a simpler one-liner that catches the typical ABI crash
+        probe = self.run_in_env(
+            "python -c '"
+            "import numpy; "
+            "ok=True; "
+            "exec(\"try:\\n import tensorflow\\nexcept ImportError:\\n pass\\nexcept Exception as e:\\n print(e); ok=False\"); "
+            "exec(\"try:\\n import torch\\nexcept ImportError:\\n pass\\nexcept Exception as e:\\n print(e); ok=False\"); "
+            "print(\"ABI_OK\" if ok else \"ABI_FAIL\")"
+            "'",
+            timeout_sec=60,
+        )
+        if probe.returncode != 0:
+            logger.warning("ABI validation probe failed: %s", probe.stderr[:500])
+            return False
+        if "ABI_FAIL" in probe.stdout or "binary incompatibility" in (probe.stderr or "").lower():
+            logger.warning("NumPy ABI mismatch detected")
+            return False
         return True
 
     def freeze(self) -> str:

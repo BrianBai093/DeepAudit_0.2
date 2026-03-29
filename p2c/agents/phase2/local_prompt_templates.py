@@ -132,6 +132,8 @@ Guidelines:
 6. Each execution step's command must be a single shell command runnable in bash.
 7. Set realistic timeout_sec (data download: 300-900s, training: 600-3600s, eval: 120-600s).
 8. Map every code-verifiable claim from claims_ir to an expected_result entry.
+9. IMPORTANT: In commands, always use `python` (not `python3`) — `python3` may resolve to the system interpreter rather than the conda/venv environment's Python.
+10. When tensorflow/torch is a pip dependency, put numpy in pip_dependencies too (not conda) to avoid C ABI mismatches.
 """).strip()
 
 
@@ -204,6 +206,7 @@ METRIC:loss=0.1823
 6. After extracting metrics, write the complete result to:
    {outputs_dir}/step_{step_id}_result.json
    Schema: {{"command": "<final command>", "exit_code": <int>, "metrics": {{"name": value}}, "notes": "<any notes>"}}
+7. IMPORTANT: Always use `python` (not `python3`) to run scripts — `python3` may resolve to the system interpreter outside the active conda/venv environment.
 """).strip()
 
 
@@ -260,4 +263,5 @@ Schema: {{
 2. Do NOT create a virtual environment.
 3. If you cannot reproduce a metric, note why.
 4. Keep output compact — no large file dumps.
+5. Always use `python` (not `python3`) to run scripts — `python3` may resolve to the system interpreter outside the active environment.
 """).strip()

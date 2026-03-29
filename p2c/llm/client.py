@@ -16,8 +16,8 @@ class LLMClient:
     def __init__(self) -> None:
         key = os.getenv("OPENAI_API_KEY")
         self.api_key = key.strip() if key else None
-        model = os.getenv("OPENAI_MODEL", "gpt-5.1")
-        self.model = model.strip() if model else "gpt-5.1"
+        model = os.getenv("OPENAI_MODEL", "gpt-5.4")
+        self.model = model.strip() if model else "gpt-5.4"
         base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
         self.base_url = base_url.strip() if base_url else "https://api.openai.com/v1"
         if not self.base_url.endswith("/v1"):

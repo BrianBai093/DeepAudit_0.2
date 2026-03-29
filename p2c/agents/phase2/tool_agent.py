@@ -127,6 +127,15 @@ class ToolAgent(BaseAgent):
             result.install_commands.append(entry)
             self.log("PROGRESS", entry)
 
+            # After core layer, verify numpy ABI compatibility
+            if lr.layer_name == "core" and lr.ok:
+                if not self._env_mgr.validate_abi():
+                    self.log("PROGRESS", "numpy ABI mismatch detected — reinstalling numpy via pip")
+                    self._env_mgr.run_in_env(
+                        "pip install --force-reinstall numpy", timeout_sec=120,
+                    )
+                    result.install_commands.append("numpy ABI fix (pip reinstall)")
+
     def _install_flat(self, plan: ExecutionPlan, result: EnvSetupResult) -> None:
         """Original flat install path (no layering)."""
         if plan.conda_dependencies:
@@ -185,10 +194,15 @@ class ToolAgent(BaseAgent):
         def _pkg_name(spec: str) -> str:
             return spec.split("==")[0].split(">=")[0].split("<=")[0].split("[")[0].strip().lower()
 
+        # Packages that are already handled by env creation — skip them
+        _SKIP_PKGS = {"python", "pip", "setuptools", "wheel"}
+
         # Partition conda deps
         core_conda, ml_conda, paper_conda = [], [], []
         for dep in plan.conda_dependencies:
             name = _pkg_name(dep.package)
+            if name in _SKIP_PKGS:
+                continue  # already in env from conda create
             if name in CORE_PKGS:
                 core_conda.append(dep)
             elif name in ML_PKGS:
@@ -206,6 +220,48 @@ class ToolAgent(BaseAgent):
                 ml_pip.append(dep)
             else:
                 paper_pip.append(dep)
+
+        # ------------------------------------------------------------------
+        # ABI compatibility: when a DL framework (tensorflow/torch/jax) is
+        # installed via pip, numpy MUST also come from pip.  Mixing a
+        # conda-forge numpy with a pip tensorflow causes C-level ABI
+        # mismatches ("numpy.dtype size changed").
+        # ------------------------------------------------------------------
+        DL_FRAMEWORKS = {
+            "torch", "torchvision", "torchaudio", "pytorch",
+            "tensorflow", "tensorflow-gpu", "tf-nightly",
+            "jax", "jaxlib",
+        }
+        dl_in_pip = any(_pkg_name(dep) in DL_FRAMEWORKS for dep in core_pip)
+        if dl_in_pip:
+            # Move numpy (and scipy) from conda → pip
+            _ABI_SENSITIVE = {"numpy", "scipy", "h5py"}
+            moved_from_conda: list[str] = []
+            for tier_conda, tier_pip in [
+                (core_conda, core_pip),
+                (ml_conda, ml_pip),
+            ]:
+                to_remove = []
+                for d in tier_conda:
+                    if _pkg_name(d.package) in _ABI_SENSITIVE:
+                        vc = d.version_constraint
+                        # Build pip-style spec: numpy==1.26 (bare version gets ==)
+                        if vc and vc[0] not in ("=", ">", "<", "!", "~"):
+                            spec = f"{d.package}=={vc}"
+                        else:
+                            spec = f"{d.package}{vc or ''}"
+                        if spec not in tier_pip and spec not in core_pip:
+                            core_pip.append(spec)
+                        moved_from_conda.append(d.package)
+                        to_remove.append(d)
+                for d in to_remove:
+                    tier_conda.remove(d)
+
+            # Also ensure numpy is explicitly in pip if not already present
+            # (it may only be a transitive dep of tensorflow)
+            has_numpy_pip = any("numpy" in dep.lower() for dep in core_pip)
+            if not has_numpy_pip:
+                core_pip.append("numpy")
 
         # Build verify lists
         def _imports_for(conda_deps: list[CondaDependency], pip_deps: list[str]) -> list[str]:

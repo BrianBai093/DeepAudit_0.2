@@ -34,7 +34,7 @@ from p2c.schemas import (
     StepFailure,
 )
 
-DEFAULT_CODEX_MODEL = "o4-mini"
+DEFAULT_CODEX_MODEL = "gpt-5.4"
 
 
 class CodexExecutorAgent(BaseAgent):
@@ -356,8 +356,10 @@ class CodexExecutorAgent(BaseAgent):
     ) -> Any:
         """Run ``codex exec --full-auto`` inside the managed environment."""
         model = (os.getenv("P2C_CODEX_MODEL") or DEFAULT_CODEX_MODEL).strip()
+        sandbox = (os.getenv("P2C_CODEX_SANDBOX") or "danger-full-access").strip()
         codex_cmd = (
-            f"codex exec --full-auto -m {shlex.quote(model)} {shlex.quote(prompt)}"
+            f"codex exec --full-auto --sandbox={shlex.quote(sandbox)}"
+            f" -m {shlex.quote(model)} {shlex.quote(prompt)}"
         )
         return env_mgr.run_in_env(codex_cmd, cwd=cwd, timeout_sec=timeout_sec)
 

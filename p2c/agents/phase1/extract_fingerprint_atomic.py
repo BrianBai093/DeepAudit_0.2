@@ -108,6 +108,64 @@ class ExtractFingerprintAtomicAgent(BaseAgent):
         return None, None
 
     @staticmethod
+    def _is_plausible_metric_value(value: float, metric_name: str) -> bool:
+        """Check if a numeric value is plausible for the given metric type.
+
+        Rejects obviously wrong values like accuracy=10000 (sample counts).
+        """
+        # Metrics that should be in [0, 100] (percentage) or [0, 1] (ratio)
+        BOUNDED_METRICS = {"accuracy", "f1", "auc", "precision", "recall", "bleu", "rouge"}
+        # Metrics that can be any positive number
+        UNBOUNDED_METRICS = {"loss", "mse", "mae", "rmse", "perplexity"}
+
+        if metric_name in BOUNDED_METRICS:
+            # Accept 0-100 (percentage) or 0-1 (ratio)
+            return value <= 100.0
+        if metric_name in UNBOUNDED_METRICS:
+            # Loss/error metrics can be large but not absurdly so
+            return value < 1e6
+        return True
+
+    @staticmethod
+    def _is_classification_report_table(parsed_rows: list[list[str]]) -> bool:
+        """Detect sklearn-style classification report tables.
+
+        These tables have rows like "accuracy", "macro avg", "weighted avg"
+        with a "support" column containing sample counts — NOT metric values.
+        """
+        summary_labels = {"accuracy", "macro avg", "macro_avg", "weighted avg", "weighted_avg", "micro avg", "micro_avg"}
+        header_keywords = {"precision", "recall", "f1-score", "f1", "support"}
+
+        # Check if any row looks like a header with classification report columns
+        has_report_header = False
+        has_summary_row = False
+        for row in parsed_rows:
+            row_lower = [c.lower().strip() for c in row]
+            if len(set(row_lower) & header_keywords) >= 2:
+                has_report_header = True
+            if row_lower and row_lower[0] in summary_labels:
+                has_summary_row = True
+
+        return has_report_header and has_summary_row
+
+    @staticmethod
+    def _detect_header_row(parsed_rows: list[list[str]]) -> list[str] | None:
+        """Find the actual header row (first row that is mostly non-numeric text)."""
+        for row in parsed_rows:
+            non_numeric = 0
+            for cell in row:
+                cell_stripped = cell.strip()
+                if not cell_stripped:
+                    continue
+                if NUMBER_RE.fullmatch(cell_stripped):
+                    continue
+                non_numeric += 1
+            # If most cells are non-numeric text, it's likely a header
+            if non_numeric >= max(1, len(row) // 2):
+                return row
+        return None
+
+    @staticmethod
     def _contains_malformed_numeric(text: str) -> bool:
         lower = text.lower()
         if "%$" in lower or "$%" in lower:
@@ -161,15 +219,119 @@ class ExtractFingerprintAtomicAgent(BaseAgent):
         rej: list[dict] = []
         table_anchor = self._extract_table_anchor(text)
 
+        # Detect classification report tables — these need special handling
+        is_clf_report = self._is_classification_report_table(parsed_rows)
+
+        # Find the actual header row (mostly non-numeric text) instead of
+        # blindly using the previous row, which may be a data row.
+        global_header = self._detect_header_row(parsed_rows)
+
+        # Column names that contain counts, not metric values
+        COUNT_COLUMNS = {"support", "count", "samples", "n", "size", "total", "#"}
+
+        # Check if header has metric names (column-oriented table):
+        # e.g. "Method | Accuracy | F1" → metrics in header, entities in row[0]
+        header_metric_cols: dict[int, str] = {}
+        if global_header and not is_clf_report:
+            for col_idx, cell in enumerate(global_header):
+                m = self._extract_metric_name(cell)
+                if m and cell.lower().strip() not in COUNT_COLUMNS:
+                    header_metric_cols[col_idx] = m
+
         for i, row in enumerate(parsed_rows):
+            # Skip the header row itself
+            if row is global_header:
+                continue
+
             metric_cell = row[0] if row else ""
             metric_name = self._extract_metric_name(metric_cell or " ".join(row))
+
+            # Column-oriented table: metrics in header, entities in row[0]
+            # e.g. "Method | Accuracy | F1" with rows "Baseline | 92.3% | 0.91"
+            if not metric_name and header_metric_cols:
+                entity = row[0].strip() if row else ""
+                # Skip rows that look like headers themselves
+                if not entity or entity.lower() in {"method", "model", "approach", ""}:
+                    continue
+                # Skip rows that are entirely non-numeric (likely sub-headers)
+                has_any_number = any(NUMBER_RE.search(row[c]) for c in header_metric_cols if c < len(row))
+                if not has_any_number:
+                    continue
+
+                for col_idx, col_metric in header_metric_cols.items():
+                    if col_idx >= len(row):
+                        continue
+                    value_raw = row[col_idx].strip()
+                    if not value_raw:
+                        continue
+                    value, unit_name = self._extract_metric_value(value_raw)
+                    if value is None:
+                        raw_num = NUMBER_RE.search(value_raw)
+                        if raw_num:
+                            value = float(raw_num.group(0))
+                            unit_name = "%" if col_metric in {"accuracy", "f1", "auc", "precision", "recall"} else "value"
+                    if value is None:
+                        continue
+                    if not self._is_plausible_metric_value(value, col_metric):
+                        rej.append({
+                            "unit_id": unit.get("unit_id"),
+                            "raw": f"{entity} {col_metric} = {value}",
+                            "reason_codes": ["IMPLAUSIBLE_METRIC_VALUE"],
+                        })
+                        continue
+
+                    fact = f"{entity} {col_metric} = {value_raw if unit_name == '%' else value}"
+                    scope = "from table in paper"
+                    out.append({
+                        "criterion": f"<fact>{fact}</fact> <scope>{scope}</scope>",
+                        "fact": fact,
+                        "scope": scope,
+                        "facet": "metric_result",
+                        "source_type": "table_metric",
+                        "metric_name": col_metric,
+                        "metric_value": value,
+                        "metric_unit": unit_name,
+                        "entity": entity,
+                        "comparator": None,
+                        "dataset_scope": None,
+                        "table_anchor": table_anchor,
+                        "input_unit_id": unit.get("unit_id"),
+                        "reason_codes": ["TABLE_EXPANDED"],
+                    })
+                continue
+
             if not metric_name:
                 continue
 
-            header = parsed_rows[i - 1] if i - 1 >= 0 else []
+            # For classification reports, only extract the actual metric value
+            # from the correct column — skip the "support" column entirely.
+            if is_clf_report:
+                # In a classification report, the "accuracy" row has the metric
+                # value in a known column (usually f1-score or the 3rd numeric col).
+                # We extract from the row directly using the global header.
+                self._extract_clf_report_row(
+                    row=row,
+                    header=global_header,
+                    metric_name=metric_name,
+                    table_anchor=table_anchor,
+                    unit=unit,
+                    out=out,
+                    rej=rej,
+                )
+                continue
+
+            # Standard table: use global header or fall back to previous row
+            header = global_header
+            if not header:
+                header = parsed_rows[i - 1] if i - 1 >= 0 else []
+
             for col in range(1, len(row)):
-                model = header[col] if header and col < len(header) else f"col_{col}"
+                col_name = header[col] if header and col < len(header) else f"col_{col}"
+
+                # Skip columns that are sample counts, not metric values
+                if col_name.lower().strip() in COUNT_COLUMNS:
+                    continue
+
                 value_raw = row[col]
                 if not value_raw:
                     continue
@@ -179,6 +341,7 @@ class ExtractFingerprintAtomicAgent(BaseAgent):
                     if raw_num:
                         value = float(raw_num.group(0))
                         unit_name = "%" if metric_name in {"accuracy", "f1", "auc", "precision", "recall"} else "value"
+
                 if value is None:
                     rej.append(
                         {
@@ -189,7 +352,23 @@ class ExtractFingerprintAtomicAgent(BaseAgent):
                     )
                     continue
 
-                fact = f"{model} {metric_name} = {value_raw if unit_name == '%' else value}"
+                # Reject implausible values (e.g. accuracy = 10000)
+                if not self._is_plausible_metric_value(value, metric_name):
+                    rej.append(
+                        {
+                            "unit_id": unit.get("unit_id"),
+                            "raw": f"{col_name} {metric_name} = {value}",
+                            "reason_codes": ["IMPLAUSIBLE_METRIC_VALUE"],
+                        }
+                    )
+                    continue
+
+                # Don't use numeric strings as entity/model names — they're
+                # likely data values from another row, not column headers.
+                if NUMBER_RE.fullmatch(col_name.strip()):
+                    col_name = f"col_{col}"
+
+                fact = f"{col_name} {metric_name} = {value_raw if unit_name == '%' else value}"
                 scope = "from table in paper"
                 out.append(
                     {
@@ -201,7 +380,7 @@ class ExtractFingerprintAtomicAgent(BaseAgent):
                         "metric_name": metric_name,
                         "metric_value": value,
                         "metric_unit": unit_name,
-                        "entity": model,
+                        "entity": col_name,
                         "comparator": None,
                         "dataset_scope": None,
                         "table_anchor": table_anchor,
@@ -211,6 +390,101 @@ class ExtractFingerprintAtomicAgent(BaseAgent):
                 )
 
         return out, rej
+
+    def _extract_clf_report_row(
+        self,
+        *,
+        row: list[str],
+        header: list[str] | None,
+        metric_name: str,
+        table_anchor: str | None,
+        unit: dict,
+        out: list[dict],
+        rej: list[dict],
+    ) -> None:
+        """Extract metrics from a classification report summary row (accuracy, macro avg, etc.).
+
+        In sklearn classification reports:
+        - "accuracy" row: has ONE value (the overall accuracy) — metric_name stays "accuracy"
+        - "macro avg" / "weighted avg" rows: each column IS a different metric (precision, recall, f1)
+        - The 'support' column is always a sample count and must be skipped.
+        """
+        COUNT_COLUMNS = {"support", "count", "samples", "n", "size", "total", "#"}
+        METRIC_COLUMNS = {"precision", "recall", "f1-score", "f1", "accuracy", "auc"}
+
+        # Determine if this is an "accuracy" row (single-value) vs avg row (multi-value)
+        row_label = row[0].lower().strip() if row else ""
+        is_accuracy_row = row_label in {"accuracy", "acc"}
+
+        for col in range(1, len(row)):
+            value_raw = row[col].strip()
+            if not value_raw or value_raw == "-":
+                continue
+
+            col_name = (header[col] if header and col < len(header) else "").lower().strip()
+
+            # Skip count/support columns
+            if col_name in COUNT_COLUMNS:
+                continue
+
+            value, unit_name = self._extract_metric_value(value_raw)
+            if value is None:
+                raw_num = NUMBER_RE.search(value_raw)
+                if raw_num:
+                    candidate = float(raw_num.group(0))
+                    # In clf reports, only accept plausible metric values
+                    if self._is_plausible_metric_value(candidate, "accuracy"):
+                        value = candidate
+                        unit_name = "ratio"
+
+            if value is None:
+                continue
+
+            # Reject implausible values
+            effective_metric = "accuracy" if is_accuracy_row else (col_name if col_name in METRIC_COLUMNS else metric_name)
+            if not self._is_plausible_metric_value(value, effective_metric):
+                rej.append({
+                    "unit_id": unit.get("unit_id"),
+                    "raw": f"{effective_metric} = {value}",
+                    "reason_codes": ["IMPLAUSIBLE_METRIC_VALUE"],
+                })
+                continue
+
+            # For "accuracy" row: the value IS the overall accuracy regardless of column
+            # For avg rows: the column name determines the metric
+            if is_accuracy_row:
+                fact_metric = "accuracy"
+            elif col_name in METRIC_COLUMNS:
+                fact_metric = col_name
+            else:
+                fact_metric = metric_name
+
+            # Build entity prefix for avg rows
+            entity = None
+            if not is_accuracy_row and row_label:
+                entity = row_label  # "macro avg", "weighted avg"
+
+            if entity:
+                fact = f"{entity} {fact_metric} = {value_raw if unit_name == '%' else value}"
+            else:
+                fact = f"{fact_metric} = {value_raw if unit_name == '%' else value}"
+            scope = "from classification report in paper"
+            out.append({
+                "criterion": f"<fact>{fact}</fact> <scope>{scope}</scope>",
+                "fact": fact,
+                "scope": scope,
+                "facet": "metric_result",
+                "source_type": "table_metric",
+                "metric_name": fact_metric,
+                "metric_value": value,
+                "metric_unit": unit_name,
+                "entity": entity,
+                "comparator": None,
+                "dataset_scope": None,
+                "table_anchor": table_anchor,
+                "input_unit_id": unit.get("unit_id"),
+                "reason_codes": ["TABLE_EXPANDED", "CLF_REPORT"],
+            })
 
     def execute(self, ctx: dict) -> dict:
         guide = self.artifacts.read_json("fingerprint/guide_sentences.json")

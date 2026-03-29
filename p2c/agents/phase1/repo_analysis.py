@@ -160,7 +160,7 @@ class SystemRepoAnalyzer:
                     manager="pip_editable",
                     cwd=cwd,
                     manifest_paths=[rel],
-                    install_command="python3 -m pip install -e .",
+                    install_command="python -m pip install -e .",
                 )
                 if profile.profile_id not in seen:
                     profiles.append(profile)
@@ -176,7 +176,7 @@ class SystemRepoAnalyzer:
                 manager="pip_requirements",
                 cwd=cwd,
                 manifest_paths=[_safe_rel(req, self.repo_dir)],
-                install_command=f"python3 -m pip install -r {req.name}",
+                install_command=f"python -m pip install -r {req.name}",
             )
             if profile.profile_id not in seen:
                 profiles.append(profile)
@@ -191,7 +191,7 @@ class SystemRepoAnalyzer:
                     manager="pip_editable",
                     cwd=cwd,
                     manifest_paths=[_safe_rel(setup_file, self.repo_dir)],
-                    install_command="python3 -m pip install -e .",
+                    install_command="python -m pip install -e .",
                 )
                 if profile.profile_id not in seen:
                     profiles.append(profile)
@@ -391,7 +391,7 @@ class SystemRepoAnalyzer:
                 Entrypoint(
                     entrypoint_id=f"python-file:{rel}",
                     path=rel,
-                    command=f"python3 {rel}",
+                    command=f"python {rel}",
                     cwd=cwd,
                     runtime="python",
                     dependency_profile_id=profile.profile_id if profile else None,
@@ -419,7 +419,7 @@ class SystemRepoAnalyzer:
 
             output_name = f"{path.stem}.executed.ipynb"
             command = (
-                "python3 -m jupyter nbconvert "
+                "python -m jupyter nbconvert "
                 f"--to notebook --execute {shlex.quote(notebook_ref)} "
                 f"--output {shlex.quote(output_name)}"
             )
@@ -622,7 +622,7 @@ class SystemRepoAnalyzer:
                     Entrypoint(
                         entrypoint_id=f"readme-python:{rel}",
                         path=rel,
-                        command=f"python3 {rel}",
+                        command=f"python {rel}",
                         cwd=profile.cwd if profile else ".",
                         runtime="python",
                         dependency_profile_id=profile.profile_id if profile else None,
