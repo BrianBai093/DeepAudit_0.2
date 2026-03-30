@@ -193,9 +193,13 @@ The conda/venv environment is already activated.
 After execution, print each metric on its own line:
 METRIC:<metric_name>=<numeric_value>
 
-Example:
-METRIC:accuracy=0.9534
-METRIC:loss=0.1823
+IMPORTANT: Distinguish train vs validation/test metrics with prefixes:
+METRIC:val_accuracy=0.9534
+METRIC:train_accuracy=0.9972
+METRIC:val_loss=0.1823
+METRIC:test_accuracy=0.9685
+Use the unprefixed name (e.g. METRIC:accuracy=0.9534) ONLY for the most meaningful
+result — typically the validation or test metric, NOT the training metric.
 
 ## Rules
 1. Run the command above. If it fails, diagnose the error and fix it (max 3 attempts).
@@ -249,6 +253,12 @@ The conda/venv environment is already activated.
 ## Output Format
 For each metric found, print:
 METRIC:<metric_name>=<numeric_value>
+
+IMPORTANT: Distinguish train vs validation/test metrics with prefixes:
+METRIC:val_accuracy=0.9534
+METRIC:train_accuracy=0.9972
+Use the unprefixed name (e.g. METRIC:accuracy=0.9534) ONLY for the most meaningful
+result — typically the validation or test metric, NOT the training metric.
 
 After you are done, write all results to:
 {outputs_dir}/autonomous_results.json

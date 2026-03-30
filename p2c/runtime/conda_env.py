@@ -161,18 +161,55 @@ class CondaEnvManager:
     def run_in_env(
         self, command: str, cwd: str = ".", timeout_sec: int = 600,
     ) -> subprocess.CompletedProcess[str]:
-        """Execute *command* inside the managed environment."""
+        """Execute *command* inside the managed environment.
+
+        Inherits key host environment variables (PATH, API keys, proxy
+        settings) so that tools like ``codex`` and ``pip`` work correctly
+        inside the conda-isolated shell.
+        """
+        # Build an env dict that merges the host PATH (for codex, npm, etc.)
+        # with the conda env's own PATH.
+        env = self._build_child_env()
+
         if self._use_venv_fallback:
             activate = f"source {shlex.quote(str(self._venv_path / 'bin' / 'activate'))} && {command}"
             return subprocess.run(
                 ["bash", "-lc", activate],
                 cwd=cwd, capture_output=True, text=True, timeout=timeout_sec,
+                env=env,
             )
         return subprocess.run(
             [self._conda_bin, "run", "--no-capture-output", "-n", self.env_name,
              "bash", "-lc", command],
             cwd=cwd, capture_output=True, text=True, timeout=timeout_sec,
+            env=env,
         )
+
+    @staticmethod
+    def _build_child_env() -> dict[str, str]:
+        """Build environment dict for child processes.
+
+        Ensures the child inherits:
+        - Full host PATH (so ``codex``, ``node``, ``npm`` are findable)
+        - API keys (OPENAI_API_KEY, ANTHROPIC_API_KEY, etc.)
+        - Proxy / network settings (HTTP_PROXY, HTTPS_PROXY, etc.)
+        - HOME, USER, LANG for proper locale
+        """
+        env = os.environ.copy()
+        # Keys that MUST be forwarded even if conda tries to strip them
+        _FORWARD_KEYS = [
+            "PATH", "HOME", "USER", "LANG", "SHELL",
+            "OPENAI_API_KEY", "ANTHROPIC_API_KEY",
+            "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY",
+            "http_proxy", "https_proxy", "no_proxy",
+            "NODE_PATH", "NVM_DIR", "NPM_CONFIG_PREFIX",
+            "CODEX_HOME",
+        ]
+        for key in _FORWARD_KEYS:
+            val = os.environ.get(key)
+            if val:
+                env[key] = val
+        return env
 
     # ------------------------------------------------------------------
     # Dependency installation

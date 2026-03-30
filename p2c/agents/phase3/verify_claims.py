@@ -16,7 +16,11 @@ SYSTEM_PROMPT = "You verify claims against evidence using deterministic rules. O
 USER_PROMPT_TEMPLATE = "Input: claims_ir + parsed_evidence + evaluability. Output: verdict + evaluability_verdict"
 
 
-def evaluate_claim(claim: dict[str, Any], matched_records: list[MetricRecord]) -> ClaimVerdict:
+def evaluate_claim(
+    claim: dict[str, Any],
+    matched_records: list[MetricRecord],
+    missing_reason: str | None = None,
+) -> ClaimVerdict:
     claim_id = claim.get("claim_id", "unknown")
     ctype = claim.get("type", "other")
     target = claim.get("target")
@@ -27,11 +31,19 @@ def evaluate_claim(claim: dict[str, Any], matched_records: list[MetricRecord]) -
 
     values = [r.value for r in matched_records if r.value is not None]
     if not values:
+        # Distinguish "metric exists but can't align" from "metric not found"
+        reason_codes = ["MISSING_RECORDS"]
+        detail = "No numeric records available"
+        if missing_reason and "could not be aligned" in missing_reason:
+            reason_codes = ["ALIGNMENT_AMBIGUOUS"]
+            detail = missing_reason
+        elif missing_reason:
+            detail = missing_reason
         return ClaimVerdict(
             claim_id=claim_id,
             status="INCONCLUSIVE",
-            detail="No numeric records available",
-            reason_codes=["MISSING_RECORDS"],
+            detail=detail,
+            reason_codes=reason_codes,
         )
 
     x_rep = max(values)
@@ -83,15 +95,21 @@ class VerifyClaimsAgent(BaseAgent):
         parsed_doc = self.artifacts.read_json("results/parsed_evidence.json")
         evaluability_doc = EvaluabilityDoc(**self.artifacts.read_json("results/evaluability.json"))
 
-        evidence_map = {
-            row.get("claim_id"): [MetricRecord(**r) for r in row.get("matched_records", [])]
-            for row in parsed_doc.get("claim_evidence", [])
-        }
+        evidence_map: dict[str, list[MetricRecord]] = {}
+        missing_reason_map: dict[str, str | None] = {}
+        for row in parsed_doc.get("claim_evidence", []):
+            cid = row.get("claim_id", "")
+            evidence_map[cid] = [MetricRecord(**r) for r in row.get("matched_records", [])]
+            missing_reason_map[cid] = row.get("missing_reason")
 
         verdicts: list[ClaimVerdict] = []
         for claim in claims_doc.get("claims", []):
             cid = claim.get("claim_id")
-            verdicts.append(evaluate_claim(claim, evidence_map.get(cid, [])))
+            verdicts.append(evaluate_claim(
+                claim,
+                evidence_map.get(cid, []),
+                missing_reason=missing_reason_map.get(cid),
+            ))
 
         if not verdicts:
             verdict = VerdictDoc(

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import Any
 
 from p2c.agents.base import BaseAgent
 from p2c.schemas import ClaimItem, ClaimsIR
@@ -88,6 +89,17 @@ class BuildClaimsIRAgent(BaseAgent):
             metric, target = self._extract_metric_and_target(fact)
             mapped_type = "result" if claim_type == "result" else "config"
 
+            # Preserve experiment context from fingerprint for Phase 3 alignment
+            conditions: dict[str, Any] = {}
+            if scope:
+                conditions["scope"] = scope
+            evidence_anchors = row.get("evidence_anchors") or {}
+            if evidence_anchors.get("visual_anchor"):
+                conditions["table_anchor"] = str(evidence_anchors["visual_anchor"])
+            # Carry forward visual_data if present (e.g. table caption context)
+            if evidence_anchors.get("visual_data"):
+                conditions["visual_data"] = evidence_anchors["visual_data"]
+
             out.append(
                 ClaimItem(
                     claim_id=claim_id,
@@ -96,9 +108,9 @@ class BuildClaimsIRAgent(BaseAgent):
                     metric=metric,
                     target=target,
                     baseline=None,
-                    conditions={"scope": scope} if scope else {},
+                    conditions=conditions,
                     aggregation="best" if mapped_type == "result" else None,
-                    evidence_set=[str((row.get("evidence_anchors") or {}).get("text_anchor") or "fingerprint")],
+                    evidence_set=[str(evidence_anchors.get("text_anchor") or "fingerprint")],
                     tolerance_policy={
                         "abs_eps": float(tol.get("abs", 0.02) or 0.02),
                         "rel_eps": float(tol.get("rel", 0.03) or 0.03),

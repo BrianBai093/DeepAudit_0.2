@@ -281,7 +281,7 @@ class ExtractFingerprintAtomicAgent(BaseAgent):
                         continue
 
                     fact = f"{entity} {col_metric} = {value_raw if unit_name == '%' else value}"
-                    scope = "from table in paper"
+                    scope = f"from {table_anchor} in paper" if table_anchor else "from table in paper"
                     out.append({
                         "criterion": f"<fact>{fact}</fact> <scope>{scope}</scope>",
                         "fact": fact,
@@ -369,7 +369,7 @@ class ExtractFingerprintAtomicAgent(BaseAgent):
                     col_name = f"col_{col}"
 
                 fact = f"{col_name} {metric_name} = {value_raw if unit_name == '%' else value}"
-                scope = "from table in paper"
+                scope = f"from {table_anchor} in paper" if table_anchor else "from table in paper"
                 out.append(
                     {
                         "criterion": f"<fact>{fact}</fact> <scope>{scope}</scope>",
@@ -468,7 +468,7 @@ class ExtractFingerprintAtomicAgent(BaseAgent):
                 fact = f"{entity} {fact_metric} = {value_raw if unit_name == '%' else value}"
             else:
                 fact = f"{fact_metric} = {value_raw if unit_name == '%' else value}"
-            scope = "from classification report in paper"
+            scope = f"from classification report in {table_anchor}" if table_anchor else "from classification report in paper"
             out.append({
                 "criterion": f"<fact>{fact}</fact> <scope>{scope}</scope>",
                 "fact": fact,

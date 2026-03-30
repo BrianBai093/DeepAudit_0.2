@@ -28,6 +28,8 @@ def extract_metrics_from_stdout(stdout: str, contract: MetricContract) -> dict[s
     Layer 1: ``MetricContract.parsers`` regex patterns (highest priority).
     Layer 2: ``METRIC:{name}={value}`` lines (our structured prompt format).
     Layer 3: Common ``test accuracy: 0.95`` / ``val_loss = 0.23`` heuristics.
+    Layer 4: Best/max aggregation — when multiple values exist for the same
+             metric, keep both ``{metric}`` (best) and ``{metric}_all`` (list).
     """
     metrics: dict[str, Any] = {}
 
@@ -48,26 +50,47 @@ def extract_metrics_from_stdout(stdout: str, contract: MetricContract) -> dict[s
                 metrics[parser.metric_name] = raw
 
     # Layer 2 — METRIC:{name}={value}
+    # Collect ALL values per metric name (there may be multiple METRIC:accuracy lines)
+    _metric_values: dict[str, list[float]] = {}
     for m in re.finditer(r"METRIC:([\w.][\w.]*)=([\d.eE+-]+)", stdout):
         name, val = m.group(1), m.group(2)
+        try:
+            _metric_values.setdefault(name, []).append(float(val))
+        except ValueError:
+            pass
+    for name, vals in _metric_values.items():
         if name not in metrics:
-            try:
-                metrics[name] = float(val)
-            except ValueError:
-                metrics[name] = val
+            # Use the LAST reported value (most likely the final/best)
+            metrics[name] = vals[-1]
 
-    # Layer 3 — common patterns
-    _COMMON = re.compile(
-        r"(?:test|val|eval|valid|validation)[_ ]?"
+    # Layer 3 — common prefixed patterns (val_accuracy, test_loss, etc.)
+    # These get priority names like "val_accuracy" to distinguish from train
+    _PREFIXED = re.compile(
+        r"(test|val|eval|valid|validation|train|training)[_ ]?"
         r"(accuracy|acc|loss|f1|auc|bleu|rouge|precision|recall|mse|mae|rmse|perplexity|ppl)"
         r"\s*[:=]\s*([\d.]+)",
         re.IGNORECASE,
     )
-    for m in _COMMON.finditer(stdout):
-        name, val = m.group(1).lower(), m.group(2)
-        if name not in metrics:
+    for m in _PREFIXED.finditer(stdout):
+        prefix = m.group(1).lower()
+        metric_name = m.group(2).lower()
+        val = m.group(2 + 1)
+        # Normalize prefix
+        if prefix in ("val", "valid", "validation", "eval"):
+            prefix = "val"
+        elif prefix in ("train", "training"):
+            prefix = "train"
+        # else: "test"
+        full_name = f"{prefix}_{metric_name}"
+        if full_name not in metrics:
             try:
-                metrics[name] = float(val)
+                metrics[full_name] = float(val)
+            except ValueError:
+                pass
+        # Also set the unprefixed name if not already set (prefer val/test over train)
+        if metric_name not in metrics and prefix in ("val", "test", "eval"):
+            try:
+                metrics[metric_name] = float(val)
             except ValueError:
                 pass
 
@@ -176,17 +199,52 @@ def build_claim_alignment(
     claims_ir: ClaimsIR,
     collected_metrics: dict[str, Any],
 ) -> ClaimAlignmentDoc:
-    """Build a ``ClaimAlignmentDoc`` mapping claims to discovered metrics."""
+    """Build a ``ClaimAlignmentDoc`` mapping claims to discovered metrics.
+
+    Phase 2 is intentionally conservative here: it reports *what* metrics
+    were collected and marks claims as ``"partial"`` when the metric name
+    matches but we cannot be certain the collected value corresponds to the
+    specific experiment described by the claim (e.g. same metric from
+    different tables / datasets).  Full alignment is deferred to Phase 3,
+    which has access to richer claim context (table_anchor, scope, etc.).
+    """
     items: list[ClaimAlignmentItem] = []
+
+    # Count how many result-type claims share each metric name
+    from collections import Counter
+    metric_claim_count: Counter[str] = Counter()
+    for claim in claims_ir.claims:
+        if claim.type == "result" and claim.metric:
+            metric_claim_count[claim.metric] += 1
+
     for claim in claims_ir.claims:
         required = [claim.metric] if claim.metric else []
         has_metric = bool(claim.metric and claim.metric in collected_metrics)
+
+        if not has_metric:
+            evaluable = "no"
+            reason = None
+        elif claim.metric and metric_claim_count.get(claim.metric, 0) > 1:
+            # Multiple claims reference the same metric name (e.g. 3 different
+            # "accuracy" values from different tables).  We have *a* value but
+            # cannot determine which claim it corresponds to — mark partial and
+            # let Phase 3 resolve with experiment context.
+            evaluable = "partial"
+            reason = (
+                f"metric '{claim.metric}' collected but {metric_claim_count[claim.metric]} "
+                f"claims reference it; alignment deferred to Phase 3"
+            )
+        else:
+            evaluable = "yes"
+            reason = None
+
         items.append(
             ClaimAlignmentItem(
                 claim_id=claim.claim_id,
                 required_metrics=required,
                 source=["codex_local_execution"],
-                evaluable="yes" if has_metric else "no",
+                evaluable=evaluable,
+                reason=reason,
             )
         )
     return ClaimAlignmentDoc(claims=items)
