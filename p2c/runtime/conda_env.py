@@ -108,6 +108,35 @@ class CondaEnvManager:
     def backend(self) -> str:
         return "venv" if self._use_venv_fallback else (self._conda_bin or "conda")
 
+    @staticmethod
+    def _candidate_bin_paths(binary: str, explicit_env: str | None = None) -> list[str]:
+        explicit = os.environ.get(explicit_env) if explicit_env else None
+        candidates = [explicit] if explicit else []
+        candidates.extend([
+            shutil.which(binary),
+            str(Path.home() / "miniconda3" / "envs" / "agent" / "bin" / binary),
+            str(Path.home() / "anaconda3" / "envs" / "agent" / "bin" / binary),
+            str(Path.home() / "miniconda3" / "bin" / binary),
+            str(Path.home() / "anaconda3" / "bin" / binary),
+        ])
+        return candidates
+
+    @staticmethod
+    def _resolve_binary(binary: str, explicit_env: str | None = None) -> str | None:
+        """Locate a usable executable even when the caller PATH is minimal."""
+        candidates = CondaEnvManager._candidate_bin_paths(binary, explicit_env=explicit_env)
+        for candidate in candidates:
+            if not candidate:
+                continue
+            path = Path(candidate).expanduser()
+            if path.is_file() and os.access(path, os.X_OK):
+                return str(path)
+        return None
+
+    @staticmethod
+    def _resolve_codex_bin() -> str | None:
+        return CondaEnvManager._resolve_binary("codex", explicit_env="P2C_CODEX_BIN")
+
     # ------------------------------------------------------------------
     # Create
     # ------------------------------------------------------------------
@@ -170,20 +199,47 @@ class CondaEnvManager:
         # Build an env dict that merges the host PATH (for codex, npm, etc.)
         # with the conda env's own PATH.
         env = self._build_child_env()
+        # ``mamba run`` on some Linux hosts (reproduced on Debian 13) misparses
+        # ``bash -lc`` wrappers and also breaks when combined with
+        # ``--no-capture-output``, aborting before the target command executes:
+        # ``exec: --: invalid option``.  A plain non-login shell is sufficient
+        # here because we explicitly forward the child environment ourselves.
+        shell_command = self._shell_wrap_command(env, command)
+        bash_cmd = ["bash", "-c", shell_command]
 
         if self._use_venv_fallback:
             activate = f"source {shlex.quote(str(self._venv_path / 'bin' / 'activate'))} && {command}"
             return subprocess.run(
-                ["bash", "-lc", activate],
+                ["bash", "-c", activate],
                 cwd=cwd, capture_output=True, text=True, timeout=timeout_sec,
                 env=env,
             )
+        run_cmd = [self._conda_bin, "run"]
+        if self._conda_bin != "mamba":
+            run_cmd.append("--no-capture-output")
+        run_cmd.extend(["-n", self.env_name, *bash_cmd])
         return subprocess.run(
-            [self._conda_bin, "run", "--no-capture-output", "-n", self.env_name,
-             "bash", "-lc", command],
+            run_cmd,
             cwd=cwd, capture_output=True, text=True, timeout=timeout_sec,
             env=env,
         )
+
+    @staticmethod
+    def _shell_wrap_command(env: dict[str, str], command: str) -> str:
+        """Re-export key forwarded vars inside the child shell.
+
+        ``mamba run`` may overwrite PATH while activating the target env, so
+        explicitly exporting here keeps host-provided tools like Codex/Node
+        visible inside the final shell command.
+        """
+        exports: list[str] = []
+        for key in ("PATH", "P2C_CODEX_BIN"):
+            value = env.get(key)
+            if value:
+                exports.append(f"export {key}={shlex.quote(value)}")
+        if not exports:
+            return command
+        return "; ".join([*exports, command])
 
     @staticmethod
     def _build_child_env() -> dict[str, str]:
@@ -203,12 +259,28 @@ class CondaEnvManager:
             "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY",
             "http_proxy", "https_proxy", "no_proxy",
             "NODE_PATH", "NVM_DIR", "NPM_CONFIG_PREFIX",
-            "CODEX_HOME",
+            "CODEX_HOME", "P2C_CODEX_BIN",
         ]
         for key in _FORWARD_KEYS:
             val = os.environ.get(key)
             if val:
                 env[key] = val
+        injected_dirs: list[str] = []
+        codex_bin = CondaEnvManager._resolve_codex_bin()
+        if codex_bin:
+            env["P2C_CODEX_BIN"] = codex_bin
+            injected_dirs.append(str(Path(codex_bin).parent))
+        for binary in ("node", "npm"):
+            resolved = CondaEnvManager._resolve_binary(binary)
+            if resolved:
+                injected_dirs.append(str(Path(resolved).parent))
+        path_parts = (env.get("PATH") or "").split(os.pathsep) if env.get("PATH") else []
+        prefix_parts: list[str] = []
+        for entry in injected_dirs:
+            if entry not in prefix_parts and entry not in path_parts:
+                prefix_parts.append(entry)
+        if prefix_parts:
+            env["PATH"] = os.pathsep.join([*prefix_parts, *path_parts]) if path_parts else os.pathsep.join(prefix_parts)
         return env
 
     # ------------------------------------------------------------------

@@ -128,3 +128,139 @@ def test_build_child_env_includes_path():
     env = CondaEnvManager._build_child_env()
     assert "PATH" in env
     assert env["PATH"] == os.environ.get("PATH", "")
+
+
+def test_run_in_env_uses_non_login_bash_for_conda(monkeypatch):
+    """run_in_env should avoid ``bash -lc`` and skip ``--no-capture-output`` for mamba."""
+    import subprocess
+    from p2c.runtime.conda_env import CondaEnvManager
+
+    calls = {}
+
+    def fake_run(args, **kwargs):
+        calls["args"] = args
+        calls["kwargs"] = kwargs
+        return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    mgr = CondaEnvManager(env_name="dummy", python_version="3.10")
+    mgr._conda_bin = "mamba"
+    mgr._use_venv_fallback = False
+    mgr.run_in_env("python -V", cwd="/tmp", timeout_sec=12)
+
+    assert calls["args"][:3] == ["mamba", "run", "-n"]
+    assert calls["args"][-2] == "-c"
+    assert calls["args"][-1].endswith("python -V")
+    assert "-lc" not in calls["args"]
+    assert "--no-capture-output" not in calls["args"]
+
+
+def test_run_in_env_keeps_no_capture_output_for_conda(monkeypatch):
+    """conda run still benefits from ``--no-capture-output`` for better streaming behavior."""
+    import subprocess
+    from p2c.runtime.conda_env import CondaEnvManager
+
+    calls = {}
+
+    def fake_run(args, **kwargs):
+        calls["args"] = args
+        calls["kwargs"] = kwargs
+        return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    mgr = CondaEnvManager(env_name="dummy", python_version="3.10")
+    mgr._conda_bin = "conda"
+    mgr._use_venv_fallback = False
+    mgr.run_in_env("python -V", cwd="/tmp", timeout_sec=12)
+
+    assert calls["args"][:4] == ["conda", "run", "--no-capture-output", "-n"]
+    assert calls["args"][-2] == "-c"
+    assert calls["args"][-1].endswith("python -V")
+
+
+def test_run_in_env_uses_non_login_bash_for_venv(monkeypatch):
+    """The venv fallback should also avoid relying on login-shell startup files."""
+    import subprocess
+    from pathlib import Path
+    from p2c.runtime.conda_env import CondaEnvManager
+
+    calls = {}
+
+    def fake_run(args, **kwargs):
+        calls["args"] = args
+        calls["kwargs"] = kwargs
+        return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    mgr = CondaEnvManager(env_name="dummy", python_version="3.10")
+    mgr._use_venv_fallback = True
+    mgr._venv_path = Path("/tmp/p2c_venv_dummy")
+    mgr.run_in_env("python -V", cwd="/tmp", timeout_sec=12)
+
+    assert calls["args"][0:2] == ["bash", "-c"]
+    assert calls["args"][2].endswith("source /tmp/p2c_venv_dummy/bin/activate && python -V")
+    assert "-lc" not in calls["args"]
+
+
+def test_build_child_env_adds_resolved_codex_bin(monkeypatch):
+    """Child env should expose resolved Codex and Node tool dirs even with a minimal PATH."""
+    from p2c.runtime.conda_env import CondaEnvManager
+
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    monkeypatch.delenv("P2C_CODEX_BIN", raising=False)
+    monkeypatch.setattr(
+        CondaEnvManager,
+        "_resolve_binary",
+        staticmethod(lambda binary, explicit_env=None: {
+            "codex": "/tmp/agent/bin/codex",
+            "node": "/tmp/base/bin/node",
+            "npm": "/tmp/base/bin/npm",
+        }.get(binary)),
+    )
+
+    env = CondaEnvManager._build_child_env()
+
+    assert env["P2C_CODEX_BIN"] == "/tmp/agent/bin/codex"
+    assert env["PATH"].split(":")[0] == "/tmp/agent/bin"
+    assert env["PATH"].split(":")[1] == "/tmp/base/bin"
+
+
+def test_shell_wrap_command_re_exports_forwarded_vars():
+    """PATH and resolved Codex path should be exported in the final shell command."""
+    from p2c.runtime.conda_env import CondaEnvManager
+
+    wrapped = CondaEnvManager._shell_wrap_command(
+        {"PATH": "/tmp/agent/bin:/usr/bin", "P2C_CODEX_BIN": "/tmp/agent/bin/codex"},
+        "codex --version",
+    )
+
+    assert "export PATH=/tmp/agent/bin:/usr/bin" in wrapped
+    assert "export P2C_CODEX_BIN=/tmp/agent/bin/codex" in wrapped
+    assert wrapped.endswith("codex --version")
+
+
+def test_run_codex_uses_resolved_absolute_binary(monkeypatch):
+    """Codex executor should not rely on PATH-only lookup inside transient envs."""
+    from p2c.agents.phase2.codex_executor import CodexExecutorAgent
+    from p2c.runtime.conda_env import CondaEnvManager
+
+    recorded = {}
+
+    class DummyEnvMgr:
+        def run_in_env(self, command, cwd=".", timeout_sec=600):
+            recorded["command"] = command
+            recorded["cwd"] = cwd
+            recorded["timeout_sec"] = timeout_sec
+            return None
+
+    monkeypatch.delenv("P2C_CODEX_BIN", raising=False)
+    monkeypatch.setattr(CondaEnvManager, "_resolve_codex_bin", staticmethod(lambda: "/tmp/agent/bin/codex"))
+
+    CodexExecutorAgent._run_codex(DummyEnvMgr(), "hello world", "/tmp/repo", timeout_sec=42)
+
+    assert recorded["command"].startswith("/tmp/agent/bin/codex exec --full-auto")
+    assert recorded["cwd"] == "/tmp/repo"
+    assert recorded["timeout_sec"] == 42

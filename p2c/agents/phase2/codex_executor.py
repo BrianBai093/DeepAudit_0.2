@@ -357,8 +357,13 @@ class CodexExecutorAgent(BaseAgent):
         """Run ``codex exec --full-auto`` inside the managed environment."""
         model = (os.getenv("P2C_CODEX_MODEL") or DEFAULT_CODEX_MODEL).strip()
         sandbox = (os.getenv("P2C_CODEX_SANDBOX") or "danger-full-access").strip()
+        codex_bin = (
+            os.getenv("P2C_CODEX_BIN")
+            or CondaEnvManager._resolve_codex_bin()
+            or "codex"
+        )
         codex_cmd = (
-            f"codex exec --full-auto --sandbox={shlex.quote(sandbox)}"
+            f"{shlex.quote(codex_bin)} exec --full-auto --sandbox={shlex.quote(sandbox)}"
             f" -m {shlex.quote(model)} {shlex.quote(prompt)}"
         )
         return env_mgr.run_in_env(codex_cmd, cwd=cwd, timeout_sec=timeout_sec)
