@@ -187,7 +187,7 @@ def test_align_evidence_non_ambiguous_returns_all():
 
 def test_verify_inconclusive_for_ambiguous_unaligned():
     """Claims that can't be aligned should get INCONCLUSIVE with ALIGNMENT_AMBIGUOUS."""
-    from p2c.agents.phase3.verify_claims import evaluate_claim
+    from p2c.agents.phase3.verify_claims import _fallback_evaluate as evaluate_claim
 
     claim = {
         "claim_id": "claim_10",
@@ -209,7 +209,7 @@ def test_verify_inconclusive_for_ambiguous_unaligned():
 
 def test_verify_supported_when_matched():
     """A properly matched claim should still get SUPPORTED/NOT_SUPPORTED."""
-    from p2c.agents.phase3.verify_claims import evaluate_claim
+    from p2c.agents.phase3.verify_claims import _fallback_evaluate as evaluate_claim
     from p2c.schemas import MetricRecord
 
     claim = {
