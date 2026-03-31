@@ -67,10 +67,16 @@ def _build_report_prompt(ctx: dict, artifacts) -> str:
     """Assemble all Phase 1+2+3 artifacts into a single prompt."""
     sections = []
 
-    # ── Paper claims ─────────────────────────────────────────────
+    # ── Paper claims + experiments ──────────────────────────────
     claims_ir = artifacts.read_json("fingerprint/claims_ir.json")
-    sections.append("# PAPER CLAIMS (claims_ir.json)")
-    sections.append(json.dumps(claims_ir, indent=2, ensure_ascii=False)[:6000])
+
+    experiments = claims_ir.get("experiments", [])
+    if experiments:
+        sections.append("# PAPER EXPERIMENTS (identified by LLM)")
+        sections.append(json.dumps(experiments, indent=2, ensure_ascii=False)[:3000])
+
+    sections.append("\n# PAPER CLAIMS (claims_ir.json)")
+    sections.append(json.dumps(claims_ir.get("claims", []), indent=2, ensure_ascii=False)[:5000])
 
     # ── Fingerprint configurations ───────────────────────────────
     try:

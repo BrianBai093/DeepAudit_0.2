@@ -140,7 +140,22 @@ class ClaimItem(BaseModel):
     notes: str | None = None
 
 
+class Experiment(BaseModel):
+    """A distinct experiment described in the paper."""
+
+    experiment_id: str
+    name: str
+    description: str = ""
+    dataset: str | None = None
+    table_anchor: str | None = None
+    claim_ids: list[str] = Field(default_factory=list)
+    repo_coverage: Literal["implemented", "partial", "not_found"] = "not_found"
+    repo_entrypoint: str | None = None
+    notes: str | None = None
+
+
 class ClaimsIR(BaseModel):
+    experiments: list[Experiment] = Field(default_factory=list)
     claims: list[ClaimItem] = Field(default_factory=list)
     reason_codes: list[str] = Field(default_factory=list)
 

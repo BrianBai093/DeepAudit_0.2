@@ -73,13 +73,29 @@ def _build_user_prompt(
 ) -> str:
     sections = []
 
-    sections.append("## Paper Claims (claims_ir.json)")
+    # Experiments (if available from LLM-based Phase 1)
+    experiments = claims_doc.get("experiments", [])
+    if experiments:
+        sections.append("## Paper Experiments")
+        for exp in experiments:
+            sections.append(
+                f"- {exp.get('experiment_id')}: {exp.get('name')} "
+                f"(dataset={exp.get('dataset', 'N/A')}, table={exp.get('table_anchor', 'N/A')}, "
+                f"repo_coverage={exp.get('repo_coverage', '?')}, "
+                f"entrypoint={exp.get('repo_entrypoint', 'N/A')})"
+            )
+            sections.append(f"  claims: {exp.get('claim_ids', [])}")
+            if exp.get("notes"):
+                sections.append(f"  notes: {exp['notes']}")
+
+    sections.append("\n## Paper Claims (claims_ir.json)")
     for c in claims_doc.get("claims", []):
         cond = c.get("conditions", {})
         sections.append(
             f"- {c['claim_id']} [{c.get('type')}]: {c.get('predicate')} "
             f"(metric={c.get('metric')}, target={c.get('target')}, "
-            f"scope={cond.get('scope', 'N/A')}, table={cond.get('table_anchor', 'N/A')})"
+            f"scope={cond.get('scope', 'N/A')}, table={cond.get('table_anchor', 'N/A')}, "
+            f"experiment={cond.get('experiment_id', 'N/A')})"
         )
         tol = c.get("tolerance_policy", {})
         sections.append(f"  tolerance: abs_eps={tol.get('abs_eps')}, rel_eps={tol.get('rel_eps')}")

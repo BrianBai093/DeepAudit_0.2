@@ -38,8 +38,17 @@ class AlignEvidenceAgent(BaseAgent):
 
         records = [MetricRecord(**r) for r in metrics_doc.get("records", [])]
         claims = claims_doc.get("claims", [])
+        experiments = claims_doc.get("experiments", [])
 
         align_map = {row.claim_id: row for row in alignment.claims}
+
+        # Build experiment coverage map for richer missing_reason messages
+        exp_coverage: dict[str, str] = {}  # experiment_id → repo_coverage
+        exp_names: dict[str, str] = {}  # experiment_id → name
+        for exp in experiments:
+            eid = exp.get("experiment_id", "")
+            exp_coverage[eid] = exp.get("repo_coverage", "not_found")
+            exp_names[eid] = exp.get("name", eid)
 
         # Detect ambiguous metric names: >1 result claim sharing the same metric
         metric_claim_count: Counter[str] = Counter()
@@ -71,7 +80,10 @@ class AlignEvidenceAgent(BaseAgent):
                     ClaimEvidence(
                         claim_id=cid,
                         matched_records=[],
-                        missing_reason=self._missing_reason(metric_name, records, conditions),
+                        missing_reason=self._missing_reason(
+                            metric_name, records, conditions,
+                            exp_coverage=exp_coverage, exp_names=exp_names,
+                        ),
                     )
                 )
 
@@ -185,19 +197,32 @@ class AlignEvidenceAgent(BaseAgent):
         metric_name: str,
         records: list[MetricRecord],
         conditions: dict[str, Any],
+        *,
+        exp_coverage: dict[str, str] | None = None,
+        exp_names: dict[str, str] | None = None,
     ) -> str:
         """Generate a human-readable reason why matching failed."""
         available = {r.metric_name.lower() for r in records if r.value is not None}
         table_anchor = conditions.get("table_anchor", "")
+        experiment_id = conditions.get("experiment_id", "")
+
+        # Check if we know the experiment is not in the repo
+        exp_status = ""
+        if experiment_id and exp_coverage:
+            coverage = exp_coverage.get(experiment_id, "")
+            name = (exp_names or {}).get(experiment_id, experiment_id)
+            if coverage == "not_found":
+                exp_status = f" Experiment '{name}' is not implemented in the repository."
+            elif coverage == "partial":
+                exp_status = f" Experiment '{name}' is only partially implemented in the repository."
 
         if metric_name and metric_name in available:
-            # Metric exists but couldn't be aligned (ambiguous case)
             ctx = f" ({table_anchor})" if table_anchor else ""
             return (
                 f"Metric '{metric_name}' was collected but could not be aligned "
-                f"to this specific claim{ctx}; the repo may not implement this experiment"
+                f"to this specific claim{ctx}.{exp_status}"
             )
         elif metric_name:
-            return f"No metric records matching '{metric_name}'"
+            return f"No metric records matching '{metric_name}'.{exp_status}"
         else:
-            return "Claim has no metric name specified"
+            return f"Claim has no metric name specified.{exp_status}"
