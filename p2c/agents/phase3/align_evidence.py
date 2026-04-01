@@ -64,7 +64,41 @@ class AlignEvidenceAgent(BaseAgent):
             metric_name = (claim.get("metric") or "").lower().strip()
             conditions = claim.get("conditions", {})
             target = claim.get("target")
+            claim_type = claim.get("type", "config")
+            aligned = align_map.get(cid)
 
+            # ── Gate 1: experiment not implemented → skip matching entirely ──
+            exp_id = conditions.get("experiment_id", "")
+            exp_cov = exp_coverage.get(exp_id, "") if exp_id else ""
+            if exp_cov == "not_found":
+                exp_name = exp_names.get(exp_id, exp_id)
+                reason = (
+                    f"Experiment '{exp_name}' ({exp_id}) is not implemented in the "
+                    f"repository (repo_coverage=not_found). Cannot evaluate this claim."
+                )
+                evidence_rows.append(ClaimEvidence(claim_id=cid, matched_records=[], missing_reason=reason))
+                eval_rows.append(EvaluabilityEntry(
+                    claim_id=cid, evaluable="no",
+                    source=aligned.source if aligned else [],
+                    reason=reason,
+                ))
+                continue
+
+            # ── Gate 2: config claims need code evidence, not metric matching ──
+            if claim_type == "config":
+                reason = (
+                    "Configuration claim requires direct code/config evidence; "
+                    "execution metrics alone do not verify the paper setup."
+                )
+                evidence_rows.append(ClaimEvidence(claim_id=cid, matched_records=[], missing_reason=reason))
+                eval_rows.append(EvaluabilityEntry(
+                    claim_id=cid, evaluable="no",
+                    source=aligned.source if aligned else [],
+                    reason=reason,
+                ))
+                continue
+
+            # ── Normal path: match records for result claims ──
             matched = self._match_records(
                 metric_name=metric_name,
                 target=target,
@@ -89,7 +123,6 @@ class AlignEvidenceAgent(BaseAgent):
 
             # Evaluability: use Phase 2 alignment as a hint, but override
             # based on actual match quality.
-            aligned = align_map.get(cid)
             if matched:
                 eval_rows.append(
                     EvaluabilityEntry(

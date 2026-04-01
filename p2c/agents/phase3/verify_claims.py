@@ -56,12 +56,20 @@ Return a JSON object with this exact structure:
     }
   ],
   "experiments_summary": {
-    "paper_experiments": ["list of distinct experiments/evaluations described in the paper claims"],
-    "repo_experiments": ["list of experiments actually implemented and executed in the repo"],
-    "missing_experiments": ["experiments in paper but not in repo"],
-    "coverage_ratio": <float 0-1>
+    "paper_experiments": ["list of experiment names from the experiments section below"],
+    "repo_experiments": ["ONLY experiments with repo_coverage='implemented' or 'partial' — NOT step IDs"],
+    "missing_experiments": ["experiments with repo_coverage='not_found'"],
+    "coverage_ratio": <float 0-1, ratio of implemented+partial experiments to total paper experiments>
   }
 }
+
+IMPORTANT for experiments_summary:
+- "repo_experiments" means PAPER EXPERIMENTS that the repo implements, NOT execution step IDs.
+  Execution steps (step_01, step_02...) are NOT experiments — they are individual commands.
+  An experiment like "Binary classification on balanced dataset" may correspond to multiple steps.
+- Use the repo_coverage field from the experiments section to determine which experiments are \
+  implemented vs missing. Do NOT infer experiment coverage from step success/failure alone.
+- coverage_ratio = len(implemented + partial) / len(all paper experiments)
 """
 
 
@@ -117,12 +125,14 @@ def _build_user_prompt(
             f"reason={entry.get('reason', 'N/A')}"
         )
 
-    sections.append("\n## Run Manifest Summary")
+    sections.append("\n## Execution Steps (from run_manifest — these are NOT experiments)")
+    sections.append("NOTE: Steps are individual commands executed in sequence. "
+                     "Do NOT list step IDs as 'repo_experiments' in your output.")
     for run in run_manifest.get("runs", []):
         status = run.get("status", "unknown")
         metrics = run.get("metrics", {})
         sections.append(
-            f"- {run.get('run_id')}: status={status}, "
+            f"- step '{run.get('run_id')}': status={status}, "
             f"runtime={run.get('runtime_sec', '?')}s, "
             f"metrics={json.dumps(metrics)}"
         )
@@ -244,7 +254,27 @@ class VerifyClaimsAgent(BaseAgent):
 
         llm_result, llm_err = self.safe_chat_json(verdict_schema, SYSTEM_PROMPT, user_prompt)
 
-        experiments_summary = None
+        # ── Build deterministic experiments_summary from claims_ir ───
+        # This is authoritative — we use it regardless of LLM output.
+        experiments_list = claims_doc.get("experiments", [])
+        paper_exps = [e.get("name", e.get("experiment_id", "?")) for e in experiments_list]
+        repo_exps = [
+            e.get("name", e.get("experiment_id", "?"))
+            for e in experiments_list
+            if e.get("repo_coverage") in ("implemented", "partial")
+        ]
+        missing_exps = [
+            e.get("name", e.get("experiment_id", "?"))
+            for e in experiments_list
+            if e.get("repo_coverage") == "not_found"
+        ]
+        coverage_ratio = len(repo_exps) / len(paper_exps) if paper_exps else 0.0
+        experiments_summary: dict[str, Any] = {
+            "paper_experiments": paper_exps,
+            "repo_experiments": repo_exps,
+            "missing_experiments": missing_exps,
+            "coverage_ratio": round(coverage_ratio, 2),
+        }
 
         if llm_result and llm_result.get("claim_verdicts"):
             self.log("PROGRESS", "LLM verdict received, validating")
@@ -261,7 +291,7 @@ class VerifyClaimsAgent(BaseAgent):
                     ))
                 except Exception:  # noqa: BLE001
                     continue
-            experiments_summary = llm_result.get("experiments_summary")
+            # Keep deterministic experiments_summary (authoritative, not from LLM)
         else:
             # ── Fallback: deterministic rules ────────────────────────
             self.log("PROGRESS", f"LLM unavailable ({llm_err}), using deterministic fallback")

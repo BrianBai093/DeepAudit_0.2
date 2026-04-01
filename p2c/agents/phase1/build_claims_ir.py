@@ -48,8 +48,8 @@ Return a JSON object with this EXACT structure:
     {
       "claim_id": "claim_01",
       "type": "result",
-      "predicate": "accuracy = 0.97",
-      "metric": "accuracy",
+      "predicate": "test accuracy = 0.97",
+      "metric": "test_accuracy",
       "target": 0.97,
       "experiment_id": "exp_01",
       "table_anchor": "Table 1",
@@ -71,6 +71,18 @@ RULES:
 - For repo_coverage: "implemented" means there is clear code to run this experiment. \
   "partial" means some code exists but it's incomplete. "not_found" means no code for this.
 - Do NOT invent metrics or values. Only use what appears in the input.
+
+CRITICAL — metric name MUST be specific and unique across claims:
+- NEVER use bare names like "precision", "recall", "f1", "accuracy".
+- Disambiguate by class, averaging method, or context:
+  - Per-class: "class_0_precision", "class_1_recall", "class_1_f1"
+  - Weighted avg: "weighted_precision", "weighted_recall", "weighted_f1"
+  - Macro avg: "macro_precision", "macro_recall", "macro_f1"
+  - Test/Val: "test_accuracy", "val_loss"
+- If the same metric appears for different experiments, prefix with experiment context:
+  - "balanced_class_1_precision" vs "imbalanced_group1_class_1_precision"
+- The metric name is the KEY used to match execution outputs to claims. If two claims \
+  share the same metric name, the system cannot tell which execution value belongs to which claim.
 """
 
 

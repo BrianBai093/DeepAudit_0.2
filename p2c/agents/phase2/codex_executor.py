@@ -1,4 +1,17 @@
-"""CodexExecutorAgent — runs codex CLI locally following the execution plan."""
+"""CodexExecutorAgent — hybrid direct + codex execution following the plan.
+
+Strategy:
+  - **Direct execution** (Mode A1): Run planned commands directly via
+    ``env_mgr.run_in_env()`` — guaranteed correct conda/venv environment.
+  - **Codex recovery** (Mode A2): If direct execution fails, use Codex CLI
+    to diagnose, fix, and re-run (self-healing agent).
+  - **Autonomous exploration** (Mode B): Full Codex agent with free-form
+    exploration — fallback when all planned steps fail.
+
+This avoids the core problem of Codex's internal shell not inheriting the
+conda env's PATH, while still leveraging Codex's diagnostic/self-healing
+abilities when commands fail.
+"""
 
 from __future__ import annotations
 
@@ -12,6 +25,7 @@ from typing import Any
 from p2c.agents.base import BaseAgent
 from p2c.agents.phase2.local_prompt_templates import (
     build_autonomous_exploration_prompt,
+    build_codex_recovery_prompt,
     build_step_execution_prompt,
 )
 from p2c.agents.phase2.result_extraction import (
@@ -36,15 +50,19 @@ from p2c.schemas import (
 
 DEFAULT_CODEX_MODEL = "gpt-5.4"
 
+# When to skip Codex recovery (if direct execution exit_code is 0, or these
+# error types are fast-fail).
+_SKIP_CODEX_EXIT_CODES = {137, 139}  # SIGKILL, SIGSEGV — unrecoverable
+
 
 class CodexExecutorAgent(BaseAgent):
-    """Execute plan steps via local ``codex exec --full-auto``."""
+    """Execute plan steps via direct subprocess, with Codex recovery fallback."""
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(name="codex_executor", *args, **kwargs)
 
     # ------------------------------------------------------------------
-    # Mode A: Plan-directed execution
+    # Mode A: Plan-directed execution (Direct + Codex recovery)
     # ------------------------------------------------------------------
 
     def execute(self, ctx: dict[str, Any]) -> dict[str, Any]:
@@ -135,7 +153,7 @@ class CodexExecutorAgent(BaseAgent):
                     break
 
         # Build Phase 3 outputs
-        manifest = build_run_manifest(all_runs, reason_codes=["LOCAL_CODEX_EXEC"])
+        manifest = build_run_manifest(all_runs, reason_codes=["LOCAL_DIRECT_EXEC"])
         alignment = build_claim_alignment(claims_ir, all_metrics)
 
         if any_success:
@@ -180,6 +198,9 @@ class CodexExecutorAgent(BaseAgent):
         outputs_dir = str(self.artifacts.path("execution/codex_outputs"))
         expected_results = self.artifacts.read_json("execution/execution_plan.json").get("expected_results", [])
 
+        # Get env path for explicit activation in prompt
+        env_path = env_mgr.env_path_actual()
+
         prompt = build_autonomous_exploration_prompt(
             repo_dir=repo_dir,
             failure_history_json=json.dumps(
@@ -188,6 +209,7 @@ class CodexExecutorAgent(BaseAgent):
             ),
             expected_results_json=json.dumps(expected_results, indent=2, ensure_ascii=False),
             outputs_dir=outputs_dir,
+            env_path=env_path,
         )
 
         self.log("PROGRESS", "starting autonomous exploration mode...")
@@ -237,7 +259,7 @@ class CodexExecutorAgent(BaseAgent):
         }
 
     # ------------------------------------------------------------------
-    # Internal: execute a single step
+    # Internal: execute a single step (Direct + Codex recovery)
     # ------------------------------------------------------------------
 
     def _execute_step(
@@ -251,8 +273,88 @@ class CodexExecutorAgent(BaseAgent):
         timeout_sec: int,
         prior_step_results: str | None = None,
     ) -> dict[str, Any]:
+        """Execute a step: try direct subprocess first, then Codex recovery."""
+
+        cwd = str(Path(repo_dir) / step.cwd)
+
+        # ── Phase 1: Direct execution via env_mgr.run_in_env ──────────
+        self.log("PROGRESS", f"  [{step.step_id}] direct exec: {step.command[:100]}")
+        t0 = time.time()
+        proc = env_mgr.run_in_env(step.command, cwd=cwd, timeout_sec=timeout_sec)
+        direct_runtime = time.time() - t0
+
+        stdout = proc.stdout or ""
+        stderr = proc.stderr or ""
+
+        # Persist direct execution logs
+        self.artifacts.write_text(
+            f"execution/codex_outputs/step_{step.step_id}_direct_stdout.log", stdout)
+        self.artifacts.write_text(
+            f"execution/codex_outputs/step_{step.step_id}_direct_stderr.log", stderr)
+
+        # Extract metrics from direct run — but NOT from setup steps.
+        # Setup steps (is_setup=True) print source code, file listings, etc.
+        # whose text can trigger false-positive regex matches (e.g. a Python
+        # dict literal ``"precision": 0.4`` in source code is not a metric).
+        if step.is_setup:
+            metrics: dict[str, Any] = {}
+        else:
+            metrics = extract_metrics_from_file(f"{outputs_dir}/step_{step.step_id}_result.json")
+            stdout_metrics = extract_metrics_from_stdout(stdout, contract)
+            for k, v in stdout_metrics.items():
+                if k not in metrics:
+                    metrics[k] = v
+
+        direct_success = proc.returncode == 0
+        has_metrics = bool(metrics)
+
+        self.log("PROGRESS", f"  [{step.step_id}] direct: exit={proc.returncode}, "
+                             f"metrics={list(metrics.keys()) if metrics else 'none'}")
+
+        # If direct execution succeeded OR we got metrics → done
+        if direct_success or has_metrics:
+            failure_spec = classify_error_v2(
+                stdout, stderr, proc.returncode,
+                metrics=metrics,
+                expected_metrics=step.expected_metrics,
+            )
+            result = self._build_result(
+                step, proc.returncode, direct_runtime, stdout, stderr,
+                metrics, failure_spec, mode="direct",
+            )
+            return result
+
+        # If exit code is unrecoverable → skip Codex recovery
+        if proc.returncode in _SKIP_CODEX_EXIT_CODES:
+            self.log("PROGRESS", f"  [{step.step_id}] unrecoverable exit code {proc.returncode}")
+            failure_spec = classify_error_v2(
+                stdout, stderr, proc.returncode,
+                metrics=metrics,
+                expected_metrics=step.expected_metrics,
+            )
+            return self._build_result(
+                step, proc.returncode, direct_runtime, stdout, stderr,
+                metrics, failure_spec, mode="direct",
+            )
+
+        # ── Phase 2: Codex recovery (only if direct failed) ───────────
+        remaining_for_codex = timeout_sec - direct_runtime
+        if remaining_for_codex < 60:
+            self.log("PROGRESS", f"  [{step.step_id}] not enough time for Codex recovery")
+            failure_spec = classify_error_v2(
+                stdout, stderr, proc.returncode,
+                metrics=metrics,
+                expected_metrics=step.expected_metrics,
+            )
+            return self._build_result(
+                step, proc.returncode, direct_runtime, stdout, stderr,
+                metrics, failure_spec, mode="direct",
+            )
+
+        self.log("PROGRESS", f"  [{step.step_id}] direct failed, trying Codex recovery...")
+        env_path = env_mgr.env_path_actual()
         parsers = [p.model_dump() for p in contract.parsers]
-        prompt = build_step_execution_prompt(
+        recovery_prompt = build_codex_recovery_prompt(
             repo_dir=repo_dir,
             step_description=step.description,
             step_command=step.command,
@@ -260,48 +362,93 @@ class CodexExecutorAgent(BaseAgent):
             metric_parsers=parsers,
             outputs_dir=outputs_dir,
             step_id=step.step_id,
+            direct_stdout=stdout[-3000:],
+            direct_stderr=stderr[-3000:],
+            direct_exit_code=proc.returncode,
+            env_path=env_path,
             prior_step_results=prior_step_results,
         )
 
-        cwd = str(Path(repo_dir) / step.cwd)
-        t0 = time.time()
-        proc = self._run_codex(env_mgr, prompt, cwd, timeout_sec=timeout_sec)
-        runtime = time.time() - t0
+        t1 = time.time()
+        codex_proc = self._run_codex(
+            env_mgr, recovery_prompt, cwd,
+            timeout_sec=int(remaining_for_codex),
+        )
+        codex_runtime = time.time() - t1
 
-        stdout = proc.stdout or ""
-        stderr = proc.stderr or ""
+        codex_stdout = codex_proc.stdout or ""
+        codex_stderr = codex_proc.stderr or ""
 
-        # Persist step logs
-        self.artifacts.write_text(f"execution/codex_outputs/step_{step.step_id}_stdout.log", stdout)
-        self.artifacts.write_text(f"execution/codex_outputs/step_{step.step_id}_stderr.log", stderr)
+        # Persist codex recovery logs
+        self.artifacts.write_text(
+            f"execution/codex_outputs/step_{step.step_id}_codex_stdout.log", codex_stdout)
+        self.artifacts.write_text(
+            f"execution/codex_outputs/step_{step.step_id}_codex_stderr.log", codex_stderr)
 
-        # Extract metrics (file first, then stdout)
-        metrics = extract_metrics_from_file(f"{outputs_dir}/step_{step.step_id}_result.json")
-        stdout_metrics = extract_metrics_from_stdout(stdout, contract)
-        for k, v in stdout_metrics.items():
-            if k not in metrics:
-                metrics[k] = v
+        # Extract metrics from Codex recovery run
+        codex_metrics = extract_metrics_from_file(
+            f"{outputs_dir}/step_{step.step_id}_result.json")
+        codex_stdout_metrics = extract_metrics_from_stdout(codex_stdout, contract)
+        for k, v in codex_stdout_metrics.items():
+            if k not in codex_metrics:
+                codex_metrics[k] = v
 
-        # Rich v2 classification (provides repair routing info)
+        # Merge: use Codex metrics if available, otherwise keep direct metrics
+        final_stdout = codex_stdout if codex_stdout else stdout
+        final_stderr = codex_stderr if codex_stderr else stderr
+        final_exit = codex_proc.returncode if codex_metrics else proc.returncode
+        final_metrics = codex_metrics if codex_metrics else metrics
+        total_runtime = direct_runtime + codex_runtime
+        mode = "codex_recovery" if codex_metrics else "direct+codex_failed"
+
+        # Also write combined logs for backward compatibility
+        self.artifacts.write_text(
+            f"execution/codex_outputs/step_{step.step_id}_stdout.log", final_stdout)
+        self.artifacts.write_text(
+            f"execution/codex_outputs/step_{step.step_id}_stderr.log", final_stderr)
+
         failure_spec = classify_error_v2(
-            stdout, stderr, proc.returncode,
-            metrics=metrics,
+            final_stdout, final_stderr, final_exit,
+            metrics=final_metrics,
             expected_metrics=step.expected_metrics,
         )
 
-        result: dict[str, Any] = {
+        result = self._build_result(
+            step, final_exit, total_runtime, final_stdout, final_stderr,
+            final_metrics, failure_spec, mode=mode,
+        )
+        return result
+
+    # ------------------------------------------------------------------
+    # Result builder
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _build_result(
+        step: ExecutionStep,
+        exit_code: int,
+        runtime: float,
+        stdout: str,
+        stderr: str,
+        metrics: dict[str, Any],
+        failure_spec: Any,
+        mode: str = "direct",
+    ) -> dict[str, Any]:
+        """Build a standardized step result dict."""
+        return {
             "step_id": step.step_id,
             "command": step.command,
             "cwd": step.cwd,
-            "exit_code": proc.returncode,
+            "exit_code": exit_code,
             "runtime_sec": runtime,
             "stdout_tail": stdout[-2000:],
             "stderr_tail": stderr[-2000:],
             "metrics": metrics,
             "fast_fail": failure_spec.is_fast_fail,
             "error_type": failure_spec.legacy_error_type,
-            "error_message": stderr[-500:] if proc.returncode != 0 else "",
+            "error_message": stderr[-500:] if exit_code != 0 else "",
             "traceback": extract_traceback(stderr),
+            "execution_mode": mode,
             # v2 taxonomy fields
             "failure_code": failure_spec.code,
             "failure_layer": failure_spec.layer,
@@ -309,7 +456,6 @@ class CodexExecutorAgent(BaseAgent):
             "repair_action": failure_spec.repair_action,
             "auto_repair_confidence": failure_spec.auto_repair_confidence,
         }
-        return result
 
     # ------------------------------------------------------------------
     # Execution journal summarization

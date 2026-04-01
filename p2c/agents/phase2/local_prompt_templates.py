@@ -224,6 +224,7 @@ def build_autonomous_exploration_prompt(
     failure_history_json: str,
     expected_results_json: str,
     outputs_dir: str,
+    env_path: str | None = None,
 ) -> str:
     return dedent(f"""\
 You are in a research repository and need to reproduce results claimed in a paper.
@@ -274,4 +275,89 @@ Schema: {{
 3. If you cannot reproduce a metric, note why.
 4. Keep output compact — no large file dumps.
 5. Always use `python` (not `python3`) to run scripts — `python3` may resolve to the system interpreter outside the active environment.
+""").strip()
+
+
+# ---------------------------------------------------------------------------
+# Codex recovery prompt (Mode A2 — direct execution failed, Codex diagnoses)
+# ---------------------------------------------------------------------------
+
+def build_codex_recovery_prompt(
+    *,
+    repo_dir: str,
+    step_description: str,
+    step_command: str,
+    expected_metrics: list[str],
+    metric_parsers: list[dict[str, Any]],
+    outputs_dir: str,
+    step_id: str,
+    direct_stdout: str,
+    direct_stderr: str,
+    direct_exit_code: int,
+    env_path: str | None = None,
+    prior_step_results: str | None = None,
+) -> str:
+    parsers_desc = "\n".join(
+        f"  - {p.get('metric_name', '?')}: regex `{p.get('regex', '')}`"
+        for p in metric_parsers
+    ) or "  (none specified — use METRIC format below)"
+
+    context_section = ""
+    if prior_step_results:
+        context_section = f"""
+## Prior Step Results
+```json
+{prior_step_results}
+```
+"""
+
+    env_section = ""
+    if env_path:
+        env_section = f"""
+## Environment
+The conda environment is at: {env_path}
+Use `{env_path}/bin/python` if `python` is not on PATH.
+"""
+
+    return dedent(f"""\
+You are diagnosing and fixing a failed command in a research repository.
+Working directory: {repo_dir}
+{env_section}{context_section}
+## Failed Command
+```bash
+{step_command}
+```
+Exit code: {direct_exit_code}
+
+## Task Description
+{step_description}
+
+## stdout (last 3000 chars)
+```
+{direct_stdout}
+```
+
+## stderr (last 3000 chars)
+```
+{direct_stderr}
+```
+
+## Expected Metrics
+{', '.join(expected_metrics) if expected_metrics else '(discover any numeric metrics)'}
+
+## Metric Regex Patterns
+{parsers_desc}
+
+## Your Task
+1. Diagnose why the command failed from the stdout/stderr above.
+2. Fix the issue (install missing package, fix path, adjust config, etc.).
+3. Re-run the command or an equivalent that produces the expected metrics.
+4. Extract metrics and print them as: METRIC:<metric_name>=<numeric_value>
+5. Write results to: {outputs_dir}/step_{step_id}_result.json
+   Schema: {{"command": "<final command>", "exit_code": <int>, "metrics": {{"name": value}}, "notes": "<what you fixed>"}}
+
+## Rules
+1. Maximum 3 fix attempts.
+2. Do NOT create a virtual environment — one is already active.
+3. Always use `python` (not `python3`).
 """).strip()
