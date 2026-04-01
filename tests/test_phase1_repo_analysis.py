@@ -81,3 +81,18 @@ def test_compile_task_spec_emits_task_for_notebook_repo(tmp_path: Path) -> None:
     assert task["entrypoint"] == "code/train.ipynb"
     assert task["cwd"] == "code"
     assert "python -m jupyter nbconvert" in task["command"]
+
+
+def test_repo_analysis_prefers_training_script_as_primary(tmp_path: Path) -> None:
+    repo_dir = tmp_path / "repo"
+    src_dir = repo_dir / "src"
+    src_dir.mkdir(parents=True)
+    (repo_dir / "requirements.txt").write_text("pandas\nscikit-learn\n", encoding="utf-8")
+    (src_dir / "train_model.py").write_text("if __name__ == '__main__':\n    print('train')\n", encoding="utf-8")
+    (src_dir / "threshold_tuning.py").write_text("if __name__ == '__main__':\n    print('tune')\n", encoding="utf-8")
+
+    analysis = SystemRepoAnalyzer(repo_dir).analyze()
+
+    assert analysis.primary_entrypoint_id is not None
+    primary = next(ep for ep in analysis.entrypoint_candidates if ep.entrypoint_id == analysis.primary_entrypoint_id)
+    assert primary.path == "src/train_model.py"

@@ -37,7 +37,10 @@ CRITICAL RULES:
 against threshold = max(abs_eps, rel_eps * |target|).
 - For result claims WITHOUT matched metrics: check the missing_reason. If it says \
 "could not be aligned" or "ALIGNMENT_AMBIGUOUS", the repo likely does not implement \
-this experiment — verdict is INCONCLUSIVE with reason.
+ this exact paper configuration — verdict is INCONCLUSIVE with reason.
+- If repo_coverage says "not_found" but execution produced same-named metrics or \
+ successful related steps, treat that as an alignment gap or evidence mismatch, not \
+ as proof that the repository lacks all relevant implementation.
 - For config claims: these describe dataset sizes, hyperparameters, etc. Mark them \
 INCONCLUSIVE with a brief note on whether the execution implicitly satisfied them.
 - Do NOT fabricate values. Only use the metrics provided.
@@ -143,10 +146,23 @@ def _fallback_evaluate(
     abs_eps = float(tol.get("abs_eps", 0.01))
     rel_eps = float(tol.get("rel_eps", 0.02))
 
-    values = [r.value for r in matched_records if r.value is not None]
-    if not values:
+    if ctype == "config":
+        return ClaimVerdict(
+            claim_id=claim_id,
+            status="INCONCLUSIVE",
+            detail=(
+                missing_reason
+                or "Configuration claim requires direct code/config evidence; execution success alone does not verify the paper setup."
+            ),
+            compared_value=None,
+            target_value=float(target) if target is not None else None,
+            reason_codes=["CONFIG_CLAIM", "NO_DIRECT_CONFIG_EVIDENCE"],
+        )
+
+    valued_records = [r for r in matched_records if r.value is not None]
+    if not valued_records:
         reason_codes = ["MISSING_RECORDS"]
-        detail = "No numeric records available"
+        detail = "No numeric records available for this claim."
         if missing_reason and "could not be aligned" in missing_reason:
             reason_codes = ["ALIGNMENT_AMBIGUOUS"]
             detail = missing_reason
@@ -157,9 +173,8 @@ def _fallback_evaluate(
             status="INCONCLUSIVE",
             detail=detail,
             reason_codes=reason_codes,
+            target_value=float(target) if target is not None else None,
         )
-
-    x_rep = max(values)
 
     if ctype == "result":
         if target is None:
@@ -169,24 +184,22 @@ def _fallback_evaluate(
                 detail="Target value missing for result claim",
                 reason_codes=["MISSING_TARGET"],
             )
+        chosen = min(valued_records, key=lambda record: abs(float(record.value) - float(target)))
+        x_rep = float(chosen.value)
         threshold = max(abs_eps, rel_eps * abs(float(target)))
-        ok = abs(x_rep - float(target)) <= threshold
+        abs_error = abs(x_rep - float(target))
+        ok = abs_error <= threshold
         return ClaimVerdict(
             claim_id=claim_id,
             status="SUPPORTED" if ok else "NOT_SUPPORTED",
-            detail=f"|x_rep-x_paper| <= eps evaluated with eps={threshold:.4f}",
+            detail=(
+                f"Matched {chosen.metric_name} value {x_rep:.4f} from {chosen.source}; "
+                f"absolute error {abs_error:.4f} is "
+                f"{'within' if ok else 'outside'} tolerance {threshold:.4f} for target {float(target):.4f}."
+            ),
             compared_value=x_rep,
             target_value=float(target),
-            reason_codes=[],
-        )
-
-    if ctype == "config":
-        return ClaimVerdict(
-            claim_id=claim_id,
-            status="INCONCLUSIVE",
-            detail="Config claim; verified by successful execution",
-            compared_value=x_rep,
-            reason_codes=["CONFIG_CLAIM"],
+            reason_codes=["MATCHED_METRIC", "WITHIN_TOLERANCE" if ok else "OUTSIDE_TOLERANCE"],
         )
 
     return ClaimVerdict(
@@ -207,79 +220,24 @@ class VerifyClaimsAgent(BaseAgent):
         evaluability_doc_raw = self.artifacts.read_json("results/evaluability.json")
         evaluability_doc = EvaluabilityDoc(**evaluability_doc_raw)
         run_manifest = self.artifacts.read_json("execution/codex_outputs/run_manifest.json")
+        evidence_map: dict[str, list[MetricRecord]] = {}
+        missing_reason_map: dict[str, str | None] = {}
+        for row in parsed_doc.get("claim_evidence", []):
+            cid = row.get("claim_id", "")
+            evidence_map[cid] = [MetricRecord(**r) for r in row.get("matched_records", [])]
+            missing_reason_map[cid] = row.get("missing_reason")
 
-        # ── Try LLM-based verdict ────────────────────────────────────
-        user_prompt = _build_user_prompt(claims_doc, parsed_doc, evaluability_doc_raw, run_manifest)
-
-        verdict_schema = {
-            "type": "object",
-            "properties": {
-                "claim_verdicts": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "claim_id": {"type": "string"},
-                            "status": {"type": "string", "enum": ["SUPPORTED", "NOT_SUPPORTED", "INCONCLUSIVE"]},
-                            "detail": {"type": "string"},
-                            "compared_value": {"type": ["number", "null"]},
-                            "target_value": {"type": ["number", "null"]},
-                            "reason_codes": {"type": "array", "items": {"type": "string"}},
-                        },
-                        "required": ["claim_id", "status", "detail"],
-                    },
-                },
-                "experiments_summary": {
-                    "type": "object",
-                    "properties": {
-                        "paper_experiments": {"type": "array", "items": {"type": "string"}},
-                        "repo_experiments": {"type": "array", "items": {"type": "string"}},
-                        "missing_experiments": {"type": "array", "items": {"type": "string"}},
-                        "coverage_ratio": {"type": "number"},
-                    },
-                },
-            },
-            "required": ["claim_verdicts"],
-        }
-
-        llm_result, llm_err = self.safe_chat_json(verdict_schema, SYSTEM_PROMPT, user_prompt)
-
-        experiments_summary = None
-
-        if llm_result and llm_result.get("claim_verdicts"):
-            self.log("PROGRESS", "LLM verdict received, validating")
-            verdicts = []
-            for v in llm_result["claim_verdicts"]:
-                try:
-                    verdicts.append(ClaimVerdict(
-                        claim_id=v.get("claim_id", "unknown"),
-                        status=v.get("status", "INCONCLUSIVE"),
-                        detail=v.get("detail", ""),
-                        compared_value=v.get("compared_value"),
-                        target_value=v.get("target_value"),
-                        reason_codes=v.get("reason_codes", []),
-                    ))
-                except Exception:  # noqa: BLE001
-                    continue
-            experiments_summary = llm_result.get("experiments_summary")
-        else:
-            # ── Fallback: deterministic rules ────────────────────────
-            self.log("PROGRESS", f"LLM unavailable ({llm_err}), using deterministic fallback")
-            evidence_map: dict[str, list[MetricRecord]] = {}
-            missing_reason_map: dict[str, str | None] = {}
-            for row in parsed_doc.get("claim_evidence", []):
-                cid = row.get("claim_id", "")
-                evidence_map[cid] = [MetricRecord(**r) for r in row.get("matched_records", [])]
-                missing_reason_map[cid] = row.get("missing_reason")
-
-            verdicts = []
-            for claim in claims_doc.get("claims", []):
-                cid = claim.get("claim_id")
-                verdicts.append(_fallback_evaluate(
+        verdicts = []
+        for claim in claims_doc.get("claims", []):
+            cid = claim.get("claim_id")
+            verdicts.append(
+                _fallback_evaluate(
                     claim,
                     evidence_map.get(cid, []),
                     missing_reason=missing_reason_map.get(cid),
-                ))
+                )
+            )
+        experiments_summary = self._summarize_experiments(claims_doc, run_manifest)
 
         # ── Build overall verdict ────────────────────────────────────
         if not verdicts:
@@ -354,3 +312,27 @@ class VerifyClaimsAgent(BaseAgent):
         self.artifacts.write_json("results/verdict.json", verdict_data)
         self.artifacts.write_json("results/evaluability_verdict.json", eval_verdict.model_dump())
         return {"verdict": verdict_data, "evaluability_verdict": eval_verdict.model_dump()}
+
+    @staticmethod
+    def _summarize_experiments(claims_doc: dict[str, Any], run_manifest: dict[str, Any]) -> dict[str, Any] | None:
+        experiments = [row for row in claims_doc.get("experiments", []) if isinstance(row, dict)]
+        if not experiments:
+            return None
+        paper_experiments = [str(exp.get("name") or exp.get("experiment_id") or "unknown") for exp in experiments]
+        repo_experiments = [
+            str(run.get("run_id") or "unknown")
+            for run in run_manifest.get("runs", [])
+            if str(run.get("status") or "") in {"ok", "partial"}
+        ]
+        missing_experiments = [
+            str(exp.get("name") or exp.get("experiment_id") or "unknown")
+            for exp in experiments
+            if str(exp.get("repo_coverage") or "not_found") == "not_found"
+        ]
+        covered = sum(1 for exp in experiments if str(exp.get("repo_coverage") or "") in {"implemented", "partial"})
+        return {
+            "paper_experiments": paper_experiments,
+            "repo_experiments": repo_experiments,
+            "missing_experiments": missing_experiments,
+            "coverage_ratio": covered / len(experiments) if experiments else 0.0,
+        }

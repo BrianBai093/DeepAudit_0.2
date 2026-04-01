@@ -322,6 +322,7 @@ class ToolAgent(BaseAgent):
             "scikit-learn": "sklearn", "opencv-python": "cv2",
             "opencv-python-headless": "cv2", "pillow": "PIL",
             "pyyaml": "yaml", "beautifulsoup4": "bs4",
+            "imbalanced-learn": "imblearn",
         }
         for dep in plan.pip_dependencies[:20]:  # only check first 20
             name = dep.split("==")[0].split(">=")[0].split("<=")[0].split("[")[0].strip().lower()

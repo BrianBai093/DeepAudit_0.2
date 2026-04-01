@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import re
 
@@ -158,6 +160,23 @@ class ExtractFingerprintFilterAgent(BaseAgent):
         )
 
     @staticmethod
+    def _fingerprint_id(
+        *,
+        claims: list[FingerprintClaim],
+        configurations: FingerprintConfigurations,
+        reason_codes: list[str],
+    ) -> str:
+        payload = {
+            "claims": [claim.model_dump() for claim in claims],
+            "configurations": configurations.model_dump(),
+            "reason_codes": sorted(set(reason_codes)),
+        }
+        digest = hashlib.sha256(
+            json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
+        ).hexdigest()
+        return f"fp_{digest[:16]}"
+
+    @staticmethod
     def _is_actionable_row(row: dict) -> bool:
         source_type = str(row.get("source_type") or "")
         if source_type == "table_metric":
@@ -302,7 +321,11 @@ class ExtractFingerprintFilterAgent(BaseAgent):
         configurations = self._build_configurations(selected_rows)
 
         fingerprint = Fingerprint(
-            fingerprint_id=None,
+            fingerprint_id=self._fingerprint_id(
+                claims=claims,
+                configurations=configurations,
+                reason_codes=reason_codes,
+            ),
             configurations=configurations,
             claims=claims,
             reason_codes=sorted(set(reason_codes)),

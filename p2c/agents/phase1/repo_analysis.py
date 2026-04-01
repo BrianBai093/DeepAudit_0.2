@@ -636,6 +636,7 @@ class SystemRepoAnalyzer:
         profile = profile_map.get(str(candidate.dependency_profile_id or ""))
         source_kind = "unspecified"
         evidence = str(candidate.evidence or "").lower()
+        path_hint = f"{candidate.path} {candidate.command}".lower()
         if "console script" in evidence or "package.json script" in evidence or "main" in evidence:
             source_kind = "manifest_explicit"
         elif "notebook" in evidence:
@@ -647,11 +648,16 @@ class SystemRepoAnalyzer:
         elif "cli" in evidence:
             source_kind = "code_cli"
         source_score = _SOURCE_PRIORITY[source_kind]
+        semantic_bonus = 0.0
+        if any(token in path_hint for token in ("train", "fit", "trainer")):
+            semantic_bonus += 75.0
+        if any(token in path_hint for token in ("threshold", "tune", "predict", "app", "streamlit", "demo", "explain")):
+            semantic_bonus -= 40.0
         bootstrap_score = 1 if profile is None or profile.auto_bootstrap_supported else 0
         profile_score = 1 if candidate.dependency_profile_id else 0
         return (
             bootstrap_score,
-            float(source_score) + float(candidate.confidence),
+            float(source_score) + float(candidate.confidence) + semantic_bonus,
             profile_score,
             1 if candidate.cwd == "." else 0,
             str(candidate.entrypoint_id or candidate.path),

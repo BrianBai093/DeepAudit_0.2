@@ -59,6 +59,15 @@ Explain the score using these criteria (each 0-2 points):
 - Do NOT fabricate metrics, file paths, or claim results.
 - Use specific numbers and evidence for every assertion.
 - If something is unclear, say so explicitly rather than guessing.
+- Distinguish clearly between:
+  1. repo not implemented,
+  2. repo executed but cannot be aligned to the paper's exact experiment,
+  3. repo executed and numerically disagrees with the paper.
+- Treat `status="partial"` execution steps as degraded success: the primary command failed and a fallback only partially validated the step.
+- If runnable entrypoints and successful execution evidence exist, do NOT describe the \
+  repository as missing implementation unless the artifacts clearly prove that absence.
+- If environment validation failed but failed_packages is empty and core steps ran, treat \
+  that as a validation warning or probe mismatch, not as a hard execution failure.
 - Write in clear, professional English.
 """
 
@@ -122,6 +131,12 @@ def _build_report_prompt(ctx: dict, artifacts) -> str:
         sections.append(f"- status: {run.get('status')}")
         sections.append(f"- exit_code: {run.get('exit_code')}")
         sections.append(f"- runtime_sec: {run.get('runtime_sec')}")
+        if run.get("params"):
+            sections.append(f"- params: {json.dumps(run.get('params', {}), ensure_ascii=False)}")
+        if run.get("reason_codes"):
+            sections.append(f"- reason_codes: {json.dumps(run.get('reason_codes', []), ensure_ascii=False)}")
+        if run.get("status") == "partial":
+            sections.append("- partial_execution_note: primary command failed; fallback only validated artifacts or a reduced objective")
         sections.append(f"- metrics: {json.dumps(run.get('metrics', {}))}")
         # Include stdout tail for context (truncated)
         stdout = run.get("stdout_tail", "")
@@ -155,6 +170,21 @@ def _build_report_prompt(ctx: dict, artifacts) -> str:
     verdict = artifacts.read_json("results/verdict.json")
     sections.append("\n# CLAIM VERDICTS")
     sections.append(json.dumps(verdict, indent=2, ensure_ascii=False)[:4000])
+
+    # ── Structured metrics + alignment ───────────────────────────
+    try:
+        metrics = artifacts.read_json("results/metrics.json")
+        sections.append("\n# STRUCTURED METRICS")
+        sections.append(json.dumps(metrics, indent=2, ensure_ascii=False)[:3000])
+    except Exception:  # noqa: BLE001
+        pass
+
+    try:
+        alignment = artifacts.read_json("execution/codex_outputs/claim_alignment.json")
+        sections.append("\n# CLAIM ALIGNMENT")
+        sections.append(json.dumps(alignment, indent=2, ensure_ascii=False)[:3000])
+    except Exception:  # noqa: BLE001
+        pass
 
     # ── Evaluability ─────────────────────────────────────────────
     eval_verdict = artifacts.read_json("results/evaluability_verdict.json")
@@ -221,6 +251,7 @@ class AuditReportAgent(BaseAgent):
         eval_verdict = self.artifacts.read_json("results/evaluability_verdict.json")
         metrics = self.artifacts.read_json("results/metrics.json")
         claims_doc = self.artifacts.read_json("fingerprint/claims_ir.json")
+        manifest = self.artifacts.read_json("execution/codex_outputs/run_manifest.json")
 
         lines = [
             "# Reproducibility Audit Report",
@@ -253,6 +284,21 @@ class AuditReportAgent(BaseAgent):
                     f"  - Reproduced: {cv['compared_value']}, "
                     f"Target: {cv.get('target_value')}"
                 )
+
+        lines.extend([
+            "",
+            "## Execution Steps",
+            "",
+        ])
+        for run in manifest.get("runs", []):
+            lines.append(
+                f"- **{run.get('run_id')}** [{run.get('status', 'unknown')}]: "
+                f"command=`{run.get('command', '')}` exit_code={run.get('exit_code')}"
+            )
+            if run.get("status") == "partial":
+                lines.append("  - primary command failed; fallback only validated artifacts or a reduced objective")
+            if run.get("params"):
+                lines.append(f"  - params: {json.dumps(run.get('params', {}), ensure_ascii=False)}")
 
         lines.extend([
             "",

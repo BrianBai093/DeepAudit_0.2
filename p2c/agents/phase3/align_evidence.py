@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
+import re
 from typing import Any
 
 from p2c.agents.base import BaseAgent
@@ -66,6 +67,7 @@ class AlignEvidenceAgent(BaseAgent):
             target = claim.get("target")
 
             matched = self._match_records(
+                claim=claim,
                 metric_name=metric_name,
                 target=target,
                 conditions=conditions,
@@ -80,9 +82,13 @@ class AlignEvidenceAgent(BaseAgent):
                     ClaimEvidence(
                         claim_id=cid,
                         matched_records=[],
-                        missing_reason=self._missing_reason(
-                            metric_name, records, conditions,
-                            exp_coverage=exp_coverage, exp_names=exp_names,
+                        missing_reason=(
+                            "Configuration claim requires direct code/config evidence; execution success alone does not verify the paper configuration."
+                            if claim.get("type") == "config"
+                            else self._missing_reason(
+                                metric_name, records, conditions,
+                                exp_coverage=exp_coverage, exp_names=exp_names,
+                            )
                         ),
                     )
                 )
@@ -97,6 +103,15 @@ class AlignEvidenceAgent(BaseAgent):
                         evaluable="yes",
                         source=(aligned.source if aligned else []) or ["results/metrics.json"],
                         reason=None,
+                    )
+                )
+            elif claim.get("type") == "config":
+                eval_rows.append(
+                    EvaluabilityEntry(
+                        claim_id=cid,
+                        evaluable="no",
+                        source=(aligned.source if aligned else []) or ["codex_local_execution"],
+                        reason="Configuration claim requires direct code/config evidence; execution metrics alone do not verify the paper setup.",
                     )
                 )
             elif aligned is not None:
@@ -135,6 +150,7 @@ class AlignEvidenceAgent(BaseAgent):
     @staticmethod
     def _match_records(
         *,
+        claim: dict[str, Any],
         metric_name: str,
         target: float | None,
         conditions: dict[str, Any],
@@ -151,18 +167,23 @@ class AlignEvidenceAgent(BaseAgent):
         if not metric_name:
             return []
 
+        for candidate in AlignEvidenceAgent._metric_candidates_for_claim(claim):
+            exact = [r for r in records if r.metric_name.lower() == candidate]
+            if exact:
+                if candidate != metric_name:
+                    return exact
+                break
+
         # Step 1: find all records matching by metric name
         name_matched = [r for r in records if r.metric_name.lower() == metric_name]
+        prefixed = [
+            r for r in records
+            if r.metric_name.lower().endswith(f"_{metric_name}")
+            or r.metric_name.lower().startswith(f"{metric_name}_")
+        ]
 
-        if not name_matched:
-            # Fallback: try prefixed variants (val_accuracy, test_accuracy, etc.)
-            prefixed = [
-                r for r in records
-                if r.metric_name.lower().endswith(f"_{metric_name}")
-                or r.metric_name.lower().startswith(f"{metric_name}_")
-            ]
-            if prefixed:
-                name_matched = prefixed
+        if not name_matched and prefixed:
+            name_matched = prefixed
 
         if not name_matched:
             return []
@@ -173,8 +194,9 @@ class AlignEvidenceAgent(BaseAgent):
 
         # Step 3: ambiguous case — multiple claims want the same metric name.
         # Use target proximity to select the best-matching record(s).
+        variant_matches = name_matched + [r for r in prefixed if r not in name_matched]
         if target is not None:
-            valued = [(r, abs((r.value or 0.0) - target)) for r in name_matched if r.value is not None]
+            valued = [(r, abs((r.value or 0.0) - target)) for r in variant_matches if r.value is not None]
             if valued:
                 valued.sort(key=lambda x: x[1])
                 best_dist = valued[0][1]
@@ -191,6 +213,34 @@ class AlignEvidenceAgent(BaseAgent):
         # No target or no valued records — can't disambiguate, return nothing
         # to force INCONCLUSIVE rather than a wrong NOT_SUPPORTED
         return []
+
+    @staticmethod
+    def _metric_candidates_for_claim(claim: dict[str, Any]) -> list[str]:
+        metric_name = str(claim.get("metric") or "").lower().strip()
+        if not metric_name:
+            return []
+        predicate = str(claim.get("predicate") or "").lower()
+        candidates: list[str] = []
+
+        def add(candidate: str) -> None:
+            if candidate and candidate not in candidates:
+                candidates.append(candidate)
+
+        if metric_name in {"precision", "recall", "f1"}:
+            if re.search(rf"\b0\s+{re.escape(metric_name)}\b", predicate):
+                add(f"class_0_{metric_name}")
+            elif re.search(rf"\b1\s+{re.escape(metric_name)}\b", predicate):
+                add(f"class_1_{metric_name}")
+            elif "avg / total" in predicate or "avg/total" in predicate or "avg total" in predicate:
+                add(f"avg_total_{metric_name}")
+                add(f"weighted_{metric_name}")
+            elif "weighted avg" in predicate or "weighted" in predicate:
+                add(f"weighted_{metric_name}")
+            elif "macro avg" in predicate or "macro" in predicate:
+                add(f"macro_{metric_name}")
+
+        add(metric_name)
+        return candidates
 
     @staticmethod
     def _missing_reason(
@@ -218,6 +268,13 @@ class AlignEvidenceAgent(BaseAgent):
 
         if metric_name and metric_name in available:
             ctx = f" ({table_anchor})" if table_anchor else ""
+            if exp_status and "not implemented" in exp_status.lower():
+                return (
+                    f"Metric '{metric_name}' was collected but could not be aligned "
+                    f"to this specific claim{ctx}. Phase 1 coverage marked the experiment as "
+                    f"not_found, but repository execution produced same-named metrics, so this "
+                    f"should be treated as an alignment gap rather than confirmed missing implementation."
+                )
             return (
                 f"Metric '{metric_name}' was collected but could not be aligned "
                 f"to this specific claim{ctx}.{exp_status}"

@@ -116,6 +116,76 @@ class CompileTaskSpecAgent(BaseAgent):
             )
         return items
 
+    @staticmethod
+    def _default_metric_patterns() -> dict[str, list[str]]:
+        return {
+            "accuracy": [
+                r"accuracy[^0-9]*(\d+(?:\.\d+)?)%",
+                r"accuracy[^0-9]*(0\.\d+|1\.0+)",
+            ],
+            "precision": [
+                r"(?im)^\s*precision\s*[:=]\s*(0?\.\d+|1(?:\.0+)?)",
+                r"['\"]precision['\"]\s*:\s*(0?\.\d+|1(?:\.0+)?)",
+            ],
+            "recall": [
+                r"(?im)^\s*recall\s*[:=]\s*(0?\.\d+|1(?:\.0+)?)",
+                r"['\"]recall['\"]\s*:\s*(0?\.\d+|1(?:\.0+)?)",
+            ],
+            "f1": [
+                r"(?im)^\s*f1(?:-score)?\s*[:=]\s*(0?\.\d+|1(?:\.0+)?)",
+                r"['\"]f1['\"]\s*:\s*(0?\.\d+|1(?:\.0+)?)",
+            ],
+            "roc_auc": [
+                r"(?im)^\s*roc[-_ ]auc\s*[:=]\s*(0?\.\d+|1(?:\.0+)?)\s*$",
+                r"['\"]roc_auc['\"]\s*:\s*(0?\.\d+|1(?:\.0+)?)",
+            ],
+            "pr_auc": [
+                r"(?im)^\s*pr[-_ ]auc\s*[:=]\s*(0?\.\d+|1(?:\.0+)?)\s*$",
+                r"['\"]pr_auc['\"]\s*:\s*(0?\.\d+|1(?:\.0+)?)",
+            ],
+        }
+
+    @classmethod
+    def _metric_observers_for(cls, required_metrics: list[str]) -> list[MetricObserver]:
+        core_metrics = {"accuracy", "precision", "recall", "f1", "roc_auc", "pr_auc"}
+        patterns = cls._default_metric_patterns()
+        observers: list[MetricObserver] = []
+        for metric_name in sorted(core_metrics.union(required_metrics)):
+            for idx, pattern in enumerate(patterns.get(metric_name, []), start=1):
+                observers.append(
+                    MetricObserver(
+                        name=f"{metric_name}_pattern_{idx}",
+                        kind="stdout_regex",
+                        pattern=pattern,
+                    )
+                )
+        return observers
+
+    @classmethod
+    def _metric_parsers_for(cls, required_metrics: list[str]) -> list[MetricParser]:
+        core_metrics = {"accuracy", "precision", "recall", "f1", "roc_auc", "pr_auc"}
+        patterns = cls._default_metric_patterns()
+        parsers: list[MetricParser] = []
+        for metric_name in sorted(core_metrics.union(required_metrics)):
+            for idx, pattern in enumerate(patterns.get(metric_name, []), start=1):
+                parsers.append(
+                    MetricParser(
+                        name=f"{metric_name}_pattern_{idx}",
+                        regex=pattern,
+                        metric_name=metric_name,
+                    )
+                )
+        return parsers
+
+    @staticmethod
+    def _metric_normalization(required_metrics: list[str]) -> dict[str, dict[str, object]]:
+        normalized = {"accuracy", "precision", "recall", "f1", "roc_auc", "pr_auc"}
+        normalized.update(required_metrics)
+        return {
+            metric_name: {"percent_to_decimal": True, "clip": [0, 1]}
+            for metric_name in sorted(normalized)
+        }
+
     def execute(self, ctx: dict) -> dict:
         repo_dir = Path(ctx["repo_dir"])
         claims_doc = self.artifacts.read_json("fingerprint/claims_ir.json")
@@ -144,11 +214,6 @@ class CompileTaskSpecAgent(BaseAgent):
         else:
             reason_codes.append("REPO_ANALYSIS_NO_EXECUTABLE_CANDIDATE")
 
-        observers = [
-            MetricObserver(name="accuracy_percent", kind="stdout_regex", pattern=r"accuracy[^0-9]*(\d+(?:\.\d+)?)%"),
-            MetricObserver(name="accuracy_decimal", kind="stdout_regex", pattern=r"accuracy[^0-9]*(0\.\d+|1\.0+)"),
-        ]
-
         budget_minutes = int(ctx.get("budget_minutes", 60))
         run_matrix = [
             RunConfig(
@@ -162,6 +227,7 @@ class CompileTaskSpecAgent(BaseAgent):
             reason_codes.append("NO_ENTRYPOINT_FOUND")
 
         required_metrics = self._collect_required_metrics(verifiable_claims)
+        observers = self._metric_observers_for(required_metrics)
         hyperparams = self._extract_hyperparams(verifiable_claims)
         tasks = self._to_task_items(
             selected,
@@ -194,16 +260,8 @@ class CompileTaskSpecAgent(BaseAgent):
 
         metric_contract = MetricContract(
             required_metrics=required_metrics,
-            parsers=[
-                MetricParser(name="acc_percent", regex=r"accuracy[^0-9]*(\d+(?:\.\d+)?)%", metric_name="accuracy"),
-                MetricParser(name="acc_decimal", regex=r"accuracy[^0-9]*(0\.\d+|1\.0+)", metric_name="accuracy"),
-            ],
-            normalization={
-                "accuracy": {
-                    "percent_to_decimal": True,
-                    "clip": [0, 1],
-                }
-            },
+            parsers=self._metric_parsers_for(required_metrics),
+            normalization=self._metric_normalization(required_metrics),
             reason_codes=[] if selected else ["REPO_ANALYSIS_NO_EXECUTABLE_CANDIDATE"],
         )
 

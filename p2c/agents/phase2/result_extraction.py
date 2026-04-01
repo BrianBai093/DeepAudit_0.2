@@ -18,81 +18,226 @@ from p2c.schemas import (
 
 
 # ---------------------------------------------------------------------------
-# Metric extraction (three-layer strategy)
+# Metric extraction (multi-record strategy)
 # ---------------------------------------------------------------------------
 
 
-def extract_metrics_from_stdout(stdout: str, contract: MetricContract) -> dict[str, Any]:
-    """Extract metrics from stdout using three layers of patterns.
+_METRIC_LABEL_ALIASES = {
+    "acc": "accuracy",
+    "accuracy": "accuracy",
+    "auc": "auc",
+    "bleu": "bleu",
+    "f1": "f1",
+    "f1_score": "f1",
+    "f1score": "f1",
+    "f1-score": "f1",
+    "loss": "loss",
+    "mae": "mae",
+    "mse": "mse",
+    "perplexity": "perplexity",
+    "ppl": "perplexity",
+    "pr_auc": "pr_auc",
+    "pr-auc": "pr_auc",
+    "prauc": "pr_auc",
+    "precision": "precision",
+    "recall": "recall",
+    "rmse": "rmse",
+    "roc_auc": "roc_auc",
+    "roc-auc": "roc_auc",
+    "rocauc": "roc_auc",
+    "rouge": "rouge",
+}
 
-    Layer 1: ``MetricContract.parsers`` regex patterns (highest priority).
-    Layer 2: ``METRIC:{name}={value}`` lines (our structured prompt format).
-    Layer 3: Common ``test accuracy: 0.95`` / ``val_loss = 0.23`` heuristics.
-    Layer 4: Best/max aggregation — when multiple values exist for the same
-             metric, keep both ``{metric}`` (best) and ``{metric}_all`` (list).
-    """
-    metrics: dict[str, Any] = {}
+_BOUNDED_METRICS = {"accuracy", "precision", "recall", "f1", "roc_auc", "pr_auc", "auc", "bleu", "rouge"}
 
-    # Layer 1 — MetricContract regex parsers
+
+def _normalize_metric_name(name: str) -> str:
+    normalized = re.sub(r"[\s\-]+", "_", str(name or "").strip().lower()).strip("_")
+    return _METRIC_LABEL_ALIASES.get(normalized, normalized)
+
+
+def _coerce_metric_value(raw: Any, metric_name: str | None = None) -> float | None:
+    if raw is None:
+        return None
+    try:
+        value = float(str(raw).strip().rstrip("%"))
+    except ValueError:
+        return None
+    if metric_name in _BOUNDED_METRICS and value > 1.0:
+        value = value / 100.0
+    return value
+
+
+def _dedupe_metric_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen: set[tuple[str, float | None, str]] = set()
+    deduped: list[dict[str, Any]] = []
+    for record in records:
+        key = (
+            str(record.get("metric_name") or ""),
+            record.get("value"),
+            str(record.get("source") or ""),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(record)
+    return deduped
+
+
+def extract_metric_records_from_stdout(
+    stdout: str,
+    contract: MetricContract,
+    *,
+    source: str = "stdout",
+) -> list[dict[str, Any]]:
+    """Extract multiple metric records from a single stdout blob."""
+    records: list[dict[str, Any]] = []
+
+    def add_record(metric_name: str, raw_value: Any, reason_code: str) -> None:
+        normalized_name = _normalize_metric_name(metric_name)
+        value = _coerce_metric_value(raw_value, normalized_name)
+        if value is None:
+            return
+        records.append(
+            {
+                "metric_name": normalized_name,
+                "value": value,
+                "source": source,
+                "parsed": True,
+                "reason_codes": [reason_code],
+            }
+        )
+
+    # Layer 1 — contract regex parsers. Use finditer instead of search so we keep all matches.
     for parser in contract.parsers:
         try:
-            match = re.search(parser.regex, stdout)
+            matches = list(re.finditer(parser.regex, stdout, re.IGNORECASE | re.MULTILINE))
         except re.error:
             continue
-        if match:
+        for match in matches:
             raw = match.group(1) if match.lastindex else match.group(0)
             if parser.transform == "float":
-                try:
-                    metrics[parser.metric_name] = float(raw)
-                except ValueError:
-                    metrics[parser.metric_name] = raw
+                add_record(parser.metric_name, raw, "CONTRACT_PARSER")
             else:
-                metrics[parser.metric_name] = raw
+                add_record(parser.metric_name, raw, "CONTRACT_PARSER_RAW")
 
-    # Layer 2 — METRIC:{name}={value}
-    # Collect ALL values per metric name (there may be multiple METRIC:accuracy lines)
-    _metric_values: dict[str, list[float]] = {}
-    for m in re.finditer(r"METRIC:([\w.][\w.]*)=([\d.eE+-]+)", stdout):
-        name, val = m.group(1), m.group(2)
-        try:
-            _metric_values.setdefault(name, []).append(float(val))
-        except ValueError:
-            pass
-    for name, vals in _metric_values.items():
-        if name not in metrics:
-            # Use the LAST reported value (most likely the final/best)
-            metrics[name] = vals[-1]
+    # Layer 2 — explicit METRIC:name=value lines.
+    for match in re.finditer(r"METRIC:([\w.][\w.]*)=([\d.eE+-]+)", stdout):
+        add_record(match.group(1), match.group(2), "EXPLICIT_METRIC_LINE")
 
-    # Layer 3 — common prefixed patterns (val_accuracy, test_loss, etc.)
-    # These get priority names like "val_accuracy" to distinguish from train
-    _PREFIXED = re.compile(
+    # Layer 3 — prefixed train/val/test metrics.
+    prefixed_pattern = re.compile(
         r"(test|val|eval|valid|validation|train|training)[_ ]?"
         r"(accuracy|acc|loss|f1|auc|bleu|rouge|precision|recall|mse|mae|rmse|perplexity|ppl)"
-        r"\s*[:=]\s*([\d.]+)",
+        r"\s*[:=]\s*([\d.eE+-]+)",
         re.IGNORECASE,
     )
-    for m in _PREFIXED.finditer(stdout):
-        prefix = m.group(1).lower()
-        metric_name = m.group(2).lower()
-        val = m.group(2 + 1)
-        # Normalize prefix
+    for match in prefixed_pattern.finditer(stdout):
+        prefix = match.group(1).lower()
+        metric_name = _normalize_metric_name(match.group(2))
         if prefix in ("val", "valid", "validation", "eval"):
             prefix = "val"
         elif prefix in ("train", "training"):
             prefix = "train"
-        # else: "test"
-        full_name = f"{prefix}_{metric_name}"
-        if full_name not in metrics:
-            try:
-                metrics[full_name] = float(val)
-            except ValueError:
-                pass
-        # Also set the unprefixed name if not already set (prefer val/test over train)
-        if metric_name not in metrics and prefix in ("val", "test", "eval"):
-            try:
-                metrics[metric_name] = float(val)
-            except ValueError:
-                pass
+        add_record(f"{prefix}_{metric_name}", match.group(3), "PREFIXED_METRIC")
+        if prefix in ("val", "test"):
+            add_record(metric_name, match.group(3), "PREFIXED_METRIC_PRIMARY")
+
+    # Layer 4 — common labeled metrics (works for `Precision: 0.03` and inline summary rows).
+    labeled_pattern = re.compile(
+        r"(?i)(roc[-_ ]auc|pr[-_ ]auc|precision|recall|f1(?:-score)?|accuracy|loss|auc|bleu|rouge|mse|mae|rmse|perplexity|ppl)"
+        r"\s*[:=]\s*([\d.eE+-]+)"
+    )
+    for match in labeled_pattern.finditer(stdout):
+        add_record(match.group(1), match.group(2), "LABELED_METRIC")
+
+    # Layer 5 — dictionary-style metric summaries (`{'precision': 0.1, 'f1': 0.2}`).
+    dict_pattern = re.compile(
+        r"['\"](accuracy|precision|recall|f1|roc_auc|pr_auc|auc)['\"]\s*:\s*([\d.eE+-]+)",
+        re.IGNORECASE,
+    )
+    for match in dict_pattern.finditer(stdout):
+        add_record(match.group(1), match.group(2), "DICT_METRIC")
+
+    # Layer 6 — sklearn classification report rows.
+    report_row_pattern = re.compile(
+        r"(?im)^\s*(0|1|macro avg|weighted avg|avg / total)"
+        r"\s+(0?\.\d+|1(?:\.0+)?)"
+        r"\s+(0?\.\d+|1(?:\.0+)?)"
+        r"\s+(0?\.\d+|1(?:\.0+)?)"
+        r"\s+\d+\s*$"
+    )
+    row_prefixes = {
+        "0": "class_0",
+        "1": "class_1",
+        "macro avg": "macro",
+        "weighted avg": "weighted",
+        "avg / total": "avg_total",
+    }
+    for match in report_row_pattern.finditer(stdout):
+        row_name = row_prefixes.get(match.group(1).lower(), _normalize_metric_name(match.group(1)))
+        add_record(f"{row_name}_precision", match.group(2), "CLASSIFICATION_REPORT")
+        add_record(f"{row_name}_recall", match.group(3), "CLASSIFICATION_REPORT")
+        add_record(f"{row_name}_f1", match.group(4), "CLASSIFICATION_REPORT")
+
+    # Layer 7 — threshold sweep table rows.
+    threshold_row_pattern = re.compile(
+        r"(?im)^\s*(0?\.\d+|1(?:\.0+)?)"
+        r"\s+(0?\.\d+|1(?:\.0+)?)"
+        r"\s+(0?\.\d+|1(?:\.0+)?)"
+        r"\s+(0?\.\d+|1(?:\.0+)?)"
+        r"\s+\d+\s+\d+\s+\d+\s+\d+\s*$"
+    )
+    for match in threshold_row_pattern.finditer(stdout):
+        threshold = str(match.group(1)).replace(".", "_")
+        add_record(f"threshold_{threshold}_precision", match.group(2), "THRESHOLD_ROW")
+        add_record(f"threshold_{threshold}_recall", match.group(3), "THRESHOLD_ROW")
+        add_record(f"threshold_{threshold}_f1", match.group(4), "THRESHOLD_ROW")
+
+    recommended_pattern = re.search(
+        r"Recommended threshold.*?:\s*([\d.]+).*?"
+        r"Precision:\s*([\d.]+),\s*Recall:\s*([\d.]+),\s*F1:\s*([\d.]+)",
+        stdout,
+        re.IGNORECASE | re.DOTALL,
+    )
+    if recommended_pattern:
+        add_record("recommended_threshold", recommended_pattern.group(1), "RECOMMENDED_THRESHOLD")
+        add_record("recommended_precision", recommended_pattern.group(2), "RECOMMENDED_THRESHOLD")
+        add_record("recommended_recall", recommended_pattern.group(3), "RECOMMENDED_THRESHOLD")
+        add_record("recommended_f1", recommended_pattern.group(4), "RECOMMENDED_THRESHOLD")
+
+    best_f1_block = re.search(r"BEST_F1_ROW:\s*(.*?)(?:\n\s*\n|$)", stdout, re.IGNORECASE | re.DOTALL)
+    if best_f1_block:
+        for line in best_f1_block.group(1).splitlines():
+            stripped = line.strip()
+            if not stripped:
+                continue
+            parts = stripped.split()
+            if len(parts) < 2:
+                continue
+            raw_key = "_".join(parts[:-1])
+            raw_value = parts[-1]
+            add_record(f"best_f1_{raw_key}", raw_value, "BEST_F1_ROW")
+
+    return _dedupe_metric_records(records)
+
+
+def extract_metrics_from_stdout(stdout: str, contract: MetricContract) -> dict[str, Any]:
+    """Extract metrics from stdout and keep canonical last-seen values plus `_all` lists."""
+    metrics: dict[str, Any] = {}
+    values_by_metric: dict[str, list[float]] = {}
+
+    for record in extract_metric_records_from_stdout(stdout, contract):
+        metric_name = str(record.get("metric_name") or "")
+        value = record.get("value")
+        if not metric_name or value is None:
+            continue
+        values_by_metric.setdefault(metric_name, []).append(value)
+
+    for metric_name, values in values_by_metric.items():
+        metrics[metric_name] = values[-1]
+        if len(values) > 1:
+            metrics[f"{metric_name}_all"] = values
 
     return metrics
 
@@ -185,11 +330,13 @@ def build_run_manifest(
                 params=r.get("params", {}),
                 cwd=r.get("cwd", "."),
                 exit_code=int(r.get("exit_code", 1)),
-                status="ok" if int(r.get("exit_code", 1)) == 0 else "failed",
+                status=str(r.get("status") or ("ok" if int(r.get("exit_code", 1)) == 0 else "failed")),
                 runtime_sec=r.get("runtime_sec"),
                 stdout_tail=(r.get("stdout_tail") or "")[-2000:],
                 stderr_tail=(r.get("stderr_tail") or "")[-2000:],
+                artifacts=r.get("artifacts", []),
                 metrics=r.get("metrics", {}),
+                reason_codes=r.get("reason_codes", []),
             )
         )
     return RunManifestDoc(runs=codex_runs, reason_codes=reason_codes or [])
@@ -198,6 +345,7 @@ def build_run_manifest(
 def build_claim_alignment(
     claims_ir: ClaimsIR,
     collected_metrics: dict[str, Any],
+    metric_sources: dict[str, list[str]] | None = None,
 ) -> ClaimAlignmentDoc:
     """Build a ``ClaimAlignmentDoc`` mapping claims to discovered metrics.
 
@@ -209,6 +357,7 @@ def build_claim_alignment(
     which has access to richer claim context (table_anchor, scope, etc.).
     """
     items: list[ClaimAlignmentItem] = []
+    metric_sources = metric_sources or {}
 
     # Count how many result-type claims share each metric name
     from collections import Counter
@@ -219,7 +368,21 @@ def build_claim_alignment(
 
     for claim in claims_ir.claims:
         required = [claim.metric] if claim.metric else []
-        has_metric = bool(claim.metric and claim.metric in collected_metrics)
+        matching_metric_names = [
+            name for name in collected_metrics
+            if claim.metric
+            and (
+                name == claim.metric
+                or name.endswith(f"_{claim.metric}")
+                or name.startswith(f"{claim.metric}_")
+            )
+        ]
+        has_metric = bool(matching_metric_names)
+        claim_sources = []
+        for metric_name in matching_metric_names:
+            for source in metric_sources.get(metric_name, []):
+                if source not in claim_sources:
+                    claim_sources.append(source)
 
         if not has_metric:
             evaluable = "no"
@@ -242,7 +405,7 @@ def build_claim_alignment(
             ClaimAlignmentItem(
                 claim_id=claim.claim_id,
                 required_metrics=required,
-                source=["codex_local_execution"],
+                source=claim_sources or ["codex_local_execution"],
                 evaluable=evaluable,
                 reason=reason,
             )

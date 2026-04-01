@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 import subprocess
 import uuid
 from pathlib import Path
@@ -118,6 +119,7 @@ class PlannerAgent(BaseAgent):
 
         # Validate & persist
         plan = ExecutionPlan(**data)
+        self._sanitize_plan(plan, repo_dir)
         self._validate_plan(plan, repo_dir)
         self.artifacts.write_json("execution/execution_plan.json", plan.model_dump())
         self.log("DONE", f"plan v{plan.plan_version}: {len(plan.execution_steps)} steps, "
@@ -179,3 +181,69 @@ class PlannerAgent(BaseAgent):
             cwd_path = Path(repo_dir) / step.cwd
             if not cwd_path.is_dir():
                 step.cwd = "."  # auto-fix
+
+    @classmethod
+    def _sanitize_plan(cls, plan: ExecutionPlan, repo_dir: str) -> None:
+        """Deterministically fix risky LLM planner outputs before execution."""
+        repo_root = Path(repo_dir)
+        for step in plan.execution_steps:
+            rewritten = cls._rewrite_help_probe(step.command, repo_root)
+            if rewritten:
+                step.command = rewritten
+            step.fallback_commands = cls._sanitize_fallbacks(step.command, step.fallback_commands)
+
+    @staticmethod
+    def _extract_python_script(command: str) -> str | None:
+        try:
+            tokens = shlex.split(command)
+        except ValueError:
+            return None
+        while tokens and "=" in tokens[0] and not tokens[0].startswith("-"):
+            name, _, value = tokens[0].partition("=")
+            if name.isidentifier() and value:
+                tokens = tokens[1:]
+                continue
+            break
+        if len(tokens) < 2 or tokens[0] != "python":
+            return None
+        script = tokens[1]
+        if script.endswith(".py"):
+            return script
+        return None
+
+    @classmethod
+    def _rewrite_help_probe(cls, command: str, repo_root: Path) -> str | None:
+        try:
+            tokens = shlex.split(command)
+        except ValueError:
+            return None
+        assignments: list[str] = []
+        while tokens and "=" in tokens[0] and not tokens[0].startswith("-"):
+            name, _, value = tokens[0].partition("=")
+            if name.isidentifier() and value:
+                assignments.append(tokens.pop(0))
+                continue
+            break
+        if len(tokens) != 3 or tokens[0] != "python" or tokens[2] not in {"--help", "-h"}:
+            return None
+        script = tokens[1]
+        if not script.endswith(".py") or not (repo_root / script).is_file():
+            return None
+        prefix = f"{' '.join(assignments)} " if assignments else ""
+        return (
+            f"{prefix}python -c 'from pathlib import Path; "
+            f"p = Path({script!r}); "
+            "print(p.read_text(encoding=\"utf-8\", errors=\"ignore\")[:6000])'"
+        )
+
+    @classmethod
+    def _sanitize_fallbacks(cls, command: str, fallbacks: list[str]) -> list[str]:
+        primary_script = cls._extract_python_script(command)
+        if primary_script is None:
+            return fallbacks
+        sanitized: list[str] = []
+        for fallback in fallbacks:
+            fallback_script = cls._extract_python_script(fallback)
+            if fallback_script == primary_script:
+                sanitized.append(fallback)
+        return sanitized

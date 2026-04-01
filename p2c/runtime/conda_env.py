@@ -228,15 +228,17 @@ class CondaEnvManager:
     def _shell_wrap_command(env: dict[str, str], command: str) -> str:
         """Re-export key forwarded vars inside the child shell.
 
-        ``mamba run`` may overwrite PATH while activating the target env, so
-        explicitly exporting here keeps host-provided tools like Codex/Node
-        visible inside the final shell command.
+        ``mamba run`` may overwrite forwarded tool directories while activating
+        the target env. Re-appending only the host tool dirs keeps Conda's own
+        interpreter on PATH while still exposing Codex/Node binaries.
         """
         exports: list[str] = []
-        for key in ("PATH", "P2C_CODEX_BIN"):
-            value = env.get(key)
-            if value:
-                exports.append(f"export {key}={shlex.quote(value)}")
+        tool_dirs = env.get("P2C_HOST_TOOL_DIRS")
+        if tool_dirs:
+            exports.append(f'export PATH="$PATH":{shlex.quote(tool_dirs)}')
+        value = env.get("P2C_CODEX_BIN")
+        if value:
+            exports.append(f"export P2C_CODEX_BIN={shlex.quote(value)}")
         if not exports:
             return command
         return "; ".join([*exports, command])
@@ -280,6 +282,7 @@ class CondaEnvManager:
             if entry not in prefix_parts and entry not in path_parts:
                 prefix_parts.append(entry)
         if prefix_parts:
+            env["P2C_HOST_TOOL_DIRS"] = os.pathsep.join(prefix_parts)
             env["PATH"] = os.pathsep.join([*prefix_parts, *path_parts]) if path_parts else os.pathsep.join(prefix_parts)
         return env
 

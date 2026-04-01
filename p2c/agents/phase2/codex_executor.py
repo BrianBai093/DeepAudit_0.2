@@ -1,4 +1,4 @@
-"""CodexExecutorAgent — runs codex CLI locally following the execution plan."""
+"""CodexExecutorAgent — hybrid local execution plus Codex recovery."""
 
 from __future__ import annotations
 
@@ -17,12 +17,10 @@ from p2c.agents.phase2.local_prompt_templates import (
 from p2c.agents.phase2.result_extraction import (
     build_claim_alignment,
     build_run_manifest,
-    classify_error,
     classify_error_v2,
     extract_metrics_from_file,
     extract_metrics_from_stdout,
     extract_traceback,
-    is_fast_fail,
 )
 from p2c.runtime.conda_env import CondaEnvManager
 from p2c.schemas import (
@@ -38,7 +36,7 @@ DEFAULT_CODEX_MODEL = "gpt-5.4"
 
 
 class CodexExecutorAgent(BaseAgent):
-    """Execute plan steps via local ``codex exec --full-auto``."""
+    """Execute plan steps with hybrid local-first execution plus Codex recovery."""
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(name="codex_executor", *args, **kwargs)
@@ -135,8 +133,12 @@ class CodexExecutorAgent(BaseAgent):
                     break
 
         # Build Phase 3 outputs
-        manifest = build_run_manifest(all_runs, reason_codes=["LOCAL_CODEX_EXEC"])
-        alignment = build_claim_alignment(claims_ir, all_metrics)
+        manifest = build_run_manifest(all_runs, reason_codes=["HYBRID_LOCAL_EXEC"])
+        alignment = build_claim_alignment(
+            claims_ir,
+            all_metrics,
+            metric_sources=self._collect_metric_sources(all_runs),
+        )
 
         if any_success:
             self.artifacts.write_json("execution/codex_outputs/run_manifest.json", manifest.model_dump())
@@ -221,7 +223,11 @@ class CodexExecutorAgent(BaseAgent):
         }
 
         manifest = build_run_manifest([run_entry], reason_codes=["AUTONOMOUS_EXPLORATION"])
-        alignment = build_claim_alignment(claims_ir, metrics)
+        alignment = build_claim_alignment(
+            claims_ir,
+            metrics,
+            metric_sources=self._collect_metric_sources([run_entry]),
+        )
 
         if metrics:
             self.artifacts.write_json("execution/codex_outputs/run_manifest.json", manifest.model_dump())
@@ -251,65 +257,376 @@ class CodexExecutorAgent(BaseAgent):
         timeout_sec: int,
         prior_step_results: str | None = None,
     ) -> dict[str, Any]:
+        cwd = str(Path(repo_dir) / step.cwd)
         parsers = [p.model_dump() for p in contract.parsers]
-        prompt = build_step_execution_prompt(
-            repo_dir=repo_dir,
-            step_description=step.description,
-            step_command=step.command,
-            expected_metrics=step.expected_metrics,
-            metric_parsers=parsers,
-            outputs_dir=outputs_dir,
-            step_id=step.step_id,
-            prior_step_results=prior_step_results,
+        step_result_relative = f"execution/codex_outputs/step_{step.step_id}_result.json"
+        step_result_path = self.artifacts.path(step_result_relative)
+        step_result_path.parent.mkdir(parents=True, exist_ok=True)
+        step_result_path.unlink(missing_ok=True)
+
+        started = time.time()
+        attempt_records: list[dict[str, Any]] = []
+        stdout_parts: list[str] = []
+        stderr_parts: list[str] = []
+        last_proc: Any = None
+        last_command = step.command
+
+        planned_commands = [step.command, *step.fallback_commands]
+        for index, command in enumerate(planned_commands, start=1):
+            remaining = max(1, timeout_sec - int(time.time() - started))
+            attempt_started = time.time()
+            proc = env_mgr.run_in_env(command, cwd=cwd, timeout_sec=remaining)
+            attempt_runtime = time.time() - attempt_started
+            label = "direct:primary" if index == 1 else f"direct:fallback_{index - 1}"
+            self._append_attempt_output(stdout_parts, label, command, proc.stdout or "")
+            self._append_attempt_output(stderr_parts, label, command, proc.stderr or "")
+            attempt_records.append({
+                "mode": label,
+                "command": command,
+                "exit_code": proc.returncode,
+                "runtime_sec": attempt_runtime,
+                "attempt_index": index,
+                "stdout": proc.stdout or "",
+                "stderr": proc.stderr or "",
+            })
+            last_proc = proc
+            last_command = command
+            if proc.returncode == 0:
+                return self._finalize_step_result(
+                    step=step,
+                    contract=contract,
+                    step_result_relative=step_result_relative,
+                    default_command=command,
+                    proc=proc,
+                    runtime_sec=time.time() - started,
+                    stdout_text="".join(stdout_parts),
+                    stderr_text="".join(stderr_parts),
+                    attempt_records=attempt_records,
+                    execution_mode="direct",
+                )
+
+        remaining = timeout_sec - int(time.time() - started)
+        if step.retry_on_failure and remaining > 0 and last_proc is not None:
+            failure_context = self._build_failure_context(
+                attempt_records=attempt_records,
+                stdout_text="".join(stdout_parts),
+                stderr_text="".join(stderr_parts),
+            )
+            prompt = build_step_execution_prompt(
+                repo_dir=repo_dir,
+                step_description=step.description,
+                step_command=step.command,
+                expected_metrics=step.expected_metrics,
+                metric_parsers=parsers,
+                outputs_dir=outputs_dir,
+                step_id=step.step_id,
+                failure_context=failure_context,
+                prior_step_results=prior_step_results,
+            )
+            self.log("PROGRESS", f"step {step.step_id}: direct execution failed, invoking Codex recovery")
+            attempt_started = time.time()
+            proc = self._run_codex(env_mgr, prompt, cwd, timeout_sec=max(1, remaining))
+            attempt_runtime = time.time() - attempt_started
+            self._append_attempt_output(stdout_parts, "codex:recovery", last_command, proc.stdout or "")
+            self._append_attempt_output(stderr_parts, "codex:recovery", last_command, proc.stderr or "")
+            attempt_records.append({
+                "mode": "codex:recovery",
+                "command": last_command,
+                "exit_code": proc.returncode,
+                "runtime_sec": attempt_runtime,
+                "attempt_index": len(attempt_records) + 1,
+                "stdout": proc.stdout or "",
+                "stderr": proc.stderr or "",
+            })
+            return self._finalize_step_result(
+                step=step,
+                contract=contract,
+                step_result_relative=step_result_relative,
+                default_command=last_command,
+                proc=proc,
+                runtime_sec=time.time() - started,
+                stdout_text="".join(stdout_parts),
+                stderr_text="".join(stderr_parts),
+                attempt_records=attempt_records,
+                execution_mode="codex_recovery",
+            )
+
+        if last_proc is None:
+            raise RuntimeError(f"step {step.step_id} produced no execution attempts")
+
+        return self._finalize_step_result(
+            step=step,
+            contract=contract,
+            step_result_relative=step_result_relative,
+            default_command=last_command,
+            proc=last_proc,
+            runtime_sec=time.time() - started,
+            stdout_text="".join(stdout_parts),
+            stderr_text="".join(stderr_parts),
+            attempt_records=attempt_records,
+            execution_mode="direct_failed",
         )
 
-        cwd = str(Path(repo_dir) / step.cwd)
-        t0 = time.time()
-        proc = self._run_codex(env_mgr, prompt, cwd, timeout_sec=timeout_sec)
-        runtime = time.time() - t0
+    def _finalize_step_result(
+        self,
+        *,
+        step: ExecutionStep,
+        contract: MetricContract,
+        step_result_relative: str,
+        default_command: str,
+        proc: Any,
+        runtime_sec: float,
+        stdout_text: str,
+        stderr_text: str,
+        attempt_records: list[dict[str, Any]],
+        execution_mode: str,
+    ) -> dict[str, Any]:
+        stored = self.artifacts.read_json(step_result_relative)
+        metrics = stored.get("metrics") if isinstance(stored.get("metrics"), dict) else {}
+        stdout_metrics = extract_metrics_from_stdout(stdout_text, contract)
+        for key, value in stdout_metrics.items():
+            if key not in metrics:
+                metrics[key] = value
 
-        stdout = proc.stdout or ""
-        stderr = proc.stderr or ""
+        selected_attempt = self._find_attempt_for_stored_result(stored, attempt_records)
+        effective_exit_code = proc.returncode
+        stored_exit_code = stored.get("exit_code")
+        if isinstance(stored_exit_code, (int, float)) and not isinstance(stored_exit_code, bool):
+            effective_exit_code = int(stored_exit_code)
+        elif proc.returncode != 0:
+            selected_attempt = self._choose_effective_failure_attempt(attempt_records)
+            if selected_attempt is not None:
+                effective_exit_code = int(selected_attempt.get("exit_code", proc.returncode))
 
-        # Persist step logs
-        self.artifacts.write_text(f"execution/codex_outputs/step_{step.step_id}_stdout.log", stdout)
-        self.artifacts.write_text(f"execution/codex_outputs/step_{step.step_id}_stderr.log", stderr)
+        if selected_attempt is None and attempt_records:
+            selected_attempt = attempt_records[-1]
 
-        # Extract metrics (file first, then stdout)
-        metrics = extract_metrics_from_file(f"{outputs_dir}/step_{step.step_id}_result.json")
-        stdout_metrics = extract_metrics_from_stdout(stdout, contract)
-        for k, v in stdout_metrics.items():
-            if k not in metrics:
-                metrics[k] = v
+        if isinstance(stored.get("command"), str):
+            effective_command = stored.get("command")
+        elif selected_attempt is not None and isinstance(selected_attempt.get("command"), str):
+            effective_command = selected_attempt.get("command")
+        else:
+            effective_command = default_command
+        notes = stored.get("notes") if isinstance(stored.get("notes"), str) else self._build_attempt_notes(attempt_records)
+        primary_attempt = attempt_records[0] if attempt_records else None
+        degraded_success = self._is_degraded_success(primary_attempt, selected_attempt, effective_exit_code, effective_command)
+        run_status = "partial" if degraded_success else ("ok" if effective_exit_code == 0 else "failed")
+        run_params: dict[str, Any] = {}
+        run_reason_codes: list[str] = []
+        if degraded_success and primary_attempt is not None:
+            run_params = {
+                "planned_command": step.command,
+                "primary_exit_code": int(primary_attempt.get("exit_code", 1)),
+                "fallback_used": True,
+                "degraded_success": True,
+            }
+            run_reason_codes = ["PRIMARY_FAILED_FALLBACK_SUCCEEDED", "NON_EQUIVALENT_FALLBACK"]
 
-        # Rich v2 classification (provides repair routing info)
+        self.artifacts.write_json(
+            step_result_relative,
+            {
+                "command": effective_command,
+                "exit_code": effective_exit_code,
+                "metrics": metrics,
+                "notes": notes,
+            },
+        )
+        self.artifacts.write_text(f"execution/codex_outputs/step_{step.step_id}_stdout.log", stdout_text)
+        self.artifacts.write_text(f"execution/codex_outputs/step_{step.step_id}_stderr.log", stderr_text)
+
+        classify_stdout = (selected_attempt or {}).get("stdout", proc.stdout or "")
+        classify_stderr = (selected_attempt or {}).get("stderr", proc.stderr or "")
+        if effective_exit_code != 0:
+            classify_stdout = (selected_attempt or {}).get("stdout", classify_stdout) or stdout_text
+            classify_stderr = (selected_attempt or {}).get("stderr", classify_stderr) or stderr_text
+
         failure_spec = classify_error_v2(
-            stdout, stderr, proc.returncode,
+            classify_stdout,
+            classify_stderr,
+            effective_exit_code,
             metrics=metrics,
             expected_metrics=step.expected_metrics,
         )
 
-        result: dict[str, Any] = {
+        error_source = classify_stderr or classify_stdout or stderr_text or stdout_text
+        return {
             "step_id": step.step_id,
-            "command": step.command,
+            "command": effective_command,
             "cwd": step.cwd,
-            "exit_code": proc.returncode,
-            "runtime_sec": runtime,
-            "stdout_tail": stdout[-2000:],
-            "stderr_tail": stderr[-2000:],
+            "params": run_params,
+            "exit_code": effective_exit_code,
+            "status": run_status,
+            "runtime_sec": runtime_sec,
+            "stdout_tail": stdout_text[-2000:],
+            "stderr_tail": stderr_text[-2000:],
             "metrics": metrics,
+            "reason_codes": run_reason_codes,
             "fast_fail": failure_spec.is_fast_fail,
             "error_type": failure_spec.legacy_error_type,
-            "error_message": stderr[-500:] if proc.returncode != 0 else "",
-            "traceback": extract_traceback(stderr),
-            # v2 taxonomy fields
+            "error_message": error_source[-500:] if effective_exit_code != 0 else "",
+            "traceback": extract_traceback(stderr_text),
             "failure_code": failure_spec.code,
             "failure_layer": failure_spec.layer,
             "repair_strategy": failure_spec.repair_strategy.value,
             "repair_action": failure_spec.repair_action,
             "auto_repair_confidence": failure_spec.auto_repair_confidence,
+            "execution_mode": execution_mode,
+            "attempted_commands": attempt_records,
         }
-        return result
+
+    @staticmethod
+    def _append_attempt_output(target: list[str], label: str, command: str, content: str) -> None:
+        body = content or ""
+        if body and not body.endswith("\n"):
+            body += "\n"
+        target.append(f"===== {label} | {command} =====\n{body}")
+
+    @staticmethod
+    def _build_attempt_notes(attempt_records: list[dict[str, Any]]) -> str:
+        lines = ["Execution attempts:"]
+        for attempt in attempt_records:
+            lines.append(
+                f"- {attempt['mode']}: `{attempt['command']}` "
+                f"(exit {attempt['exit_code']}, {attempt['runtime_sec']:.2f}s)"
+            )
+        return "\n".join(lines)
+
+    @staticmethod
+    def _extract_python_script_target(command: str) -> str | None:
+        try:
+            tokens = shlex.split(command)
+        except ValueError:
+            return None
+        while tokens and "=" in tokens[0] and not tokens[0].startswith("-"):
+            name, _, value = tokens[0].partition("=")
+            if name.isidentifier() and value:
+                tokens = tokens[1:]
+                continue
+            break
+        if len(tokens) < 2 or tokens[0] != "python":
+            return None
+        script = tokens[1]
+        if script.endswith(".py"):
+            return script
+        return None
+
+    @classmethod
+    def _commands_share_target(cls, primary_command: str, effective_command: str) -> bool:
+        if primary_command.strip() == effective_command.strip():
+            return True
+        primary_script = cls._extract_python_script_target(primary_command)
+        effective_script = cls._extract_python_script_target(effective_command)
+        return primary_script is not None and primary_script == effective_script
+
+    @classmethod
+    def _is_degraded_success(
+        cls,
+        primary_attempt: dict[str, Any] | None,
+        selected_attempt: dict[str, Any] | None,
+        effective_exit_code: int,
+        effective_command: str,
+    ) -> bool:
+        if effective_exit_code != 0 or primary_attempt is None or selected_attempt is None:
+            return False
+        if int(primary_attempt.get("exit_code", 0)) == 0:
+            return False
+        mode = str(selected_attempt.get("mode") or "")
+        if not mode.startswith("direct:fallback_"):
+            return False
+        primary_command = str(primary_attempt.get("command") or "")
+        return not cls._commands_share_target(primary_command, effective_command)
+
+    @staticmethod
+    def _build_failure_context(
+        *,
+        attempt_records: list[dict[str, Any]],
+        stdout_text: str,
+        stderr_text: str,
+    ) -> str:
+        summary = CodexExecutorAgent._build_attempt_notes(attempt_records)
+        parts = [summary]
+        if stdout_text:
+            parts.append("Stdout tail:\n" + stdout_text[-1500:])
+        if stderr_text:
+            parts.append("Stderr tail:\n" + stderr_text[-1500:])
+        return "\n\n".join(parts)
+
+    @staticmethod
+    def _is_infrastructure_attempt(attempt: dict[str, Any]) -> bool:
+        stdout = str(attempt.get("stdout") or "")
+        stderr = str(attempt.get("stderr") or "")
+        combined = f"{stdout}\n{stderr}".lower()
+        if "traceback (most recent call last)" in combined:
+            return False
+        return any(
+            pattern in combined
+            for pattern in (
+                "command not found",
+                "env: ‘node’",
+                "env: 'node'",
+                "codex",
+                "no such file or directory",
+            )
+        )
+
+    @classmethod
+    def _choose_effective_failure_attempt(cls, attempt_records: list[dict[str, Any]]) -> dict[str, Any] | None:
+        failed_attempts = [attempt for attempt in attempt_records if int(attempt.get("exit_code", 0)) != 0]
+        if not failed_attempts:
+            return None
+
+        def mode_priority(mode: str) -> int:
+            if mode == "direct:primary":
+                return 0
+            if mode.startswith("direct:fallback_"):
+                return 1
+            return 2
+
+        ranked = sorted(
+            failed_attempts,
+            key=lambda attempt: (
+                1 if cls._is_infrastructure_attempt(attempt) else 0,
+                mode_priority(str(attempt.get("mode") or "")),
+                int(attempt.get("attempt_index") or 0),
+            ),
+        )
+        return ranked[0]
+
+    @staticmethod
+    def _find_attempt_for_stored_result(
+        stored: dict[str, Any],
+        attempt_records: list[dict[str, Any]],
+    ) -> dict[str, Any] | None:
+        stored_command = stored.get("command")
+        stored_exit_code = stored.get("exit_code")
+        if not isinstance(stored_exit_code, (int, float)) or isinstance(stored_exit_code, bool):
+            return None
+        normalized_exit = int(stored_exit_code)
+
+        for attempt in attempt_records:
+            if (
+                attempt.get("command") == stored_command
+                and int(attempt.get("exit_code", 0)) == normalized_exit
+            ):
+                return attempt
+        for attempt in attempt_records:
+            if int(attempt.get("exit_code", 0)) == normalized_exit:
+                return attempt
+        return None
+
+    @staticmethod
+    def _collect_metric_sources(runs: list[dict[str, Any]]) -> dict[str, list[str]]:
+        metric_sources: dict[str, list[str]] = {}
+        for run in runs:
+            run_id = str(run.get("step_id") or run.get("run_id") or "unknown")
+            source = f"execution/codex_outputs/run_manifest.json:{run_id}"
+            for name, value in (run.get("metrics") or {}).items():
+                if str(name).endswith("_all") or isinstance(value, (list, dict, tuple)):
+                    continue
+                metric_sources.setdefault(str(name), [])
+                if source not in metric_sources[str(name)]:
+                    metric_sources[str(name)].append(source)
+        return metric_sources
 
     # ------------------------------------------------------------------
     # Execution journal summarization

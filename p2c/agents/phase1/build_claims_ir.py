@@ -29,6 +29,12 @@ repository analysis, you will:
    Only result claims with a clear metric name and numeric target are useful for \
    reproducibility verification.
 
+IMPORTANT:
+- The claim IDs from the fingerprint are authoritative. Reuse those exact IDs.
+- Do NOT invent new claim IDs, renumber claims, or rewrite a claim into a different fact.
+- Use the claims array only to annotate existing fingerprint claims with experiment_id, \
+  table_anchor, scope, is_primary, and optional notes/reason.
+
 Return a JSON object with this EXACT structure:
 {
   "experiments": [
@@ -85,7 +91,8 @@ def _build_experiment_user_prompt(
     for i, claim in enumerate(fingerprint.get("claims", [])):
         anchors = claim.get("evidence_anchors", {})
         sections.append(
-            f"{i+1}. [{claim.get('claim_type', '?')}] "
+            f"{i+1}. claim_id={claim.get('id', f'claim_{i+1:02d}')} "
+            f"[{claim.get('claim_type', '?')}] "
             f"fact=\"{claim.get('fact', '')}\" "
             f"scope=\"{claim.get('scope', '')}\" "
             f"table={anchors.get('visual_anchor', 'N/A')} "
@@ -106,13 +113,17 @@ def _build_experiment_user_prompt(
     # Repo analysis
     if repo_analysis:
         sections.append("\n## Repository Analysis")
-        for ep in repo_analysis.get("entrypoints", []):
+        entrypoints = repo_analysis.get("entrypoint_candidates", []) or repo_analysis.get("entrypoints", [])
+        for ep in entrypoints:
             sections.append(
                 f"- Entrypoint: {ep.get('path', '')} "
                 f"(command: {ep.get('command', '')}, confidence: {ep.get('confidence', '?')})"
             )
         for dep in repo_analysis.get("dependency_profiles", []):
-            sections.append(f"- Dependencies: {dep.get('profile_id', '')} → {dep.get('path', '')}")
+            sections.append(
+                f"- Dependencies: {dep.get('profile_id', '')} "
+                f"(manifests: {dep.get('manifest_paths', [])})"
+            )
 
     return "\n".join(sections)
 
@@ -172,6 +183,7 @@ class BuildClaimsIRAgent(BaseAgent):
         self,
         fingerprint: dict,
         repo_analysis: dict | None,
+        base_claims: list[ClaimItem],
     ) -> ClaimsIR | None:
         """Use LLM to identify experiments, group claims, and assess repo coverage."""
         user_prompt = _build_experiment_user_prompt(fingerprint, repo_analysis)
@@ -228,17 +240,30 @@ class BuildClaimsIRAgent(BaseAgent):
             self.log("PROGRESS", f"LLM unavailable for experiment identification: {llm_err}")
             return None
 
+        base_claim_ids = [claim.claim_id for claim in base_claims]
+        base_claim_id_set = set(base_claim_ids)
+
         # Parse experiments
         experiments: list[Experiment] = []
         for exp in llm_data.get("experiments", []):
             try:
+                claim_ids = []
+                seen_claim_ids: set[str] = set()
+                for claim_id in exp.get("claim_ids", []):
+                    normalized = str(claim_id or "").strip()
+                    if not normalized or normalized not in base_claim_id_set or normalized in seen_claim_ids:
+                        continue
+                    claim_ids.append(normalized)
+                    seen_claim_ids.add(normalized)
+                if not claim_ids:
+                    continue
                 experiments.append(Experiment(
                     experiment_id=exp.get("experiment_id", f"exp_{len(experiments)+1}"),
                     name=exp.get("name", "unknown"),
                     description=exp.get("description", ""),
                     dataset=exp.get("dataset"),
                     table_anchor=exp.get("table_anchor"),
-                    claim_ids=exp.get("claim_ids", []),
+                    claim_ids=claim_ids,
                     repo_coverage=exp.get("repo_coverage", "not_found"),
                     repo_entrypoint=exp.get("repo_entrypoint"),
                     notes=exp.get("notes"),
@@ -246,63 +271,78 @@ class BuildClaimsIRAgent(BaseAgent):
             except Exception:  # noqa: BLE001
                 continue
 
-        # Parse claims
-        claims: list[ClaimItem] = []
-        for c in llm_data.get("claims", []):
-            try:
-                metric = c.get("metric")
-                target = c.get("target")
-                ctype = c.get("type", "config")
+        claims = [claim.model_copy(deep=True) for claim in base_claims]
+        llm_claim_rows = [row for row in llm_data.get("claims", []) if isinstance(row, dict)]
+        llm_claim_ids = {
+            str(row.get("claim_id") or "").strip()
+            for row in llm_claim_rows
+            if str(row.get("claim_id") or "").strip()
+        }
+        reason_codes = ["LLM_EXPERIMENT_IDENTIFICATION", "SOURCE_FINGERPRINT_CLAIMS"]
 
-                # Validate: result claims need metric + target
-                if ctype == "result" and (not metric or target is None):
-                    # Try to extract from predicate
-                    m, t = self._extract_metric_and_target(c.get("predicate", ""))
-                    metric = metric or m
-                    target = target if target is not None else t
+        if llm_claim_rows and llm_claim_ids == base_claim_id_set:
+            merged_claims: list[ClaimItem] = []
+            llm_claim_map = {
+                str(row.get("claim_id")).strip(): row
+                for row in llm_claim_rows
+                if str(row.get("claim_id") or "").strip() in base_claim_id_set
+            }
+            for claim in claims:
+                row = llm_claim_map.get(claim.claim_id, {})
+                conditions = dict(claim.conditions)
+                if not conditions.get("scope") and row.get("scope"):
+                    conditions["scope"] = row["scope"]
+                if not conditions.get("table_anchor") and row.get("table_anchor"):
+                    conditions["table_anchor"] = row["table_anchor"]
+                if row.get("experiment_id"):
+                    conditions["experiment_id"] = row["experiment_id"]
+                if row.get("is_primary") is not None:
+                    conditions["is_primary"] = bool(row["is_primary"])
 
-                conditions: dict[str, Any] = {}
-                if c.get("scope"):
-                    conditions["scope"] = c["scope"]
-                if c.get("table_anchor"):
-                    conditions["table_anchor"] = c["table_anchor"]
-                if c.get("experiment_id"):
-                    conditions["experiment_id"] = c["experiment_id"]
-                if c.get("is_primary") is not None:
-                    conditions["is_primary"] = c["is_primary"]
+                metric = claim.metric
+                target = claim.target
+                if metric is None and row.get("metric"):
+                    metric = row.get("metric")
+                if target is None and row.get("target") is not None:
+                    target = row.get("target")
+                if claim.type == "result" and (metric is None or target is None):
+                    parsed_metric, parsed_target = self._extract_metric_and_target(
+                        row.get("predicate", "") or claim.predicate
+                    )
+                    metric = metric or parsed_metric
+                    target = target if target is not None else parsed_target
 
-                is_result = ctype == "result"
-                claims.append(ClaimItem(
-                    claim_id=c.get("claim_id", f"claim_{len(claims)+1:02d}"),
-                    type=ctype,
-                    predicate=c.get("predicate", ""),
-                    metric=metric,
-                    target=target,
-                    baseline=None,
-                    conditions=conditions,
-                    aggregation="best" if is_result else None,
-                    evidence_set=[],
-                    tolerance_policy={
-                        "abs_eps": 0.005 if is_result else 0.02,
-                        "rel_eps": 0.02 if is_result else 0.03,
-                    },
-                    unverifiable_from_paper=(is_result and target is None),
-                    code_verifiable=(is_result and metric is not None and target is not None),
-                    reason_codes=[],
-                    notes=c.get("reason"),
-                ))
-            except Exception:  # noqa: BLE001
-                continue
+                merged_claims.append(
+                    claim.model_copy(
+                        update={
+                            "metric": metric,
+                            "target": target,
+                            "conditions": conditions,
+                            "unverifiable_from_paper": (
+                                claim.type == "result" and target is None
+                            ),
+                            "code_verifiable": (
+                                (claim.type == "result" and metric is not None and target is not None)
+                                or claim.type == "config"
+                            ),
+                            "notes": row.get("reason") or claim.notes,
+                        }
+                    )
+                )
+            claims = merged_claims
+        elif llm_claim_rows:
+            reason_codes.append("LLM_CLAIM_SET_MISMATCH")
+            self.log(
+                "PROGRESS",
+                "LLM claim set mismatched fingerprint claims; preserving fingerprint claims and merging experiments only",
+            )
 
-        if not claims:
-            self.log("PROGRESS", "LLM returned no valid claims")
-            return None
-
-        return ClaimsIR(
+        claims_ir = ClaimsIR(
             experiments=experiments,
             claims=claims,
-            reason_codes=["LLM_EXPERIMENT_IDENTIFICATION"],
+            reason_codes=reason_codes,
         )
+        return self._postprocess_repo_coverage(claims_ir, repo_analysis)
 
     # ------------------------------------------------------------------
     # Deterministic fallback
@@ -361,12 +401,82 @@ class BuildClaimsIRAgent(BaseAgent):
 
         return out, reason_codes
 
+    @staticmethod
+    def _primary_repo_entrypoint(repo_analysis: dict | None) -> str | None:
+        if not isinstance(repo_analysis, dict):
+            return None
+        entrypoints = [row for row in repo_analysis.get("entrypoint_candidates", []) if isinstance(row, dict)]
+        if not entrypoints:
+            return None
+        primary_id = str(repo_analysis.get("primary_entrypoint_id") or "").strip()
+        if primary_id:
+            for row in entrypoints:
+                if str(row.get("entrypoint_id") or "").strip() == primary_id:
+                    path = str(row.get("path") or "").strip()
+                    if path:
+                        return path
+        for row in entrypoints:
+            path = str(row.get("path") or "").strip()
+            if path:
+                return path
+        return None
+
+    def _postprocess_repo_coverage(self, claims_ir: ClaimsIR, repo_analysis: dict | None) -> ClaimsIR:
+        if not isinstance(repo_analysis, dict):
+            return claims_ir
+        entrypoints = [row for row in repo_analysis.get("entrypoint_candidates", []) if isinstance(row, dict)]
+        if not entrypoints:
+            return claims_ir
+
+        primary_path = self._primary_repo_entrypoint(repo_analysis)
+        updated = False
+        experiments: list[Experiment] = []
+        for exp in claims_ir.experiments:
+            repo_coverage = exp.repo_coverage
+            repo_entrypoint = exp.repo_entrypoint or primary_path
+            notes = exp.notes
+            exp_updated = False
+
+            if repo_coverage == "not_found":
+                repo_coverage = "partial"
+                exp_updated = True
+            if repo_entrypoint != exp.repo_entrypoint:
+                exp_updated = True
+            if exp_updated and (
+                not notes
+                or "no repository analysis content" in str(notes).lower()
+                or "cannot be confirmed" in str(notes).lower()
+            ):
+                entrypoint_note = f" via `{repo_entrypoint}`" if repo_entrypoint else ""
+                notes = (
+                    "Repository analysis found runnable entrypoint(s)"
+                    f"{entrypoint_note}, but the paper experiment is only partially aligned to the repo implementation."
+                )
+            experiments.append(
+                exp.model_copy(
+                    update={
+                        "repo_coverage": repo_coverage,
+                        "repo_entrypoint": repo_entrypoint,
+                        "notes": notes,
+                    }
+                )
+            )
+            updated = updated or exp_updated
+
+        if not updated:
+            return claims_ir
+        reason_codes = list(claims_ir.reason_codes)
+        if "REPO_COVERAGE_POSTPROCESSED" not in reason_codes:
+            reason_codes.append("REPO_COVERAGE_POSTPROCESSED")
+        return claims_ir.model_copy(update={"experiments": experiments, "reason_codes": reason_codes})
+
     # ------------------------------------------------------------------
     # Main entry point
     # ------------------------------------------------------------------
 
     def execute(self, ctx: dict) -> dict:
         fingerprint = self.artifacts.read_json("fingerprint/fingerprint.json")
+        claims_from_fp, reason_codes = self._claims_from_fingerprint(fingerprint)
 
         # Try to load repo analysis for cross-referencing
         repo_analysis: dict | None = None
@@ -376,13 +486,13 @@ class BuildClaimsIRAgent(BaseAgent):
             pass
 
         # Primary path: LLM-based experiment identification
-        claims_ir = self._build_claims_ir_via_llm(fingerprint, repo_analysis)
+        claims_ir = self._build_claims_ir_via_llm(fingerprint, repo_analysis, claims_from_fp)
 
         if claims_ir is None:
             # Fallback: deterministic extraction
             self.log("PROGRESS", "Falling back to deterministic claim extraction")
-            claims_from_fp, reason_codes = self._claims_from_fingerprint(fingerprint)
             claims_ir = ClaimsIR(claims=claims_from_fp, reason_codes=reason_codes)
+            claims_ir = self._postprocess_repo_coverage(claims_ir, repo_analysis)
 
         self.artifacts.write_json("fingerprint/claims_ir.json", claims_ir.model_dump())
         return {"claims_ir": claims_ir.model_dump()}

@@ -134,6 +134,8 @@ Guidelines:
 8. Map every code-verifiable claim from claims_ir to an expected_result entry.
 9. IMPORTANT: In commands, always use `python` (not `python3`) — `python3` may resolve to the system interpreter rather than the conda/venv environment's Python.
 10. When tensorflow/torch is a pip dependency, put numpy in pip_dependencies too (not conda) to avoid C ABI mismatches.
+11. Do NOT probe repository-owned Python scripts with `--help` or `-h`; many research scripts execute training instead of printing usage. Use static source inspection commands instead.
+12. For a runnable script step, fallback_commands must be equivalent reruns of the same primary action. Do NOT use passive artifact checks (for example `test -f ...`) as fallbacks for script execution.
 """).strip()
 
 
@@ -150,6 +152,7 @@ def build_step_execution_prompt(
     metric_parsers: list[dict[str, Any]],
     outputs_dir: str,
     step_id: str,
+    failure_context: str | None = None,
     prior_step_results: str | None = None,
 ) -> str:
     parsers_desc = "\n".join(
@@ -170,11 +173,23 @@ already encountered, files already created.
 ```
 """
 
+    failure_section = ""
+    if failure_context:
+        failure_section = f"""
+## Direct Attempt Already Failed
+The planned command has already been executed directly in the managed environment.
+Do recovery work only: diagnose the failure, apply the smallest fix, and retry.
+```text
+{failure_context}
+```
+"""
+
     return dedent(f"""\
 You are executing code in a research repository to reproduce results from a paper.
 Working directory: {repo_dir}
 The conda/venv environment is already activated.
 {context_section}
+{failure_section}
 ## Current Task
 {step_description}
 
@@ -202,7 +217,7 @@ Use the unprefixed name (e.g. METRIC:accuracy=0.9534) ONLY for the most meaningf
 result — typically the validation or test metric, NOT the training metric.
 
 ## Rules
-1. Run the command above. If it fails, diagnose the error and fix it (max 3 attempts).
+1. Recover this step with at most 3 additional attempts.
 2. If a module is missing, install it with `pip install <package>` and retry.
 3. If data files are missing, check the README for download instructions and execute them.
 4. Do NOT create a virtual environment or conda environment — one is already active.

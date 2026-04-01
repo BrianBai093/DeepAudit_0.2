@@ -1,458 +1,567 @@
-# KANNADA-MNIST: A NEW HANDWRITTEN DIGITS DATASETFOR THE KANNADA LANGUAGE
+# Credit Card Fraud Detection: A Deep Learning Approach
 
-Vinay Uday Prabhu
+Sourav Verma
 
-dig.mnist@gmail.com
+ABV-Indian Institute of
 
-August 6, 2019
+Information Technology and Management
 
-# ABSTRACT
+Gwalior-474 010
 
-In this paper, we disseminate a new handwritten digits-dataset, termed Kannada-MNIST, for the Kannada script, that can potentially serve as a direct drop-in replacement for the original MNIST dataset[1]. In addition to this dataset, we disseminate an additional real world handwritten dataset (with $1 0 k$ images), which we term as the Dig-MNIST1 dataset that can serve as an out-of-domain test dataset. We also duly open source all the code as well as the raw scanned images along with the scanner settings so that researchers who want to try out different signal processing pipelines can perform end-to-end comparisons. We provide high level morphological comparisons with the MNIST dataset and provide baselines accuracies for the dataset disseminated. The initial baselines2 obtained using an oft-used CNN architecture $( 9 6 . 8 \%$ for the main test-set and $7 6 . 1 \%$ for the Dig-MNIST test-set) indicate that these datasets do provide a sterner challenge with regards to generalizability than MNIST or the KMNIST datasets. We also hope this dissemination will spur the creation of similar datasets for all the languages that use different symbols for the numeral digits.
+Email: ipg 2013108@iiitm.ac.in
 
-# 1 Introduction
+Joydip Dhar
 
-Kannada is the official and administrative language of the state of Karnataka in India with nearly 60 million speakers worldwide [3]. Also, as per articles 344(1) and 351 of the Indian Constitution, Kannada holds the status of being one of the 22 scheduled languages of India [4]. The language is written using the official Kannada script, which is an abugida of the Brahmic family and traces its origins to the Kadamba script (325-550 AD).
+ABV-Indian Institute of
 
-Distinct glyphs are used to represent the numerals 0-9 in the language that appear distinct from the modern Hindu-Arabic numerals in vogue in much of the world today. Unlike some of the other archaic numeral-systems, these numerals are very much used in day-to-day affairs in Karnataka, as in evinced by the prevalence of these glyphs on license-plates of vehicles captured in fig 1.
+Information Technology and Management
 
-Fig 2 captures the evolution of the numerals through the ages. Modern Kannada scholars [5] posit that the emergence of these numeral-glyphs can be traced to the Gudnapur inscriptions [6], dating back to the $\mathbf { \bar { \boldsymbol { 6 } } } ^ { \dot { t } h }$ century AD when the Kadamba rulers held sway over the region[7]. The Kannada digits for 0-9 are shown in Fig 1 (Unicode: 0CE6 through to 0CEF) [9] .
+Gwalior-474 010
 
-Fig 4 captures the MNIST-ized renderings of the variations of the glyphs across the following modern fonts: Kedage, Malige-i, Malige-n, Malige-b, Kedage-n, Malige-t, Kedage-t, Kedage-i, Lohit-Kannada, Sampige and Hubballi-Regular.
+Email: jdhar@iiitm.ac.in
 
-# 1.1 The curious case of glyphs for 3,7 and 6
+Abstract—Credit card is one of the most extensive method of installment for both online and offline mode of payment for electronic transactions in recent times. credit cards invention has provided significant ease in electronic transactions. However, it has also provided new fraud opportunities for criminals, which results in increased fraud rates. Substantial amount of money have been lost by many institutions and individuals due to fraudulent credit card transactions. Adapting improved and dynamic fraud recognition frameworks thus became essential for all credit card distributing banks to mitigate their losses.
 
-In this section, we focus on some idiosyncrasies with regards to the shapes of the glyphs used to represent numerals in Kannada. Three interesting observations emerge from Fig3 and Fig4.
+In fact, the problem of fraudulent credit card transactions implicates a number of relevant real-time challenges, namely: Concept drift, Class imbalance, and Verification latency. However, the vast majority of current systems are based on artificial intelligence (AI), Fuzzy logic, Machine Learning, Data mining, Genetic Algorithms, and so on, rely on assumptions that hardly address all the relevant challenges of fraud-detection system (FDS).
 
-The first observation is that the glyph for 0 is the same as in the Hindu-Arabic system. Secondly, the shapes of the digits for 3 and 7 in Kannada look rather similar to the glyph for 2 in the modern Hindu-Arabic numeral system (Fig 5).
+This paper aims to understand & implement Deep Learning algorithms in order to obtain a high fraud coverage with very low false positive rate. Also it aims to implement an auto-encoder as an unsupervised (semi-supervised) method of learning common patterns.
+
+Keywords: Credit card fraud, Fraud-detection system (FDS), Electronic transactions, Concept drift, Class imbalance, Verification latency, Machine Learning, Deep Learning
+
+# 1. Introduction
+
+Fraud refers to the intentional illegal exploitation of a system which results in loss of an oblivious entity. Credit card fraud can be defined as illegal use of both online and offline mode of credit card information for electronic transactions. Credit card fraud involves the exploitation of credit card systems which results in the loss of financial resources, the most prominent being monetary although other damages such as loss of integrity and authenticity are possible. Fraud, waste, and abuse in many financial
+
+systems are estimated to result in billions of US dollars annually, thus has became a primary concern for financial institutions around the globe.
+
+Furthermore, the rapid growth of the internet has exposed credit card systems to diverse fraudsters using different mechanisms to exploit financial systems. This provided an explode in attack patterns which rendered the once effective Artificial intelligent (AI), Machine Learning and Case-based fraud detection solutions no more effective as the computational complexity increases with each new detected fraud. More seriously, there is a higher tendency for first time frauds going undetected. The Case-based detection methods are also slow as a successful exploit could multiply if the solution took time to be integrated into the system. This problem can only be addressed with a refined and dynamic techniques capable of adapting to rapidly evolving fraudulent patterns.
+
+Also of concern to credit card fraud detection solutions is, the recognition strength that indicates a Fraud detector’s ability to correctly identify both known and novel frauds. This is usually a direct function of how much fraud samples there are to model a solution. The emergence of Deep Learning algorithms has provided credit card fraud detection experts with verse amount of features and high dimentionality of data that will enhance the detection models. Such solutions that use Deep Learning algorithms to model, offer more efficient and adaptive solutions.
+
+A complete credit card fraud detection model thus,
+
+Must have the following properties:
+
+1) It must be Adaptive: This refers to following abilities:
+
+Ability to detect fraudulent patterns in a matter of moment (i.e quickly). This is also referred to as its alertness.   
+Ability to detect first time fraudulent patterns with high accuracy and low false positive rate.
+
+2) It must be Dynamic: This refers to following abilities:
+
+Ability to detect all new instances of fraudulent activities with rapid alteration of false patterns.
+
+3) It should be able to identify the fraudulent patterns accurately i.e. the true positive rate should be high.   
+4) It should be able to detect the frauds quickly i.e time complexity of the system should be low.   
+5) It should not predict a legit transaction as fraud i.e. the false positive rate should be low.
+
+Also must address following relevant challenges, namely:
+
+1) Concept drift: As customers’ habit changes, fraudsters change their approaches over time.   
+2) Class imbalance: More legit transactions as compare to frauds (less than $0 . 5 \%$ ).   
+3) Verification latency: Only a small set of transactions are timely checked by the authorities.
+
+# 2. Related Works
+
+# 2.1. Frauds and Fraudulent pattern detection
+
+Fraud is a synonym for illicit use of a system to get some benefits, usually resulting in loss to another person. Frauds are as diverse as fraudulent patterns. Credit card fraud is fraud within the financial industry that usually cause monetary losses. The financial industries have been the principal victims of fraudulent activities in recent times. According to [1], substantial amount of money have been lost to insurance fraud. The growth of internet uses have made it easier for fraudsters to divulge and connect in order to target financial institutions from a distance, making it more diverse in nature. This further entangles the threats to credit card security systems, thus fraud detection and prevention are important concern to all financial institutions.
+
+By many estimates, approximately $10 \%$ of insurance company payments are for fraudulent claims, and the global sum of these fraudulent payments, amounts to substantial amount of money.
+
+Fraud detection refers to mechanisms to detect frauds when fraudulent activities occur, while Fraud prevention refers to all measures put in place to prevent frauds from happening, [2]. A necessary requirement for fraud preventive systems is their precision (i.e. predictive measure). Much concern is given to improving the precision of such systems. Fraud detection systems, conversely, need to adapt to the dynamism of threats. Hence in addition to possible predictiveness, Fraud detection systems need to be adaptive to the fraudulent patterns. A related concern usually classified under possible predictiveness is the time complexity of the system to detect fraudulent transactions. Certain systems require near real-time alertness on dubious transactions.
+
+# 2.2. Outlier detection
+
+An outlier is an observation that deviates so much from other observations as to evoke suspicion that it was generated by a different mechanism [3].
+
+Unsupervised learning approaches are used to this model. Usually, the result of unsupervised learning is a new explanation or representation of the original observation data, which then lead to improved future responses or decisions. Unsupervised learning methods do not need prior knowledge of fraudulent and genuine transactions (i.e. labels) in historical databases, instead detect alteration in behavior or unusual transactions. These methods model a baseline distribution that represents normal behavior and then detect observations that show deviation from this norm. Outliers are a basic form of non-standard observation that can be used for fraud detection. In supervised methods, models are trained to discriminate between fraudulent and non-fraudulent behavior so that new observations can be assigned to different classes. Supervised methods require accurate identification of fraudulent transactions in historical databases and can only be used to detect frauds of a type that have previously occurred. An advantage of using unsupervised methods over supervised methods is that previously undiscovered types of fraud may also be detected. Supervised methods are merely trained to discriminate between legit transactions and previously known fraud.
+
+[2] proposed unsupervised credit card fraud detection techniques, using behavioral outlier detection techniques. Anomalous spending behavior and frequency of transactions can be identified as outliers, which could be possible fraud cases.
+
+# 2.3. Rule-based fraud detection
+
+Rule-based methods consist all known fraudulent characteristics and use them to model the fraud detection system (FDS). They are classified as Supervised learning methods as they use previously known fraud to detect similar patterns. Such methods classify transactions using rules made out based on previously detected fraudulent transactions. The process used to adopt such models to evolving threats is manual, and thus such methods are not recommended for persistent threats of these days. An example of such methods include BAYES, RIPPER etc.
+
+Although according to [4], Rule-based fraud analysis can be very tedious to administer because the proper layout of such rules require detailed, onerous, and prolonged programming for each credible fraud instance. The dynamic emergence of multiple new fraud types, demands that these rules be constantly adapted to include existing, emerging, and future fraud options. Moreover, it also presents a major hurdle to scalability. The more data the system must process, the more severe is the performance descents.
+
+# 2.4. Statistical fraud detection
+
+Statistical methods have been used to classify and detect frauds. The transactional data is known to follow a statistical distribution, and thus, transactional data points, that fall out of the normal distribution are considered dubious. Such methods include Linear Discriminant Analysis (LDA) and Logistic Regression [2]. Statistical methods can either be supervised or unsupervised. Supervised methods use known fraudulent cases to model the detector system.
+
+A natural problem with the Statistical method is determining the most relevant distribution to fit a data set (best fit), and with increased dimension of the data, it becomes more difficult to approximate the distribution, [5].
+
+# 2.5. Machine Learning based detection
+
+Machine learning (ML) is the science of getting computers to act without being explicitly programmed. In the past decade, machine learning has given us self-driving cars, practical speech recognition, effective web search, and a vastly improved understanding of the human genome.
+
+ML evolved primarily from Artificial Intelligence (AI) and Soft computing, and also from other fields including applied mathematics, pattern recognition and computational learning theory [6]. ML algorithms are mostly used to handle problems involving automatic data classification [7]. ML algorithms are capable of analyzing data and searching for hidden patterns in data. According to [8] ML algorithms aims to predict patterns from data based on learned experiences. ML algorithms are divided into different classes, namely: supervised learning, unsupervised learning, semisupervised learning, reinforcement learning, transduction and learning to learn [8]. Most of the proposed credit card fraud detection techniques are based on supervised learning and few are based on semi-supervised learning. Some of these techniques are discussed next:
+
+2.5.1. Hidden Markov Model. [9] proposed a technique based on Hidden Markov Model (HMM). In the study, authors used HMM to model a sequence of credit card transactions and divide the transactions into three price ranges (clusters): low (l), medium (m), and high (h). The type of each transaction is linked to the line of business of the corresponding merchant. Afterwards, determine the three probability matrices so that representation of the HMM is complete. These three model parameters are determined in a training phase using the Baum-Welch algorithm [10]. Authors considered the special case of fully connected HMM in which every state of the model can be reached in a single step from every other state.
+
+An HMM is initially trained with the normal behaviour of the cardholder. Thereafter, authors constructed sequences from training data-set and trained the model. In the testing and validation phase, if an incoming credit card transaction is not accepted by the trained HMM with sufficiently high probability, it is considered to be fraudulent. authors also
+
+claim to minimize the true positive rates.
+
+Another proposed technique based on HMM is proposed by [10]. In the study also, authors used HMM to model a sequence of credit card transactions and used K-mean clustering algorithm to cluster the transactions into three price ranges (clusters): low (l), medium (m), and high (h), as proposed by [9] Afterwards, incoming transactions were tested into the trained model and authorized if accepted with sufficiently high probability. Otherwise, transaction will be terminated and IP address of the merchant to be defrauded will be traced using HMM. A notification will be sent to both the merchant system’s administrator and cardholder via mobile communications. Also as per the authors, the HMM was trained with Baum-Welch algorithm.
+
+# 2.5.2. Support vector machines (SVM) based techniques.
+
+[11] performed a comparative study between SVM and decision tree based credit card fraud detection system (FDS). Firstly, authors divided the data-set used into three groups with the ratio of fraudulent transactions to the legit ones in 1:1, 1:4, 1:9 respectively, during the implementation. As usual training to testing data-set was divided by $70 \%$ to $30 \%$ . Authors used four kernels for SVM in the setup. Also they developed seven SVM-based and decision tree based models and tested each of them. Results from experiments revealed that the Decision tree based model outperformed SVM model. The models achieved classification accuracy between the range of 83.02 to $9 4 . 7 6 \%$ .
+
+2.5.3. Frequent item-set mining. [12] proposed a technique based on frequent item-set mining, called Fraud-Miner. Authors separated each customer’s transaction from the whole transactional database and from each customer’s transactions again separated their legit and fraud transactions. Afterwards, applied Apriori algorithm to both the sets of legit and fraud transactions on each customer’s transactions which returns a set of frequent item-sets of both legit and fraud transactions. for testing, authors propose a matching algorithm which spans the legit and fraudulent pattern databases of each customers for a match with the incoming transaction to detect fraud. If a convenient match is found with legit pattern of the corresponding customer, it matches, otherwise not. The experimental result shows that the FraudMiner outperformed the existing solutions eg. SVM, Naive Bias (NB), KNN etc.
+
+2.5.4. Ensemble based technique. [13] proposed a credit card fraud detection model based on bagging ensemble classifier. The primary objective of study was to compare the performance of three different advanced data mining techniques namely: SVM, NB and KNN to bagging ensemble classifier based on decision tree. To counter class imbalance problem authors divided the data-set used into four groups with fraud rates approximately $20 \%$ , $1 5 \%$ , $10 \%$ , $3 \%$ respectively also authors used 10 fold cross validation technique. To compare the results authors weigh the performance of SVM, NB and KNN and compared
+
+with the result obtained by bagging ensemble classifier. The experimental result revealed that bagging ensemble classifier achieved better fraud detection rate and an improved false positive rate.
+
+[14] proposed a credit card fraud detection techniques based on Ensemble classification and extended feature selection. Authors considered both the feature selection and the prediction (decision) cost for accuracy enhancement of the FDS. After selecting best features using an extended wrapper method, an ensemble classification is performed. Authors performed the ensemble classification using cost sensitive decision tree in a decision forest framework. The experimental result revealed that considering the F-measure as the evaluation metric, the proposed approach achieves 1.8 to $2 . 4 \%$ performance improvement compared to the other classifiers.
+
+# 2.6. Nature inspired (NI) based techniques
+
+Nature inspired based methods refers to algorithms inspired by nature’s problem solving ability [15]. In other words, Nature is the source of inspiration to Nature Inspired algorithms. For example, Ant Colony Optimization is inspired by the methods used by ants to seek for pathways between their colony and a food source, Bat algorithm was inspired by the echolocation behaviour of micro-bats, with varying pulse rates of emission and loudness and Genetic Algorithm is inspired by the process of natural selection, that belongs to the larger class of evolutionary algorithms (EA). [16]. NI algorithms are designed to handle complex real world classification and optimization related problems, such as timetabling problem, travelling salesman problems (TSP) and hostel allocation problems [15]. Generally, NI algorithms are used for global optimization. Some NI-based techniques used to provide solution to credit card fraud detection are discussed next.
+
+2.6.1. Genetic algorithm (GA) based techniques. [17] proposed a GA-based credit card FDS with the intent of detecting the fraud with minimum false positive rate. Instead of maximizing the correctly classified transactions authors prescribed an objective function with variable misclassification cost. The objective function intents at minimizing false positive rate. During classification, authors extracted credit card transaction from the database and standardize the data. Afterwords, calculated critical values for each transaction present in the database. Authors also extracted the frequent item-set for credit card usage, indigence, location where the credit card was used, balance on the account linked to credit card, average spending pattern of the credit cardholder from each transaction. Furthermore, authors used Genetic Algorithm (GA) to generate new critical values. Finally, the new critical values were then used for classification.
+
+2.6.2. Artificial neural network (ANN) based techniques. [18] used Simulated annealing (SA) and Back-propagation algorithm (BPA) for Feed-forward Neural Network (FFNN)
+
+to develop a credit card FDS with the intent of hybridizing SA and BPA for FFNN, which can join the symbolic global searching capability of SA with the precise local searching element of back-propagation FFNNs to improve the initial weights of a neural network toward getting a better result for detection fraud. Authors suggest of identifying fraud and legit transactions based on following critical values, namely: credit card usage frequency, number of locations of credit card usage, average credit card indigence and credit card book balance.
+
+Authors randomly initialized the weights of FFNN and evaluated weights using SA, following a temperature annealing schedule with the algorithm. While first temperature value is less than or equal to the minimum error authors selected the best solution. Furthermore, for training, authors initialize the parameters of BP learning algorithm. While the threshold epoch not reached, authors update the weights of BP to minimize the error with training data. Finally, Authors assess the execution of classification with test data to validate the study. The experimental result revealed that BPFFNN with applied SA yielded better false positive rate as compare to the simple BPFFNN algorithm.
+
+# 3. Proposed Methodology
+
+To address the major concerns of a Fraud detection system, the following infrastructural design choices were made.
+
+# 3.1. Deep Learning Model
+
+A deep learning computation model will be used to model FDS. Deep learning models are appropriate here as they serve well for data sets having large amount of data with large no. of features. The ability of such models to learn feature hierarchy composing lower level features into higher level abstractions influenced its choice here. It has the potential to discover sophisticated patterns in large data sets through its self-adjusting back-propagation algorithm.
+
+Furthermore, Deep Learning models address some of the big challenges posed by Big Data computation and analysis, thereby providing efficient means to the use of Big Data.
+
+For the purpose of this task, two Deep Learning models are used to model the credit-card fraud data and to predict fraudulent transactions. The first model will be a Multi-layer feed-forward neural network system. It is built based on the neuron units. The model works by feeding the input data into the first layer. Subsequent layers learn more concrete features from previous layers through non-linear transformations.
+
+# Experiment I: Multi-layer feed-forward supervised learning
+
+This experiment involves tuning a feed-forward deep learning network to model financial data. Parameters such as activation function, number of epochs, hidden layers size will be adjusted until a suitable model is reached. The aim
+
+of the experiment is to find recommendations for Fraud detection system designs.
+
+Choices for activation function include: The Tanh function & Logistic sigmoid function with min-max or z-score normalization. After Using validation set to determine the data standardization approach and the best fit activation functions, According to experiments, It’s found that Tanh performs better than Logistic sigmoid, when using it with z-score normalization. Hence, choosing tanh followed by zscore is the best option. the Epoch numbers will be increased by factors of 10 (1, 10, 100 etc.). Hidden layers will vary between 1 to 50. The mean-squared error (MSE) function or reconstruction error is used as the loss function.
+
+The multi-layer feed-forward Deep Learning model is used to conduct supervised learning with the training data set, which is the majority of the data, splitted in the ratio of 3:1. Design parameters will be varied to determine a recommended design for the FDS on the data set.
+
+# 3.2. Anomaly Detection
+
+The anomaly detection model used here is Deep Autoencoders (DAE) to detect fraudulent pattern in the data-set which is an unsupervised model.
+
+Unsupervised means the model will be trained for both fraud and non-fraud data without feeding the labels. Since the class imbalance is very high in the credit cards, It is expected from the model to learn and memorize the patterns of legit ones after the unsupervised training, and should be able to give a credible score for any transaction as being an outlier. And this unsupervised training would be quite handy in practice especially when we don’t have enough labeled data set. Deep Auto-encoders can be used to pre-train the model before a supervised training.
+
+# Experiment II: Deep Auto-encoders for detecting fraudulent patterns
+
+This experiment involves designing a Deep Auto-encoder to detect anomaly in the credit card data-set. The Deep Auto-encoder learns the pattern in the data-set through non-linear transformations of layers.
+
+To test for anomaly, it reconstructs the test data, anomalous data will deviate a lot from the legit ones and thus will have high error. A deep learning auto-encoder will be trained on $7 5 \%$ of the data set, the remaining $2 5 \%$ will be used to test for the model’s predictions. The mean-squared error (MSE) function or reconstruction error function is used as the loss function.
+
+Reconstruction Error Function:
+
+$$
+L \left(x, x ^ {\prime}\right) = \left| \left| x - x ^ {\prime} \right| \right| ^ {2} \tag {1}
+$$
+
+# Experiment III: Optimization
+
+This experiment involves optimizing the performance of the proposed deep learning fraud detection model. For
+
+optimizing the performance of the FDS, Nature Inspired Bat Algorithm is used. The aim is to mitigate the training cost and complexity of the FDS. Also to enhance the overall performance of the model.
+
+# Experiment IV: Comparison with different Scikit learn algorithms
+
+This experiment involves comparing different Scikitlearn methods/algorithms to classify fraudulent patterns. These comparisons are done using different performance measures e.g.: AUC scores, confusion matrices and precision-recall curves.
+
+# 4. Implementation & Execution
+
+We trained and tested our proposed FDS using Kaggle’s Credit Card Fraud Detection data-set. The summary of data-set:
+
+<table><tr><td colspan="2">Kaggle: Credit Card Fraud Detection Data-set</td></tr><tr><td>Data Set Characteristics</td><td>Multivariate</td></tr><tr><td>Number of Attributes</td><td>31</td></tr><tr><td>Number of Instances</td><td>284807</td></tr><tr><td>Attribute Characteristics</td><td>Categorical, Float64</td></tr></table>
+
+# 4.1. Data Standardization & Activation Function
+
+Two types of data standardization function is considered here: z-score & min-max normalization. 1) z-score normalization will normalize every column such that the resultant columns will have mean of zero and standardization of ones. And this will be a good choice if we are using Tanh activation function. This will output values on both sides of zero. Furthermore, Tanh activation function will leave values that are too extreme to still keep some outliers left after the normalization process. This might be useful to detect some extremeness in this case.
+
+2) min-max normalization will assure all values to be in the range [0, 1]. min-max is the default scaling approach if we are using sigmoid as our output activation function.
+
+Z-Score Standardization Function:
+
+$$
+z - s c o r e = \frac {x - \mu}{\sigma} \tag {2}
+$$
+
+Tanh Activation Function:
+
+$$
+\tanh  = \frac {e ^ {2 x} - 1}{e ^ {2 x} + 1} \tag {3}
+$$
+
+# 4.2. Modeling Auto-encoder as unsupervised learning
+
+• Parameters:
+
+– learning rate $= 0 . 0 1$   
+– training epochs $= 6 0$ (Optimal)   
+– batch size $= 2 5 6$
+
+– display step $= 1$
+
+• Network Parameters:
+
+– n hidden $. 1 = 1 5$   
+– n hidden $2 = 1 5$
+
+• For FC layers:
+
+hidden size $= 4$ (Best hidden size based on validation)   
+– output size $= 2$ (classes: 1 & 0)
+
+# 4.3. Optimization
+
+Optimization is done using Nature Inspired Bat Algorithm.
+
+4.3.1. Binary Bat Algorithm. The binary bat algorithm has been inspired by the echolocation behaviour of bats [19]. The characteristics of bats for finding its pray are being used in this algorithm. Bats tend to decrease the loudness and increase the rate of emitting ultrasonic waves, when they chase pray.
+
+In binary bat algorithm each artificial bat has a position vector, a velocity vector and a frequency vector. The position of the bats in binary bat algorithm is either 0 or 1. The velocity can be updated using the following equations:
+
+$$
+V _ {i} (t + 1) = V _ {i} (t) + \left(X _ {i} (t) - X ^ {*}\right) F _ {i} \tag {4}
+$$
+
+Where Vi , Xi and Fi are the velocity, position and frequency of ith bat. $X ^ { * }$ is the current global best location.
+
+The frequency of the ith bat can be updated using the following formula:
+
+$$
+F _ {i} = F _ {\min } + \left(F _ {\max } - F _ {\min }\right) \beta \tag {5}
+$$
+
+Where $F _ { m i n }$ is the minimum frequency and $F _ { m a x }$ is the maximum frequency. $\beta$ represents a random number which lies between 0 and 1.
+
+The position of bats can be updated based on following function:
+
+$$
+X _ {i} (t + 1) = X _ {i} (t) + V _ {i} (t) \tag {6}
+$$
+
+The loudness and pulse rate of binary bat algorithm is A and r. These two variables can be updated as follows:
+
+$$
+A _ {i} (t + 1) = \alpha A _ {i} (t) \tag {7}
+$$
+
+$$
+r _ {i} (t + 1) = r _ {i} (0) [ 1 - \exp (- \gamma t) ] \tag {8}
+$$
+
+Where $\alpha$ and $\gamma$ are constants. The loudness and the pulse rate are updated when we optimize the new solutions to ensure that the bats are moving toward the best solutions.
+
+4.3.2. Optimization using Binary Bat Algorithm. By using Nature Inspired Bat Algorithm for feature selection process, It is found that some features can be dropped to mitigate the training cost and the complexity of the entire system. Also it enhances the test AUC score significantly. Features dropped were:
+
+’V28’, ’V27’, ’V26’, ’V25’, ’V24’, ’V23’, ’V22’, ’V20’, ’V15’, ’V13’, ’V8’
+
+Algorithm 1: Pseudo code for Binary Bat Algorithm:   
+1 Initialize the bat's position and velocity, $X_{i}$ and $V_{i}$ $(\mathrm{i} = 1,2,3,\dots \mathrm{n})$ 2 Initialize frequency $(F_{i})$ pulse rate $(r_i)$ and loudness $(A_{i})$ 3 while iteration $<$ max_iteration do   
+4 Generate new solutions by adjusting frequencies   
+5 Update velocity and locations for each solution   
+6 if rand $>r_i$ then   
+7 Select a solution among the best solution   
+8 Generate a local solution among the selected best   
+9 end   
+10 Generate a new solution by flying (around) randomly   
+11 if rand $<  A_{i}$ and $F(X_{i}) <   F(X^{*})$ then   
+12 Accept the new solution   
+13 increase $r_i$ and reduce $A_{i}$ 14 end   
+15 Rank the bats and find current best X\*   
+16 end
+
+# 5. Result & Analysis
+
+This section presents the outcomes of the experiments designed to provide Fraud detection systems.
+
+# 5.1. Performance Measures
+
+The following standard evaluation measures were used in describing the predictive Fraud detection models:
+
+1) Mean Square Error (MSE): It is used to assess the quality of a predictor models. It takes values in the range [0, 1]. The goal is to minimize MSE value. A ideal model will have MSE value $= 0$ .   
+2) Accuracy: Accuracy is the simplest performance measure that refers to the closeness of a measured value to a standard or known value. Mathematically, it is the ratio between the number of correct predictions and the total number of predictions.
+
+$$
+A c c u r a c y = \frac {\# C o r r e c t}{\# P r e d i c t i o n s} \tag {9}
+$$
+
+3) Confusion Matrix: A confusion matrix (or confusion table) is a table that is often used to describe the performance of a prediction model on a set of test data for which the true values are known. In other words, it is a matrix between Real Classes and Predicted Classes.
+
+Confusion Matrix has following terms:
+
+True Positive (TP): Means no of positive cases which are predicted positive.
+
+False Positive (FP): Means no of negative cases which are predicted positive.   
+True Negative (TN): Means no of negative cases which are predicted negative.   
+False Negative (FN): Means no of positive cases which are predicted negative.
+
+4) Precision & Recall (PR): Precision is a measure of classifier’s exactness. Whereas, Recall is a measure of classifier’s exactness.
+
+In other words, Precision refers to how many selected items are relevant? Whereas, Recall refers to how many relevant items are selected?
+
+$$
+P r e c i s i o n = \frac {T P}{T P + F P} \tag {10}
+$$
+
+$$
+\text {R e c a l l} = \frac {T P}{T P + F N} \tag {11}
+$$
+
+5) F-scores (F1): F1 score is simply the harmonic mean of precision and recall values.
+
+$$
+F 1 = 2 * \frac {\text {P r e c i s i o n} * \text {R e c a l l}}{\text {P r e c i s i o n} + \text {R e c a l l}} \tag {12}
+$$
+
+6) Area Under Curve (AUC): Also known as ”Area Under the Receiver Operating Characteristic curve (AUROC).” It is used to observe the usefulness of a model. AUROC curve is plotted between the true positive rate and the false positive rate at different threshold values.
+
+# 5.2. Experiment I & II: Result & Analysis
+
+The first & second experiment involves the use of Multilayer feed-forward networks to model Credit Card Fraud data and then to use the proposed deep auto-encoder to classify the fraudulent patterns with greater accuracy.
+
+To perform this, TensorFlow software library is used. It is an open-source library used for data-flow programming across a range of tasks.
+
+Test AUC Score: $9 5 . 3 3 \%$
 
 
 [ImageDescription]
-- source: images/caa48fd4af82337fccb49195f51a890900482a7bf5c6f5f6835abd8bd360126a.jpg
+- source: images/2a37994bd2faa07532e7fc22d321023e1adabfa98470bad6dbc50dec4fb1b639.jpg
 - alt: (no-alt)
 - description: Image found in markdown. Detailed vision caption is unavailable in this runtime.
   
-Figure 1: Usage of the Kannada numerals on vehicular license plates
-
-These will be leveraged during our dataset curation procedure as a sanity check for scanned and segmented digits using a pre-trained MNIST-digits classifier.
-
-The third observation is related to the peculiar intra-class variation of the representation (refer to fig 4 and fig 2) for 6 across different fonts and different eras. The modern day deformations are represented in Fig 6, where we observe the deviation from the puritanical textbook representation of the symbol (as seen in the unicode-derived image on the extreme left) and the more colloquial usage which looks like a mirror image of 3 in the Hindu-Arabic system. As will be seen in the upcoming section, many of the volunteers who helped curate the dataset used one or both of these glyphs, resulting in high intra-class variation.
-
-# 1.2 Related work
-
-There have been some nascent attempts made towards Kannada handwritten digit classification, albeit at a smaller scale. In [10], the authors used the chain code histogram idea to achieve $98 \%$ accuracy on a dataset of 2300 digit-images. In [11], the authors used a nearest neighbor classifier to achieve $91 \%$ accuracy of 250 test numerals. Support Vector Machines (SVMs) were used to achieve $98 \%$ accuracy on a small dataset of $5 0 0 0 4 0 \times 4 0$ numeral-images in [12]. The largest dataset currently used in academic literature that contains Kannada characters is the Chars74k dataset [13] that contains 657 characters of the Kannada script collected using a tablet PC, albeit with a mere 25 samples per-number. In [14], the authors harnessed standard augmentation techniques to create an augmented dataset of 18000 digit images harnessing the Chars74k dataset and trained Convolutional Neural Networks (CNNs) and Deep Belief Networks (DBNs) to obtain $9 8 \%$ test accuracy. Earlier this year, we proposed a Seed-Augment-Train/Transfer (SAT) framework that contains a synthetic seed image dataset generation procedure for languages with different numeral systems using freely available open font file datasets (Lohit to be more specific). This seed dataset of images was then augmented to create a purely synthetic training dataset, using which we trained a deep neural network and tested on held-out real world small-sized handwritten digits dataset spanning five Indic scripts, Kannada, Tamil, Gujarati, Malayalam, and Devanagari, containing 1280 digits each.
-
-Through this paper, we hope to address this paucity of an MNIST-sized dataset for the Kannada language.
-
-# 1.3 Main contributions of the paper
-
-The main contributions are:
-
-1. Contributing a real world handwritten Kannada-MNIST dataset that was collected in Bangalore, India, that can potentially serve as a direct drop-in replacement for the original MNIST dataset[1].   
-2. Contributing an additional 10k real world handwritten Dig-MNIST dataset that was collected in Redwood City, CA, that can serve as an out-of-domain test dataset.   
-3. Open sourcing all the code required to generate such datasets for other languages.
+Figure 1. Auto Encoder confusion matrix
 
 
 [ImageDescription]
-- source: images/4272793f28ecb5ad05e2fba83bfab5d78952e42b2fa30e1e77e69d8d77e21d78.jpg
+- source: images/6e03b94223aaa6f27cb2c6cc096e21c0418115028cdcb84af84ca94274c63f30.jpg
 - alt: (no-alt)
 - description: Image found in markdown. Detailed vision caption is unavailable in this runtime.
   
-Figure 3: The character code tables for Kannada-MNIST from the Unicode Standard, Version 12.1
-
-Figure 2: Evolution of the Kannada numerals through the ages ([8])
-
-The Unicode Standard 12.1   
-
-<table><tr><td>0CE6</td><td>0</td><td colspan="3">KANNADA DIGIT ZERO</td><td>0CEB</td><td>8</td><td colspan="3">KANNADA DIGIT FIVE</td></tr><tr><td>0CE7</td><td>0</td><td colspan="3">KANNADA DIGIT ONE</td><td>0CEC</td><td>2</td><td colspan="3">KANNADA DIGIT SIX</td></tr><tr><td>0CE8</td><td>9</td><td colspan="3">KANNADA DIGIT TWO</td><td>0CED</td><td>2</td><td colspan="3">KANNADA DIGIT SEVEN</td></tr><tr><td>0CE9</td><td>2</td><td colspan="3">KANNADA DIGIT THREE</td><td>0CEE</td><td>6</td><td colspan="3">KANNADA DIGIT EIGHT</td></tr><tr><td>0CEA</td><td>8</td><td colspan="3">KANNADA DIGIT FOUR</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td>○</td><td>○</td><td>○</td><td>○</td><td>○</td><td>○</td><td>○</td><td>○</td><td>○</td><td>○</td></tr></table>
-
-4. Open-sourcing the raw scanned images along with the scanner settings so that researchers who want to try out different signal processing pipelines can perform end-to-end comparisons.   
-5. Performing high level morphological comparisons with the MNIST dataset and providing baselines accuracies for the dataset disseminated.   
-6. Open sourcing the code-templates for generating synthetic seed images for various modern Kannada fonts.
-
-The rest of the paper is organized as follows: Section-2 covers the dataset preparation process, Section-3 details the comparisons vis-a-vis the standard MNIST dataset. In Section-4, we present the classification baseline results obtained using an off-the-shelf CNN, and Section-5 concludes the paper.
-
-# 2 Dataset Creation
-
-In order to avoid the kind of uncertainties, folklore and trivia surrounding MNIST (as evinced in [15]), we have decided to detail and open source all aspects of the data collection process. Further, we have also decided to open-source the
+Figure 2. Auto Encoder AUROC Curve
 
 
 [ImageDescription]
-- source: images/0eeae459cd5941105b797569207a2b4068c6cd3df9a2ec0989e63b4ecfacef77.jpg
-- alt: (no-alt)
-- description: Image found in markdown. Detailed vision caption is unavailable in this runtime.
-
-
-
-[ImageDescription]
-- source: images/2cfd260a8c506391ecefe3d52e7d801f3b48d506dd5affa5da7eb2669e33f960.jpg
+- source: images/a0fa09086bf3dc30dcf1a1ed96c782769cc8102cc752e4a03914f9c08c66874d.jpg
 - alt: (no-alt)
 - description: Image found in markdown. Detailed vision caption is unavailable in this runtime.
   
-Figure 4: MNIST-ized renderings of the 0-9 Kannada numerals in 11 modern fonts   
-Unicode-0CE9 (Lohit-font)
+Figure 3. Show distribution of all MSE
 
 
 [ImageDescription]
-- source: images/88b3706dba2a85dff695859f05d72f93e81b17c3c36f67d0439f014c94f464c2.jpg
+- source: images/2c02a4548d00b1bde5f5d8715987256a9a7eece14e69f438ab5c91a59372a8ba.jpg
 - alt: (no-alt)
 - description: Image found in markdown. Detailed vision caption is unavailable in this runtime.
   
-Mean (class-3)
+Figure 4. Display only fraud cases
+
+# 5.3. Experiment III: Result & Analysis
+
+The third experiment involves Nature Inspired Bat Algorithm for optimizing the FDS implemented using the first and the second experiment. The optimization is done using binary bat algorithm in the feature selection stage. It is found that this optimization can mitigate the training cost and the complexity of the entire system. Also it enhances the test AUC score significantly.
+
+Test AUC Score: $9 6 . 2 1 \%$
 
 
 [ImageDescription]
-- source: images/197da7c25204f17a61299cbc9c83dd29600734b4e8789c9b8583cc17f3c36563.jpg
+- source: images/3a09172fca95737af9f55ed8fc1d9b333cf22cb9472724012be4232ed16a2ef7.jpg
 - alt: (no-alt)
 - description: Image found in markdown. Detailed vision caption is unavailable in this runtime.
   
-Unicode-0CED (Lohit-font)
+Figure 5. Auto Encoder confusion matrix
 
 
 [ImageDescription]
-- source: images/aa0835b814b17675675cc30b8d248c693af372adc5fd9be14ef11b443cd2aa28.jpg
+- source: images/73312c453dfb87c1c694b2ddb9c34cc5bfbd990af9c1781bd75c539ed2c48579.jpg
 - alt: (no-alt)
 - description: Image found in markdown. Detailed vision caption is unavailable in this runtime.
   
-Mean (class-7)   
-Figure 5: The similarity between the glyphs for 3 and 7 in Kannada
+Figure 6. Auto Encoder AUROC Curve
 
-raw scan images to facilitate end-to-end experimentation with disparate signal processing pipelines. In this section, we will cover the details of creating the following two datasets:
+# 5.4. Experiment IV: Result & Analysis
 
-1. The main Kannada-MNIST dataset that consists of a training set of $6 0 0 0 0 \ : 2 8 \times 2 8$ gray-scale sample images and a test set of 10000 sample images uniformly distributed across the 10 classes. This dataset is based off of the efforts of 65 volunteers from Bangalore, India, who are native speakers and users of the Kannada language and the script. This was curated to serve as a direct one-to-one drop-in replacement for the original MNIST dataset (akin to Fashion-MNIST [16] and K-MNIST [17] datasets).   
-2. The Dig-MNIST dataset that consists of $1 0 2 4 0 2 8 \times 2 8 \time 1 0 0 0 0$ gray-scale images that was curated with the purpose of providing a more challenging test dataset that was curated in Redwood City, CA, with the help of volunteers
+The forth and final experiment involves Comparing different Scikit-learn methods/algorithms to classify fraudulent patterns. These comparisons are done using different performance measures e.g.: AUC scores, confusion matrices and precision-recall curves.
+
+# 5.4.1. FDS using different Scikit learn methods with Under-sampling. This experimentation uses Undersampling to handle class imbalance problem.
+
+Under-sampling intends to balance class distribution by randomly eliminating majority class observations. This is practised until the majority and minority class instances are balanced out.
 
 
 [ImageDescription]
-- source: images/540bd581ec7617368774353500c979cb026d58a96c426e2a172900af14aa0eb7.jpg
+- source: images/1f0663fa831369493c6a15d46875885824dd4dcc2636b5ce6635c3e7b0ecd960.jpg
 - alt: (no-alt)
 - description: Image found in markdown. Detailed vision caption is unavailable in this runtime.
   
-Unicode-0CEC (Lohit-font)
+Figure 7. AUCROC Curve with Under-sampling
+
+We can see that XGB performs better than any other Scikit learn algorithms but the proposed FDS and the optimization outperforms it.
+
+# 5.4.2. FDS using different Scikit learn methods with Over-sampling. This experimentation uses Synthetic Minority Over-sampling Technique (SMOTE) to handle class imbalance problem.
+
+SMOTE is used to avoid over-fitting which occurs when exact replicas of minority class instances are added to the main data-set.
+
+A subset of data is taken from the minority class distribution as an example and then new, synthetic similar instances are created. These synthetic instances are then added to the original data-set. The new data-set is used as a sample to train the classification models.
 
 
 [ImageDescription]
-- source: images/eabb1df0f76f17318570e0ee597084cae198959bbf580df1134f0d4940c50134.jpg
+- source: images/fc26e2d5ab9e597311551517f1a04b1b61e4535811c8c03de7d054fcc8722527.jpg
 - alt: (no-alt)
 - description: Image found in markdown. Detailed vision caption is unavailable in this runtime.
   
-Volunteer-1's instance
+Figure 8. AUCROC Curve with Over-sampling
+
+In this case Random Forest is the brightest performer, in fact it turns out to be almost an ideal classifier. But it might be the case that after applying SMOTE, the model gets over-fitted that means its credibility is not guaranteed.
+
+5.4.3. FDS using different Scikit learn methods with Stratified 3-fold sampling. This experimentation uses different Scikit learn method to implement FDS on the given data-set. Also in this experiment Stratified 3-fold sampling is used to demonstrate the different performance measures of these algorithms at three different folds.
+
+Below is the best fold demonstration for different Scikit learn algorithms:
 
 
 [ImageDescription]
-- source: images/66ec543a165f0bbcc9c687eaa1f0b1bc992dd927e81a6b75b642d6cedcbb40c5.jpg
+- source: images/715f7eb6c202a20edbe7f5d298eae36dd1dc62caa453c840949257da37a20a50.jpg
 - alt: (no-alt)
 - description: Image found in markdown. Detailed vision caption is unavailable in this runtime.
   
-Mean over the dataset   
-Figure 6: Deformations in the numeral glyphs for 6
+• Random Forest (RF):   
+Figure 9. RF Confusion Matrix
 
-many of whom were encountering the Kannada script for the first time and had fair difficulty in replicating the shape of the glyphs. This test dataset, we hope will facilitate domain adaptation experiments.
 
-# 2.1 Main dataset
+[ImageDescription]
+- source: images/d19a5779ab2ed6301b926c00b9506c08f7c238055a306a46e4fb9ef482855eee.jpg
+- alt: (no-alt)
+- description: Image found in markdown. Detailed vision caption is unavailable in this runtime.
+  
+Figure 13. DT with entropy Classification Report
 
-Fig 7 presents the work-flow followed to curate the main Kannada-MNIST dataset. The whole process was split into four phases: Data-gathering, pre-processing and slicing, Sanity-check, Train-test split. In the following subsections, we will cover each of these in detail.
+Figure 10. RF Classification Report
 
-# 2.1.1 Data-gathering
+# • Linear Regression (LR):
 
-65 volunteers were recruited in Bangalore, India, who were native speakers of the language as well as day-to-day users of the numeral script. Each volunteer filled out an A3 sheet containing a $3 2 \times 4 0$ grid. This yielded filled-out A3 sheets containing 128 instances of each number which we posit is large enough to capture most of the natural intra-volunteer variations of the glyph shapes. All of the sheets thus collected were scanned at 600 dots-per-inch resolution using the Konica Accurio-Press-C6085 scanner that yielded $6 5 ~ 4 9 6 3 \times 3 5 0 9$ png images.
+<table><tr><td colspan="4">Coefficient:</td></tr><tr><td>[-5.13666891e-09</td><td>-1.94003929e-03</td><td>2.85955120e-03</td><td>-5.12566968e-03</td></tr><tr><td>3.82127084e-03</td><td>-2.34242973e-03</td><td>-1.70713138e-03</td><td>-6.92689998e-03</td></tr><tr><td>9.84500022e-04</td><td>-3.61701850e-03</td><td>-8.06975037e-03</td><td>6.22972168e-03</td></tr><tr><td>-1.08467353e-02</td><td>-1.87312931e-04</td><td>-1.31613033e-02</td><td>-2.09226924e-04</td></tr><tr><td>-9.36694484e-03</td><td>-1.61326157e-02</td><td>-5.64633721e-03</td><td>1.94153822e-03</td></tr><tr><td>2.57593383e-04</td><td>2.08422229e-03</td><td>1.77236969e-04</td><td>1.01074257e-04</td></tr><tr><td>-5.02834707e-04</td><td>3.00092273e-04</td><td>3.43306751e-04</td><td>1.44082788e-03</td></tr><tr><td>1.17774065e-03</td><td>7.15060808e-06]</td><td></td><td></td></tr><tr><td colspan="4">Intercept:</td></tr><tr><td colspan="4">0.0015802378973</td></tr><tr><td colspan="4">Accuracy = 0.525421124788</td></tr></table>
 
-# 2.1.2 Pre-processing and slicing
+Figure 11. LR Classification Report
 
-In this sub-phase, each of the $4 9 6 3 \times 3 5 0 9$ sized scanned $3 2 \times 4 0$ grid png images were passed through two preprocessing stages3 as detailed in [18]. This approach was originally used as an extraction framework to eke out the digits for a Sudoku-solver. The first pre-processing stage entails:
+# • Logistic Regression (LOR):
 
-1. Applying a Gaussian-blur filter of kernel-size $9 \times 9$   
-2. Performing adaptive thresholding using 11 nearest neighbour pixels   
-3. Applying a bitwise-NOT operator to perform colour inversion to ensure that the target gridlines have non-zero pixel values
+<table><tr><td colspan="2">Coefficient: 
+[[-7.07873101e-05 3.10375906e-01 -4.39220249e-01 -8.03621195e-01 
+1.02051153e-01 -1.18303954e-02 -5.80886115e-02 2.97149895e-01 
+-3.13064087e-01 -3.61117841e-01 -2.02536358e-01 -2.81515103e-01 
+2.63285979e-02 -2.93581993e-01 -6.54243726e-01 -4.33720511e-01 
+-2.92949221e-01 -4.72907602e-01 1.94575437e-02 2.64922477e-02 
+1.05852994e-01 2.52719436e-01 3.49222013e-01 1.08728798e-01 
+-3.89816931e-02 -3.16207443e-01 5.00063890e-02 -9.07856182e-02 
+2.71164375e-02 -5.99714346e-03]]</td></tr><tr><td>Intercept: 
+[-1.59521329]</td><td></td></tr><tr><td colspan="2">Accuracy = 0.999120460099</td></tr></table>
 
-The second pre-processing phase entailed two operations. The first was to estimate the corners of the largest polygon that was then harnessed to crop and warp the $3 2 \times 4 0$ grid-image. The intermediate images after these phases are as shown in Fig 7.
+Figure 12. LOR Classification Report
 
-The cropped-and-warped image thus obtained was then segmented into 1280 slices to yield the constituent individual digit images which were then MNIST-ized4. For this, we followed the procedure in [19] that entails pixel-thresholding, row-column padding and finally inflicting a Best-shift transformation to drag the current center-of-mass of the digit image to the center of the target MNIST-ized $2 8 \times 2 8$ image. At the end of this phase, we had a $1 2 8 \times 1 0 \times 2 8 \times 2 8$ image tensor per scanned image. The class-label associated with each image was obtained using the row index of the image in the $3 2 \times 4 0$ grid.
+# Decision Tree Classifier using entropy criterion (DT):
 
-# 2.1.3 Sanity-check
+<table><tr><td colspan="5">---Classification Report---</td></tr><tr><td></td><td>precision</td><td>recall</td><td>f1-score</td><td>support</td></tr><tr><td>0</td><td>1.00</td><td>1.00</td><td>1.00</td><td>94772</td></tr><tr><td>1</td><td>0.72</td><td>0.78</td><td>0.75</td><td>164</td></tr><tr><td>avg / total</td><td>1.00</td><td>1.00</td><td>1.00</td><td>94936</td></tr><tr><td colspan="5">Accuracy = 0.999104659981</td></tr></table>
 
-One natural question that emerged during our new dataset curation was how to ensure the MNIST-compatibility of the same? In order to assuage these concerns, we decided to literally use a CNN pre-trained on the original MNIST digits
 
-and perform inference on the newly created digit images targeting classes in Kannada that looked similar to the MNIST digits.This formed an integral part of a series of sanity checks we performed that are as shown in Fig 7 and listed below:
+[ImageDescription]
+- source: images/d218a06abd0e497c47f7669c77729034e0a28dbfb5952d4e79be00acc1dea6b0.jpg
+- alt: (no-alt)
+- description: Image found in markdown. Detailed vision caption is unavailable in this runtime.
+  
+Figure 14. DT with entropy Confusion Matrix
 
-1. Firstly, we perform class-wise checks by looking at the histogram of counts of the labels as well as eye-balling out the class-wise mean images of the $1 2 8 \times 1 0$ digits array and visually verifying that they indeed look like their archetypal glyphs.   
-2. Secondly, using the observations made in Section 1.1, we perform 3 sets of classifications on the MNIST-ized digit images. We use a high accuracy $( 9 9 . 4 \%$ test-set accuracy) $\mathrm { C N N } ^ { 5 }$ pre-trained on MNIST digits to classify the images belonging to class zero(as the glyph for zero is the same), three and seven (as the glyphs look very similar to 2 in MNIST). This produces a triple of accuracies which are used to ascertain the quality and MNIST-likeness of the images produced by the parsing procedure we’ve deployed. With regard to Fig 7, $9 5 \%$ of the 128 zero-images were classified by the MNIST-CNN as zero, $9 6 \%$ of the 128 three-class images were classified by the MNIST-CNN as class-2 and $8 3 \%$ of the 128 seven-class images were classified by the MNIST-CNN as class-2.
 
-We have duly shared the implementation of the step-wise procedure described above as a colab notebook accessed here: https://github.com/vinayprabhu/Kannada_MNIST/blob/master/colab_ notebooks/0)Scan_parse_example_main.ipynb
+[ImageDescription]
+- source: images/493bd94128e391c96f1083a4b81dadcfce23e0acf1443792f7d6fdb53b622240.jpg
+- alt: (no-alt)
+- description: Image found in markdown. Detailed vision caption is unavailable in this runtime.
+  
+• Decision Tree Classifier using gini criterion (DT):   
+Figure 15. DT with gini Confusion Matrix
 
-# 2.1.4 Train-test split: Worst cohort selection
 
-Using the curation procedure described above, we were able to collect $6 5 \times 1 2 8 0 = 8 3 2 0 0$ images. In order to ensure that our dataset would serve as drop-in replacement to the MNIST dataset, we had to select 60000 images for the final training set and 10000 images for the final test dataset. Upon random selection, we were able to hit similar levels of accuracy $( > 9 9 \% )$ that is achieved for the MNIST dataset. This could very well be attributed to the fact that random sampling based train-test data segmentation essentially allows the CNN to cover the span of the possible glyph-modes used by a user to represent a numeral whereas the real generalization challenge lies in being able to model the possible deviations that the glyphs shape might take across unseen users. Hence, we first sorted the users according to their difficulty scores. The difficulty score for a user was computed by taking the mean of the elements of the proxy-score-vector, which represents the probabilities that the user’s 0, 3 and 7 representations in Kannada would be classified as 0, 2 and 2 by the MNIST-CNN classifier as explained in Section 2.1.3. We then picked the top/worst 8 users into a test cohort and sampled 10000 digits to form the final test dataset. We then picked the next 47 users and sampled 60000 digits to form the final train dataset. This implies that any test-accuracy achieved by a machine learning classifier model will actually map to the ability of the classifier to predict the digit-classes from images emanating from users hitherto unseen during the training phase. The triple of 0-3-7 class accuracy-vectors of the train and test datasets thus formed were [0.943, 0.962, 0.9575] and [0.825, 0.87, 0.743] respectively.
+[ImageDescription]
+- source: images/d5709ced92b68b2d18bf8728e4453c2a457d73981c5304d873fd9fb0e1e1eeba.jpg
+- alt: (no-alt)
+- description: Image found in markdown. Detailed vision caption is unavailable in this runtime.
+  
+Figure 16. DT with gini Classification Report
 
-We have shared the implementation of this procedure through a colab notebook shared here: https: //github.com/vinayprabhu/Kannada_MNIST/blob/master/colab_notebooks/1b)_Main_ dataset_tensor_generation_worst_cohort.ipynb
 
-The class-wise mean images of the train set (top-row) , the test set (second-row) and the difference between the train and test classwise-means is shown in Fig 8
+[ImageDescription]
+- source: images/1d629e237a7b5e91b21c38a3e8da3e70d744c3698772397056441e585af4887e.jpg
+- alt: (no-alt)
+- description: Image found in markdown. Detailed vision caption is unavailable in this runtime.
+  
+• Gradient Boosting Machine (GBM):   
+Figure 17. GBM Confusion Matrix
 
-# 2.2 10k Dig-MNIST dataset
 
-As stated above, we also disseminate an additional more challenging 10k Dig-MNIST dataset in this paper that was collected using volunteers in Redwood City, many of whom were, in fact, seeing the numeral glyphs for the first time and trying their best to reproduce the shapes. This sampling-bias, combined with the fact that we used a completely different writing sheet dimension and scanner settings, resulted in a dataset that would turn out to be far more challenging than the easy test dataset curated in the above sub-section. The rest of this sub-section details the specifics of the procedure and the companion colab notebook can be obtained at: https://github.com/vinayprabhu/Kannada_MNIST/ blob/master/colab_notebooks/2)_Kannada_MNIST_10k_RWC.ipynb.
+[ImageDescription]
+- source: images/e5f01e01f74797b331343fceaa4d329574b2b2e828539ffdb7957cf60fb451dc.jpg
+- alt: (no-alt)
+- description: Image found in markdown. Detailed vision caption is unavailable in this runtime.
+  
+Figure 18. GBM Classification Report
 
-# 2.3 Dataset curation
+# • XGBoost Classifier (XGB):
 
-8 volunteers aged 20 to 40 were recruited to generate a $3 2 \times 4 0$ grid of Kannada numerals (akin to 2.1), all written with a black ink Z-Grip Series | Zebra Pen on a commercial Mead Cambridge Quad Writing Pad, 8-1/2" x 11", Quad Ruled,
+Figure 19. XGBoost Classification Report   
 
-White, 80 Sheets/Pad book. We then scan the sheet(s) using a Dell - S3845cdn scanner (See Fig 9)with the following settings:
+<table><tr><td colspan="5">---Classification Report---</td></tr><tr><td></td><td>precision</td><td>recall</td><td>f1-score</td><td>support</td></tr><tr><td>0</td><td>0.98</td><td>0.99</td><td>0.99</td><td>94771</td></tr><tr><td>1</td><td>0.99</td><td>0.98</td><td>0.99</td><td>94771</td></tr><tr><td>avg / total</td><td>0.99</td><td>0.99</td><td>0.99</td><td>189542</td></tr><tr><td colspan="5">Accuracy = 0.987680830634</td></tr></table>
 
-• Output color: Grayscale   
-• Original type: Text   
-• Lighten/Darken: Darken $^ { + 3 }$   
-• Size: Auto-detect
+# • ADABoost Classifier (ADAB):
 
-The reduced size of the sheets used for writing the digits (US-letter vis-a-vis A3) resulted in smaller scan (.tif) images that were all approximately $1 6 0 0 \times 2 0 0 0$ . The Darken $^ { + 3 }$ scanner option resulted in the grid lines being visible enough that it allowed us to use the same signal processing pipeline detailed in Section 2.1 built on the sudoku-digit extraction idea. Fig 10 captures the user-wise class-wise mean-images for the dataset thus curated.
 
-# 3 Comparisons with the MNIST dataset
+[ImageDescription]
+- source: images/0ae592f697e57cb6a70d6416bae19fa8bbff47a5780dd225bfd2334250f21e19.jpg
+- alt: (no-alt)
+- description: Image found in markdown. Detailed vision caption is unavailable in this runtime.
+  
+Figure 20. ADABoost Confusion Matrix
 
-In the section, we provide some qualitative and quantitative comparisons between the MNIST and the Kannada-MNIST datasets6
+Figure 21. ADABoost Classification Report   
 
-# 3.1 Morphological comparisons
+<table><tr><td colspan="5">---Classification Report---</td></tr><tr><td></td><td>precision</td><td>recall</td><td>f1-score</td><td>support</td></tr><tr><td>0</td><td>1.00</td><td>1.00</td><td>1.00</td><td>94772</td></tr><tr><td>1</td><td>0.92</td><td>0.82</td><td>0.87</td><td>164</td></tr><tr><td>avg / total</td><td>1.00</td><td>1.00</td><td>1.00</td><td>94936</td></tr><tr><td colspan="5">Accuracy = 0.999568130109</td></tr></table>
 
-In Fig 11, we provide a comparison of the mean pixel-wise intensities between the MNIST and the Kannada-MNIST datasets. As seen, the Kannada-MNIST dataset is much less peaky with a maximal mean pixel-intensity of $\sim 0 . 3$ as compared to the MNIST dataset, that has a few pixel indices with mean pixel-intensities of $\sim 0 . 6$ . In Fig 12, we used the Morpho-MNIST framework [20] to generate the statistics of morphological traits such as length, thickness, slant, width and height of the handwritten digits for the two datasets. As seen, the bi-modality of length as well as width is less pronounced for the Kannada digits. The slant-to-width joint-scatter-plots were visibly different between the two datasets as well.
+In this case again Random Forest is the brightest performer, as we can see its false positive rate. But looking at the recall value, its below our expectations. i.e we can again say that out proposed FDS model with the optimization outperforms this case as well.
 
-# 3.2 Dimensionality reduction comparisons
+# 6. Conclusion
 
-To begin with, we used the Uniform Manifold Approximation and Projection (UMAP) [21] technique to visualize a two-dimensional projection of the two datasets. As seen in Fig 14, the two sub-plots paint a very different picture of the lower dimensional representations for the two datasets. We also performed dimensionality reduction analysis using PCA to understand the variation of explained variance across the PCA components. As seen in Fig 13,the top-50 PCA components explain $8 3 \%$ of the total variance for the MNIST dataset and only $6 3 \%$ for Kannada-MNIST.
+The proposed methodology has made a useful contribution through the unsupervised Fraud detection method. In fact this can be a step towards more automation in the Fraud detection systems. This is important because it reduces human intervention in the whole process and therefore mitigates time and cost. Also it obtains a high fraud coverage with low false alarm rate.
 
-# 4 Classification results
+The supervised Fraud detection approaches have been shown to be an effective classifier. But the proposed method is useful even when labeled data is not available.
 
-In this section, we present the classification results obtained by training an off-the-shelf $\mathrm { C N N } ^ { 7 }$ (See Fig 15) using Adadelta optimizer with learning-rate $^ { : = 1 }$ .0 and $\rho = 0 . 9 5$ . For the main dataset, with 60, 000 − 10, 000 train-test split, we achieved $9 7 . 1 3 \%$ top-1 accuracy. The classification report is as shown in Table 1 and the epoch-wise accuracy and loss plots are as shown in Fig 17. In Fig 16, we have the confusion matrix. This pre-trained CNN achieved $7 6 . 2 \%$ top-1 accuracy on the dig-10k dataset. In terms of precision, class-2 $( 6 3 . 9 \% )$ and class-6 $( 5 5 . 1 \% )$ were the most challenging. In terms of recall, classes 0,3 and 7 were all at the sub- $6 1 \%$ level. This showcases the fragile nature of the CNN’s ability to truly generalize across author-cohorts and provides for an interesting challenge to the machine learning community at large. Fig 18 and Table 2 provide the confusion matrix and the per-class classifcation report for the dig dataset.
-
-Lastly, for the single-author 1280 digits dataset used in [22], we achieved $8 3 . 6 7 \%$ top-1 accuracy. Again, as seen in Table 3 the CNN did struggle to achieve good precision class-6 $( 6 0 \% )$ and good recall for classes -0 and 7 $( 6 0 - 6 3 \% )$ Figure 19 provides the confusion matrix for the same. Given the smaller size of the test dataset, we did dig in to visualize the images of the digits that the CNN classified for classes 0 (Fig 20), 7(Fig 21) and $8 ( \mathrm { F i g } 2 2 )$ . The title of each of the plots represents the predicted class by the CNN. As seen, for a human eye, most of the images do look like the glyphs. But, upon closer inspection, we observe the presence of rogue non-glyph pixels (akin to naturally occurring
-
-Table 1: Classification report for the Kannada MNIST dataset   
-
-<table><tr><td>class</td><td>precision</td><td>recall</td><td>f1-score</td><td>support</td></tr><tr><td>0</td><td>0.9702</td><td>0.9130</td><td>0.9408</td><td>1000</td></tr><tr><td>1</td><td>0.9239</td><td>0.9830</td><td>0.9525</td><td>1000</td></tr><tr><td>2</td><td>0.9960</td><td>0.9970</td><td>0.9965</td><td>1000</td></tr><tr><td>3</td><td>0.9627</td><td>0.9800</td><td>0.9713</td><td>1000</td></tr><tr><td>4</td><td>0.9538</td><td>0.9920</td><td>0.9725</td><td>1000</td></tr><tr><td>5</td><td>0.9828</td><td>0.9700</td><td>0.9763</td><td>1000</td></tr><tr><td>6</td><td>0.9466</td><td>0.9740</td><td>0.9601</td><td>1000</td></tr><tr><td>7</td><td>0.9967</td><td>0.9010</td><td>0.9464</td><td>1000</td></tr><tr><td>8</td><td>0.9822</td><td>0.9930</td><td>0.9876</td><td>1000</td></tr><tr><td>9</td><td>0.9771</td><td>0.9820</td><td>0.9796</td><td>1000</td></tr><tr><td>accuracy</td><td></td><td></td><td>0.9685</td><td>10000</td></tr><tr><td>macro_avg</td><td>0.9692</td><td>0.9685</td><td>0.9684</td><td>10000</td></tr><tr><td>weighted_avg</td><td>0.9692</td><td>0.9685</td><td>0.9684</td><td>10000</td></tr></table>
-
-Table 2: Classification report for the dig dataset   
-
-<table><tr><td>Class</td><td>precision</td><td>recall</td><td>f1-score</td><td>support</td></tr><tr><td>0</td><td>0.8360</td><td>0.6074</td><td>0.7036</td><td>1024</td></tr><tr><td>1</td><td>0.9013</td><td>0.7578</td><td>0.8233</td><td>1024</td></tr><tr><td>2</td><td>0.6385</td><td>0.9434</td><td>0.7615</td><td>1024</td></tr><tr><td>3</td><td>0.8787</td><td>0.6016</td><td>0.7142</td><td>1024</td></tr><tr><td>4</td><td>0.9191</td><td>0.7432</td><td>0.8218</td><td>1024</td></tr><tr><td>5</td><td>0.7441</td><td>0.9541</td><td>0.8361</td><td>1024</td></tr><tr><td>6</td><td>0.5511</td><td>0.7949</td><td>0.6509</td><td>1024</td></tr><tr><td>7</td><td>0.8918</td><td>0.5713</td><td>0.6964</td><td>1024</td></tr><tr><td>8</td><td>0.7732</td><td>0.7725</td><td>0.7728</td><td>1024</td></tr><tr><td>9</td><td>0.7936</td><td>0.8711</td><td>0.8305</td><td>1024</td></tr><tr><td>accuracy</td><td></td><td></td><td>0.7617</td><td>10240</td></tr><tr><td>macro_avg</td><td>0.7927</td><td>0.7617</td><td>0.7611</td><td>10240</td></tr><tr><td>weighted_avg</td><td>0.7927</td><td>0.7617</td><td>0.7611</td><td>10240</td></tr></table>
-
-adversarial perturbations) and discontinuities in the strokes in many of the erroneously classified images, which we posit might well explain the misclassifications.
-
-# 5 Conclusion and Future work
-
-In this paper, we described in detail the creation of a new handwritten digits dataset for the Kannada language, which we term as Kannada-MNIST dataset. We have duly open sourced all aspects of the dataset creation including the raw scan images, the specific brand of paper used8, the exact scanner model used, the signal processing script used to slice and extract the individual digits and the CNN models used to obtain the baseline accuracies. We were able to attain $\sim 9 7 \%$ top-1 accuracy when we trained and tested on what we term as the main dataset with $6 0 0 0 0 \ : 2 8 \times 2 8$ gray-scale training images and 10000 test images. This is meant to be in a drop-in replacement for the standard MNIST dataset. We also achieved a top-1 accuracy of $\sim 7 7 \%$ when we trained on the 60000 main dataset and tested on 10240 $2 8 \times 2 8$ gray-scale test images from what we term as the Dig-MNIST dataset. The images in the Dig-MNSIT dataset are noisier with smudges and grid borders sneaking in during the grid-image segmentation phase.
-
-We propose the following open challenges to the machine learning community at large.
-
-1. Achieve MNIST-level accuracy by training on the Kannada-MNIST dataset and testing on the Dig-MNIST dataset without resorting to image pre-processing.
-
-Table 3: Classification report for the 1280 digits dataset used in [22]   
-
-<table><tr><td>Class</td><td>Precision</td><td>Recall</td><td>f1-score</td><td>Support</td></tr><tr><td>0</td><td>0.99</td><td>0.61</td><td>0.75</td><td>128</td></tr><tr><td>1</td><td>0.88</td><td>0.95</td><td>0.91</td><td>128</td></tr><tr><td>2</td><td>0.75</td><td>1.00</td><td>0.86</td><td>128</td></tr><tr><td>3</td><td>0.99</td><td>0.79</td><td>0.88</td><td>128</td></tr><tr><td>4</td><td>0.98</td><td>0.87</td><td>0.92</td><td>128</td></tr><tr><td>5</td><td>0.83</td><td>0.98</td><td>0.90</td><td>128</td></tr><tr><td>6</td><td>0.60</td><td>0.89</td><td>0.72</td><td>128</td></tr><tr><td>7</td><td>0.95</td><td>0.63</td><td>0.76</td><td>128</td></tr><tr><td>8</td><td>0.78</td><td>0.71</td><td>0.74</td><td>128</td></tr><tr><td>9</td><td>0.88</td><td>0.93</td><td>0.90</td><td>128</td></tr><tr><td>Accuracy</td><td></td><td></td><td>0.84</td><td>1280</td></tr><tr><td>macro_avg</td><td>0.86</td><td>0.84</td><td>0.84</td><td>1280</td></tr><tr><td>weighted_avg</td><td>0.86</td><td>0.84</td><td>0.84</td><td>1280</td></tr></table>
-
-2. To characterize the nature of catastrophic forgetting when a CNN pre-trained on MNIST is retrained with Kannada-MNIST. This is particularly interesting given the observation that the typographical glyphs for 3 and 7 in Kannada-MNIST hold uncanny resemblance with the glyph for 2 in MNIST.   
-3. Get a model trained on purely synthetic data generated9 using the fonts (as in [22]) and augmenting using frameworks such as [20] and [23] to achieve high accuracy of the Kannada-MNIST and Dig-MNIST datasets.   
-4. Replicate the procedure described in the paper across different languages/scripts, especially the Indic scripts.   
-5. With regards to the dig-MNIST dataset, we saw that some of the volunteers had transgressed the borders of the grid and hence some of the images either have only a partial slice of the glyph/stroke or have an appearance where it can be argued that they could potentially belong to either of two different classes. With regards to these images, it would be worthwhile to see if we can design a classifier that will allocate proportionate softmax masses to the candidate classes.   
-6. The main reason behind us sharing the raw scan images was to foster research into auto-segmentation algorithms that will parse the individual digit images from the grid, which might in turn lead to higher quality of images in the upgraded versions of the dataset.
-
-# Acknowledgement
-
-To begin with, we’d like to acknowledge the contribution of all the volunteers who contributed towards this dataset. Specifically, we’d like to thank Kaushik BK, who was instrumental in helping manage the cohort of 65 volunteers who contributed to the main dataset in Bangalore, India. We’d also like to acknowledge the contributors of the Dig-MNIST dataset in Redwood City, including John Whaley, Nick Richardson, Joseph Gardi and Preethi Sheshadri. Last but not the least, we’d like to acknowledge the helpful advice shared by the authors of the K-MNIST paper, Tarin Clanuwat, Alex Lamb(Mila) and David Ha (Google Brain).
+The proposed Fraud detection approach can be a very effective method especially as the two fields (large amount of data and Deep learning) are rapidly evolving but more importantly because Deep learning is posited to be the most promising Machine learning method for Big Data analytic.
 
 # References
 
-[1] Yann LeCun, Corinna Cortes, and CJ Burges. Mnist handwritten digit database. AT&T Labs [Online]. Available: http://yann. lecun. com/exdb/mnist, 2:18, 2010.   
-[2] Evelyn Richter. Student slang at IIT Madras: a linguistic field study. Master’s thesis, Technische Universitat Chemnitz, Str. der Nationen 62, 09111 Chemnitz, Germany, 2006.   
-[3] Kannada. https://en.wikipedia.org/wiki/Kannada, 2019. [Online; accessed 16-Mar-2019].   
-[4] Eighth schedule to the constitution of india. https://en.wikipedia.org/wiki/Eighth_Schedule_ to_the_Constitution_of_India, 2019. [Online; accessed 16-Mar-2019].   
-[5] Special correspondent;. Scholar throws light on the origin, evolution of kannada numerals. The Hindu, Nov 2017.
+[1] A. Dal Pozzolo, G. Boracchi, O. Caelen, C. Alippi, and G. Bontempi, “Credit card fraud detection: a realistic modeling and a novel learning strategy,” IEEE Transactions on Neural Networks and Learning Systems, 2017.   
+[2] R. J. Bolton and D. J. Hand, “Statistical fraud detection: A review,” Statistical science, pp. 235–249, 2002.   
+[3] E. Hung and D. W. Cheung, “Parallel algorithm for mining outliers in large database,” in Proc. 9th International Database Conference (IDC’99), Hong Kong, 1999.   
+[4] Y. Kou, C.-T. Lu, S. Sirwongwattana, and Y.-P. Huang, “Survey of fraud detection techniques,” in Networking, sensing and control, 2004 IEEE international conference on, vol. 2. IEEE, 2004, pp. 749–754.   
+[5] P.-N. Tan, M. Steinbach, and V. Kumar, “Introduction to data mining. 1st,” 2005.   
+[6] A. O. Adewumi and A. A. Akinyelu, “A survey of machine-learning and nature-inspired based credit card fraud detection techniques,” International Journal of System Assurance Engineering and Management, pp. 1–17, 2016.   
+[7] A. Bergholz, J. H. Chang, G. Paass, F. Reichartz, and S. Strobel, “Improved phishing detection using model-based features.” in CEAS, 2008.   
+[8] T. O. Ayodele, “Types of machine learning algorithms,” in New advances in machine learning. InTech, 2010.   
+[9] A. Srivastava, A. Kundu, S. Sural, and A. Majumdar, “Credit card fraud detection using hidden markov model,” IEEE Transactions on dependable and secure computing, vol. 5, no. 1, pp. 37–48, 2008.   
+[10] M. Z. Khan, J. D. Pathan, and A. H. E. Ahmed, “Credit card fraud detection system using hidden markov model and k-clustering,” International Journal of Advanced Research in Computer and Communication Engineering, vol. 3, no. 2, pp. 5458–5461, 2014.   
+[11] Y. G. S¸ahin and E. Duman, “Detecting credit card fraud by decision trees and support vector machines,” Newswood Limited, 2011.   
+[12] K. Seeja and M. Zareapoor, “Fraudminer: a novel credit card fraud detection model based on frequent itemset mining,” The Scientific World Journal, vol. 2014, 2014.   
+[13] M. Zareapoor and P. Shamsolmoali, “Application of credit card fraud detection: Based on bagging ensemble classifier,” Procedia Computer Science, vol. 48, pp. 679–685, 2015.   
+[14] F. Fadaei Noghani and M. Moattar, “Ensemble classification and extended feature selection for credit card fraud detection,” Journal of AI and Data Mining, vol. 5, no. 2, pp. 235–243, 2017.
 
-[6] BR Gopal. Gudnapur inscription of kadamba ravivarma. Srikanthika: Dr S. Srikantha Sastri Felicitation Volume, pages 61–72, 1973.   
-[7] G. S. Gai. In01046 no.22: Plate xxii gudnapur inscription of ravivarman, 1996.   
-[8] M. G. Manjunath and G. K. Devarajaswamy. Kannada lipi vikasa. Technical report, Jagadhguru Sri Madhvacharya Trust, Sri Raghavendra Swami Matta, Mantralaya, 2004.   
-[9] Unicode charts. https://unicode.org/charts/PDF/U0C80.pdf, 2019. [Online; accessed 16-Mar-2019].   
-[10] Nabin Sharma, U Pal, and Fumitaka Kimura. Recognition of handwritten kannada numerals. In 9th International Conference on Information Technology (ICIT’06), pages 133–136. IEEE, 2006.   
-[11] GG Rajput and Mallikarjun Hangarge. Recognition of isolated handwritten kannada numerals based on image fusion method. In International Conference on Pattern Recognition and Machine Intelligence, pages 153–160. Springer, 2007.   
-[12] GG Rajput, Rajeswari Horakeri, and Sidramappa Chandrakant. Printed and handwritten mixed kannada numerals recognition using svm. International Journal on Computer Science and Engineering, 2(05):1622–1626, 2010.   
-[13] T. E. de Campos, B. R. Babu, and M. Varma. Character recognition in natural images. In Proceedings of the International Conference on Computer Vision Theory and Applications, Lisbon, Portugal, February 2009.   
-[14] Anirudh Ganesh, Ashwin R Jadhav, and KA Cibi Pragadeesh. Deep learning approach for recognition of handwritten kannada numerals. In International Conference on Soft Computing and Pattern Recognition, pages 294–303. Springer, 2016.   
-[15] Chhavi Yadav and Léon Bottou. Cold case: The lost mnist digits. Technical report, arxiv-1905.10498, may 2019.   
-[16] Han Xiao, Kashif Rasul, and Roland Vollgraf. Fashion-mnist: a novel image dataset for benchmarking machine learning algorithms. 2017.   
-[17] Tarin Clanuwat, Mikel Bober-Irizar, Asanobu Kitamoto, Alex Lamb, Kazuaki Yamamoto, and David Ha. Deep learning for classical japanese literature. 2018.   
-[18] Sudoku solver 2. https://gist.github.com/mineshpatel1/ 209038c64c19d5e78e0a878320797631#file-sudoku_cv-py, 2017. [Online; accessed 16- July-2019].   
-[19] Tensorflow, mnist and your own handwritten digits. https://medium.com/@o.kroeger/ tensorflow-mnist-and-your-own-handwritten-digits-4d1cd32bbab4, 2016. [Online; accessed 16-July-2019].   
-[20] Daniel C. Castro, Jeremy Tan, Bernhard Kainz, Ender Konukoglu, and Ben Glocker. Morpho-MNIST: Quantitative assessment and diagnostics for representation learning. 2018.   
-[21] Leland McInnes, John Healy, and James Melville. Umap: Uniform manifold approximation and projection for dimension reduction. arXiv preprint arXiv:1802.03426, 2018.   
-[22] Vinay Uday Prabhu, Sanghyun Han, Dian Ang Yap, Mihail Douhaniaris, Preethi Seshadri, and John Whaley. Fonts-2-handwriting: A seed-augment-train framework for universal digit classification. arXiv preprint arXiv:1905.08633, 2019.   
-[23] Marcus D Bloice, Peter M Roth, and Andreas Holzinger. Biomedical image augmentation using augmentor. Bioinformatics, 2019.
-
-
-[ImageDescription]
-- source: images/c39c14785154756448615f677bd39859b6b99f44b32fb98fb1326744f0ff6604.jpg
-- alt: (no-alt)
-- description: Image found in markdown. Detailed vision caption is unavailable in this runtime.
-  
-Figure 7: The main dataset creation workflow
-
-
-[ImageDescription]
-- source: images/6461e6953bb67ce5000daa7555c57debc3454633b48be4fce22ad437f02c1175.jpg
-- alt: (no-alt)
-- description: Image found in markdown. Detailed vision caption is unavailable in this runtime.
-
-
-
-[ImageDescription]
-- source: images/23bd41071a905871b4d2b3f211f719772669a4842c95de199927b095ba878acd.jpg
-- alt: (no-alt)
-- description: Image found in markdown. Detailed vision caption is unavailable in this runtime.
-  
-Figure 8: Class-wise mean images of the train set, the test set and the difference between the means of the train and test sets   
-Figure 9: Preparing the dig-dataset in Redwood City
-
-
-[ImageDescription]
-- source: images/df6618e523361831bc7a3195ed10be88e4bfd793838e96f4972baea8edc75156.jpg
-- alt: (no-alt)
-- description: Image found in markdown. Detailed vision caption is unavailable in this runtime.
-  
-Figure 10: User-wise class-wise mean images for the Dig-10k dataset
-
-
-[ImageDescription]
-- source: images/71165c6b6d343b59d64f360c44f8b893daad46dc86f2efe023adc53e6b18e492.jpg
-- alt: (no-alt)
-- description: Image found in markdown. Detailed vision caption is unavailable in this runtime.
-
-
-
-[ImageDescription]
-- source: images/d9353b1d5611b55311f3732e618094c8d7b8d0bf90e8ce4caddddcb687ac5c3b.jpg
-- alt: (no-alt)
-- description: Image found in markdown. Detailed vision caption is unavailable in this runtime.
-  
-Figure 11: Mean pixel-wise intensities comparisons between MNIST and the Kannada-MNIST datasets
-
-
-[ImageDescription]
-- source: images/b7f5dad83bc09c13d91a47451fbad399db76c1574ec81fa4c767edda2fd6797c.jpg
-- alt: (no-alt)
-- description: Image found in markdown. Detailed vision caption is unavailable in this runtime.
-  
-(a)MNIST   
-(b) Kannada-MNIST
-
-
-[ImageDescription]
-- source: images/035b8cde601bf6a0397cdbea23e09667f5876f3ac2b6aa911574cc014cccb64e.jpg
-- alt: (no-alt)
-- description: Image found in markdown. Detailed vision caption is unavailable in this runtime.
-  
-Figure 12: Morphological comparisons between MNIST and the Fashion-MNIST
-
-
-[ImageDescription]
-- source: images/bbad6efdc382091a3753ea09939e591d210e772dc33d7f38722367324253406e.jpg
-- alt: (no-alt)
-- description: Image found in markdown. Detailed vision caption is unavailable in this runtime.
-  
-Figure 13: PCA analysis for the two datasets
-
-
-[ImageDescription]
-- source: images/2973de6478c6611c437ef8afe2c6aa3e76d9b1e2c2c943d3d1f17da0a6f14c9f.jpg
-- alt: (no-alt)
-- description: Image found in markdown. Detailed vision caption is unavailable in this runtime.
-
-
-
-[ImageDescription]
-- source: images/c612d764e722872903c31e32306aed894b5d4945c50550e3e3b00a174354613a.jpg
-- alt: (no-alt)
-- description: Image found in markdown. Detailed vision caption is unavailable in this runtime.
-  
-Figure 14: Two-dimensional Uniform Manifold Approximation and Projection (UMAP) plots for the two datasets
-
-
-[ImageDescription]
-- source: images/61a55013aa7ee692019d6287fd854ecbbc2bccda846413192482f66acb9ec023.jpg
-- alt: (no-alt)
-- description: Image found in markdown. Detailed vision caption is unavailable in this runtime.
-  
-Figure 15: The CNN architecture used in the paper
-
-
-[ImageDescription]
-- source: images/efe86786794b84f90878e06b83380843ba5240eaaf312fac7b5137516fdb3e71.jpg
-- alt: (no-alt)
-- description: Image found in markdown. Detailed vision caption is unavailable in this runtime.
-  
-Figure 16: Confusion matrix with regards to the Kannada-MNIST datasets
-
-
-[ImageDescription]
-- source: images/97c773328a839f20a318e494d9b97d1adbe90dd7ad0e5537a4fce2b44a6759a7.jpg
-- alt: (no-alt)
-- description: Image found in markdown. Detailed vision caption is unavailable in this runtime.
-
-
-
-[ImageDescription]
-- source: images/5f94ee8c2f067c55ba67377893694b1c192936fec4a46109165c5b6ad6a5191e.jpg
-- alt: (no-alt)
-- description: Image found in markdown. Detailed vision caption is unavailable in this runtime.
-  
-Figure 17: Train and test accuracies for the CNN trained and tested on the main dataset
-
-
-[ImageDescription]
-- source: images/00881aa764006c58a211d8ae2c00a4197dee93a5079d687bc5e3ce6b11528807.jpg
-- alt: (no-alt)
-- description: Image found in markdown. Detailed vision caption is unavailable in this runtime.
-  
-Confusion matrix,without normalization   
-Figure 18: Confusion matrix for the dig-10k dataset
-
-
-[ImageDescription]
-- source: images/abe688cf1c9240513fbb8086fe0a3cef5fb39c3bbdde38cfb489037592f6186c.jpg
-- alt: (no-alt)
-- description: Image found in markdown. Detailed vision caption is unavailable in this runtime.
-  
-Confusion matrix,without normalization   
-Figure 19: Un-normalized confusion matrix for the 1280 digits dataset using in [22]
-
-
-[ImageDescription]
-- source: images/67e1407dd9084ea9798b38a0eb0055d556b5f7c44118762f21f7c414c9821cff.jpg
-- alt: (no-alt)
-- description: Image found in markdown. Detailed vision caption is unavailable in this runtime.
-  
-Figure 20: Images belonging to class-0 in the 1280-digits dataset that were misclassified by the CNN trained on the main dataset
-
-
-[ImageDescription]
-- source: images/43eac576fd0eb3a52bab6ffadc1ab3ed7edc5fb84130a901935f02673408eca0.jpg
-- alt: (no-alt)
-- description: Image found in markdown. Detailed vision caption is unavailable in this runtime.
-  
-Figure 21: Images belonging to class-7 in the 1280-digits dataset that were misclassified by the CNN trained on the main dataset
-
-
-[ImageDescription]
-- source: images/649e0cdf7b702051cf8c3d772fdbb312fff3b2e388a619c47e7da581b2e315ae.jpg
-- alt: (no-alt)
-- description: Image found in markdown. Detailed vision caption is unavailable in this runtime.
-  
-Figure 22: Images belonging to class-8 in the 1280-digits dataset that were misclassified by the CNN trained on the main dataset
-
-
-[ImageDescription]
-- source: images/e0e4c7669c1752eb6a48702558bb1039500a18271c8cf0aa1ef8fb2825f264e8.jpg
-- alt: (no-alt)
-- description: Image found in markdown. Detailed vision caption is unavailable in this runtime.
-
-
-
-[ImageDescription]
-- source: images/d5b8584aa062371a3941c9aff234ec4e6b288d085d30a6d2091a490731991a7a.jpg
-- alt: (no-alt)
-- description: Image found in markdown. Detailed vision caption is unavailable in this runtime.
-  
-Figure 23: Photos of hard copies of the handwritten sheets for the two datasets
+[15] G. Rozenberg, T. Bck, and J. N. Kok, Handbook of natural computing. Springer Publishing Company, Incorporated, 2011.   
+[16] M. Mitchell, An introduction to genetic algorithms. MIT press, 1998.   
+[17] R. D. Patel and D. K. Singh, “Credit card fraud detection & prevention of fraud using genetic algorithm,” International Journal of Soft Computing and Engineering, vol. 2, no. 6, 2013.   
+[18] A. H. Awlla, “A hybrid simulated annealing and back-propagation algorithm for feed-forward neural network to detect credit card fraud,” UHD Journal of Science and Technology, vol. 1, no. 2, pp. 31–36, 2017.   
+[19] X.-S. Yang, Nature-inspired optimization algorithms. Elsevier, 2014.
