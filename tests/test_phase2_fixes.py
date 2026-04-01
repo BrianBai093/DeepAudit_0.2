@@ -191,6 +191,29 @@ def test_metric_contract_pr_auc_regex_does_not_capture_roc_auc():
     assert metrics["roc_auc"] == 0.9806250933125078
 
 
+def test_metric_extraction_skips_static_inspection_commands():
+    """Static source inspection output should not be treated as executed metrics."""
+    from p2c.agents.phase2.result_extraction import extract_metrics_from_stdout
+    from p2c.schemas import MetricContract
+
+    stdout = (
+        "ROC-AUC: 0.4\n"
+        "PR-AUC: 0.4\n"
+        "Precision: 0.4\n"
+        "Recall: 0.2\n"
+        "F1-score: 0.4\n"
+    )
+    contract = MetricContract()
+
+    metrics = extract_metrics_from_stdout(
+        stdout,
+        contract,
+        command="sed -n '1,260p' src/train_fraud_model.py",
+    )
+
+    assert metrics == {}
+
+
 # ---- Fix 4: env variable forwarding ----
 
 def test_build_child_env_includes_path():
@@ -717,3 +740,116 @@ def test_observe_metrics_reads_step_stdout_logs(tmp_path, monkeypatch):
     assert "recall" in metric_names
     assert "f1" in metric_names
     assert all(row["metric_name"] != "unknown" for row in records)
+
+
+def test_observe_metrics_ignores_static_inspection_steps(tmp_path, monkeypatch):
+    """Phase 3 should ignore polluted inspect-step metrics from static source reads."""
+    from p2c.agents.phase3.observe_metrics import ObserveMetricsAgent
+    from p2c.io_artifacts import ArtifactManager
+
+    artifacts = ArtifactManager(tmp_path / "artifacts", "run_inspect")
+    artifacts.ensure_tree()
+    artifacts.write_json(
+        "task/metric_contract.json",
+        {
+            "required_metrics": ["precision", "recall", "f1"],
+            "parsers": [],
+            "normalization": {},
+            "reason_codes": [],
+        },
+    )
+    artifacts.write_json(
+        "execution/codex_outputs/run_manifest.json",
+        {
+            "runs": [
+                {
+                    "run_id": "step_01_inspect_train_script",
+                    "command": "sed -n '1,260p' src/train_fraud_model.py",
+                    "params": {},
+                    "cwd": ".",
+                    "exit_code": 0,
+                    "status": "ok",
+                    "runtime_sec": 0.1,
+                    "stdout_tail": "Precision: 0.4\nRecall: 0.2\nF1-score: 0.4\n",
+                    "stderr_tail": "",
+                    "metrics": {"precision": 0.4, "recall": 0.2, "f1": 0.4},
+                    "reason_codes": [],
+                },
+                {
+                    "run_id": "step_02_train_model",
+                    "command": "python src/train_fraud_model.py",
+                    "params": {},
+                    "cwd": ".",
+                    "exit_code": 0,
+                    "status": "ok",
+                    "runtime_sec": 1.0,
+                    "stdout_tail": "",
+                    "stderr_tail": "",
+                    "metrics": {"precision": 0.0372},
+                    "reason_codes": [],
+                },
+            ],
+            "reason_codes": [],
+        },
+    )
+    artifacts.write_text(
+        "execution/codex_outputs/step_step_01_inspect_train_script_stdout.log",
+        "Precision: 0.4\nRecall: 0.2\nF1-score: 0.4\n",
+    )
+    artifacts.write_text(
+        "execution/codex_outputs/step_step_02_train_model_stdout.log",
+        "Precision: 0.0372\nRecall: 0.9184\nF1-score: 0.0714\n",
+    )
+
+    agent = ObserveMetricsAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
+    monkeypatch.setattr(agent, "safe_chat_text", lambda system, user: (None, None))
+
+    result = agent.execute({})
+    records = result["metrics"]["records"]
+    values_by_metric = {}
+    for row in records:
+        values_by_metric.setdefault(row["metric_name"], set()).add(row["value"])
+
+    assert values_by_metric["precision"] == {0.0372}
+    assert values_by_metric["recall"] == {0.9184}
+    assert values_by_metric["f1"] == {0.0714}
+
+
+def test_execute_step_static_inspection_does_not_emit_metrics(tmp_path):
+    """Phase 2 should leave inspect steps metric-free even if source text looks numeric."""
+    import subprocess
+    from p2c.agents.phase2.codex_executor import CodexExecutorAgent
+    from p2c.io_artifacts import ArtifactManager
+    from p2c.schemas import ExecutionStep, MetricContract
+
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    artifacts = ArtifactManager(tmp_path / "artifacts", "run_inspect_exec")
+    artifacts.ensure_tree()
+    agent = CodexExecutorAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
+
+    class DummyEnvMgr:
+        def run_in_env(self, command, cwd=".", timeout_sec=600):
+            return subprocess.CompletedProcess(
+                args=[command],
+                returncode=0,
+                stdout="Precision: 0.4\nRecall: 0.2\nF1-score: 0.4\n",
+                stderr="",
+            )
+
+    result = agent._execute_step(
+        step=ExecutionStep(
+            step_id="inspect_train",
+            description="inspect training script",
+            command="sed -n '1,260p' src/train_fraud_model.py",
+            retry_on_failure=False,
+        ),
+        env_mgr=DummyEnvMgr(),
+        repo_dir=str(repo_dir),
+        contract=MetricContract(),
+        outputs_dir=str(artifacts.path("execution/codex_outputs")),
+        timeout_sec=60,
+    )
+
+    assert result["exit_code"] == 0
+    assert result["metrics"] == {}

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from p2c.agents.base import BaseAgent
-from p2c.agents.phase2.result_extraction import extract_metric_records_from_stdout
+from p2c.agents.phase2.result_extraction import (
+    extract_metric_records_from_stdout,
+    is_static_inspection_command,
+)
 from p2c.schemas import MetricContract, MetricRecord, MetricsDoc, RunManifestDoc
 
 SYSTEM_PROMPT = "You parse metrics from run manifest; do not fabricate and return strict JSON only."
@@ -80,6 +83,9 @@ class ObserveMetricsAgent(BaseAgent):
             )
 
         for run in manifest.runs:
+            if is_static_inspection_command(run.command):
+                continue
+
             for name, raw in run.metrics.items():
                 append_record(
                     metric_name=str(name),
@@ -99,6 +105,7 @@ class ObserveMetricsAgent(BaseAgent):
                 stdout_text,
                 contract=contract,
                 source=f"execution/codex_outputs/step_{run.run_id}_stdout.log",
+                command=run.command,
             ):
                 append_record(
                     metric_name=record["metric_name"],

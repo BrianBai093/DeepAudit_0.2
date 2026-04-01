@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import shlex
 from pathlib import Path
 from typing import Any
 
@@ -84,13 +85,52 @@ def _dedupe_metric_records(records: list[dict[str, Any]]) -> list[dict[str, Any]
     return deduped
 
 
+def is_static_inspection_command(command: str | None) -> bool:
+    """Return True when a command only prints source/config text and should not emit metrics."""
+    raw = str(command or "").strip()
+    if not raw:
+        return False
+    try:
+        tokens = shlex.split(raw)
+    except ValueError:
+        tokens = raw.split()
+    if not tokens:
+        return False
+
+    while tokens and "=" in tokens[0] and not tokens[0].startswith("-"):
+        name, _, value = tokens[0].partition("=")
+        if name.isidentifier() and value:
+            tokens = tokens[1:]
+            continue
+        break
+    if not tokens:
+        return False
+
+    head = tokens[0]
+    if head in {"sed", "cat", "head", "tail"}:
+        return True
+
+    if head == "python" and len(tokens) >= 3 and tokens[1] == "-c":
+        snippet = " ".join(tokens[2:]).lower()
+        if "read_text(" in snippet or ".read_text(" in snippet:
+            return True
+        if "open(" in snippet and ".read(" in snippet:
+            return True
+
+    return False
+
+
 def extract_metric_records_from_stdout(
     stdout: str,
     contract: MetricContract,
     *,
     source: str = "stdout",
+    command: str | None = None,
 ) -> list[dict[str, Any]]:
     """Extract multiple metric records from a single stdout blob."""
+    if is_static_inspection_command(command):
+        return []
+
     records: list[dict[str, Any]] = []
 
     def add_record(metric_name: str, raw_value: Any, reason_code: str) -> None:
@@ -222,12 +262,17 @@ def extract_metric_records_from_stdout(
     return _dedupe_metric_records(records)
 
 
-def extract_metrics_from_stdout(stdout: str, contract: MetricContract) -> dict[str, Any]:
+def extract_metrics_from_stdout(
+    stdout: str,
+    contract: MetricContract,
+    *,
+    command: str | None = None,
+) -> dict[str, Any]:
     """Extract metrics from stdout and keep canonical last-seen values plus `_all` lists."""
     metrics: dict[str, Any] = {}
     values_by_metric: dict[str, list[float]] = {}
 
-    for record in extract_metric_records_from_stdout(stdout, contract):
+    for record in extract_metric_records_from_stdout(stdout, contract, command=command):
         metric_name = str(record.get("metric_name") or "")
         value = record.get("value")
         if not metric_name or value is None:

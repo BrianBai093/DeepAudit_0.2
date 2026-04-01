@@ -206,7 +206,7 @@ class CodexExecutorAgent(BaseAgent):
         # Try file-based extraction first
         metrics = extract_metrics_from_file(f"{outputs_dir}/autonomous_results.json")
         # Merge stdout-based
-        stdout_metrics = extract_metrics_from_stdout(stdout, contract)
+        stdout_metrics = extract_metrics_from_stdout(stdout, contract, command="codex autonomous exploration")
         for k, v in stdout_metrics.items():
             if k not in metrics:
                 metrics[k] = v
@@ -383,7 +383,7 @@ class CodexExecutorAgent(BaseAgent):
     ) -> dict[str, Any]:
         stored = self.artifacts.read_json(step_result_relative)
         metrics = stored.get("metrics") if isinstance(stored.get("metrics"), dict) else {}
-        stdout_metrics = extract_metrics_from_stdout(stdout_text, contract)
+        stdout_metrics = extract_metrics_from_stdout(stdout_text, contract, command=step.command)
         for key, value in stdout_metrics.items():
             if key not in metrics:
                 metrics[key] = value

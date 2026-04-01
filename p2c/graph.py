@@ -24,8 +24,8 @@ def run_phase_1(ctx: dict[str, Any], agents: dict[str, Any]) -> None:
     agents["extract_fingerprint_guide"].run(ctx)
     agents["extract_fingerprint_atomic"].run(ctx)
     agents["extract_fingerprint_filter"].run(ctx)
-    agents["build_claims_ir"].run(ctx)
     agents["repo_analysis"].run(ctx)
+    agents["build_claims_ir"].run(ctx)
     agents["compile_task_spec"].run(ctx)
 
 

@@ -10,6 +10,42 @@ Validates that:
 from __future__ import annotations
 
 
+def test_run_phase_1_executes_repo_analysis_before_build_claims_ir():
+    """Phase 1 should build repo_analysis before claims_ir so repo coverage postprocessing can run."""
+    from p2c.graph import run_phase_1
+
+    order = []
+
+    class DummyAgent:
+        def __init__(self, name: str):
+            self.name = name
+
+        def run(self, ctx):
+            order.append(self.name)
+
+    agents = {
+        "ingest_paper": DummyAgent("ingest_paper"),
+        "extract_fingerprint_guide": DummyAgent("extract_fingerprint_guide"),
+        "extract_fingerprint_atomic": DummyAgent("extract_fingerprint_atomic"),
+        "extract_fingerprint_filter": DummyAgent("extract_fingerprint_filter"),
+        "repo_analysis": DummyAgent("repo_analysis"),
+        "build_claims_ir": DummyAgent("build_claims_ir"),
+        "compile_task_spec": DummyAgent("compile_task_spec"),
+    }
+
+    run_phase_1({}, agents)
+
+    assert order == [
+        "ingest_paper",
+        "extract_fingerprint_guide",
+        "extract_fingerprint_atomic",
+        "extract_fingerprint_filter",
+        "repo_analysis",
+        "build_claims_ir",
+        "compile_task_spec",
+    ]
+
+
 # ---- Phase 1: table_anchor propagation ----
 
 def test_build_claims_ir_preserves_table_anchor():
