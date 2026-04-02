@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1600, initial-scale=1.0">
+<title>DeepAudit v0.4 Architecture</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: #0f172a;
+    color: #e2e8f0;
+    padding: 40px;
+    min-width: 1500px;
+  }
+
+  h1 {
+    text-align: center;
+    font-size: 28px;
+    font-weight: 700;
+    color: #f8fafc;
+    margin-bottom: 8px;
+    letter-spacing: 0.5px;
+  }
+  .subtitle {
+    text-align: center;
+    font-size: 14px;
+    color: #94a3b8;
+    margin-bottom: 36px;
+  }
+
+  .pipeline {
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+    justify-content: center;
+  }
+
+  /* Phase columns */
+  .phase {
+    border-radius: 16px;
+    padding: 20px;
+    min-width: 340px;
+    max-width: 420px;
+    position: relative;
+  }
+  .phase-1 { background: linear-gradient(135deg, #1e3a5f 0%, #172554 100%); border: 1px solid #1e40af; }
+  .phase-2 { background: linear-gradient(135deg, #1a3a2a 0%, #14532d 100%); border: 1px solid #166534; min-width: 420px; }
+  .phase-3 { background: linear-gradient(135deg, #3b1f4a 0%, #2e1065 100%); border: 1px solid #6b21a8; }
+
+  .phase-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+  }
+  .phase-num {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 16px;
+    flex-shrink: 0;
+  }
+  .phase-1 .phase-num { background: #2563eb; }
+  .phase-2 .phase-num { background: #16a34a; }
+  .phase-3 .phase-num { background: #9333ea; }
+  .phase-title { font-size: 16px; font-weight: 700; }
+  .phase-title-cn { font-size: 11px; color: #94a3b8; }
+
+  /* Agent boxes */
+  .agent {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 10px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    position: relative;
+  }
+  .agent:last-child { margin-bottom: 0; }
+  .agent-name {
+    font-size: 12px;
+    font-weight: 700;
+    color: #f1f5f9;
+    margin-bottom: 2px;
+  }
+  .agent-desc {
+    font-size: 10px;
+    color: #94a3b8;
+    line-height: 1.4;
+  }
+  .agent-step {
+    position: absolute;
+    top: 8px; right: 10px;
+    font-size: 9px;
+    color: #64748b;
+    font-weight: 600;
+  }
+  .agent.llm::before {
+    content: "LLM";
+    position: absolute;
+    top: 8px; right: 10px;
+    font-size: 8px;
+    background: #f59e0b;
+    color: #000;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-weight: 700;
+  }
+  .agent.llm .agent-step { display: none; }
+
+  /* Output badges */
+  .output {
+    display: inline-block;
+    font-size: 9px;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 4px;
+    padding: 2px 6px;
+    margin-top: 4px;
+    margin-right: 3px;
+    color: #cbd5e1;
+    font-family: 'SF Mono', 'Cascadia Code', monospace;
+  }
+
+  /* Arrows between phases */
+  .arrow-col {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding-top: 60px;
+  }
+  .arrow-col svg { width: 50px; height: 50px; }
+
+  /* Subgroup inside Phase 2 */
+  .subgroup {
+    border: 1px dashed rgba(255,255,255,0.15);
+    border-radius: 10px;
+    padding: 10px;
+    margin-bottom: 10px;
+  }
+  .subgroup-title {
+    font-size: 10px;
+    font-weight: 700;
+    color: #86efac;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  /* Loop indicator */
+  .loop-indicator {
+    text-align: center;
+    font-size: 9px;
+    color: #4ade80;
+    margin: 6px 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .loop-indicator::before, .loop-indicator::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: rgba(74,222,128,0.3);
+  }
+
+  /* Input boxes */
+  .inputs {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-top: 30px;
+    min-width: 130px;
+  }
+  .input-box {
+    background: rgba(251,191,36,0.1);
+    border: 1px solid #f59e0b;
+    border-radius: 10px;
+    padding: 12px 14px;
+    text-align: center;
+  }
+  .input-box .icon { font-size: 22px; margin-bottom: 4px; }
+  .input-box .label { font-size: 12px; font-weight: 600; color: #fbbf24; }
+  .input-box .label-cn { font-size: 10px; color: #a3865a; }
+
+  /* Final output */
+  .final-output {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-top: 30px;
+    min-width: 140px;
+  }
+  .output-box {
+    background: rgba(236,72,153,0.1);
+    border: 1px solid #ec4899;
+    border-radius: 10px;
+    padding: 12px 14px;
+    text-align: center;
+  }
+  .output-box .icon { font-size: 22px; margin-bottom: 4px; }
+  .output-box .label { font-size: 12px; font-weight: 600; color: #f472b6; }
+  .output-box .label-cn { font-size: 10px; color: #9f5a7a; }
+
+  /* Legend */
+  .legend {
+    display: flex;
+    justify-content: center;
+    gap: 24px;
+    margin-top: 28px;
+    padding-top: 20px;
+    border-top: 1px solid rgba(255,255,255,0.08);
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: #94a3b8;
+  }
+  .legend-dot {
+    width: 10px; height: 10px;
+    border-radius: 3px;
+  }
+
+  /* Execution strategy detail */
+  .strategy-box {
+    background: rgba(255,255,255,0.04);
+    border-left: 3px solid #4ade80;
+    border-radius: 0 8px 8px 0;
+    padding: 8px 10px;
+    margin-top: 8px;
+    margin-bottom: 8px;
+  }
+  .strategy-box .strat-title {
+    font-size: 10px;
+    font-weight: 700;
+    color: #86efac;
+    margin-bottom: 4px;
+  }
+  .strategy-box .strat-row {
+    font-size: 9px;
+    color: #94a3b8;
+    line-height: 1.6;
+    display: flex;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  .strat-num {
+    background: #166534;
+    color: #86efac;
+    font-weight: 700;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 8px;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  /* Gate indicator in Phase 3 */
+  .gate {
+    background: rgba(239,68,68,0.1);
+    border: 1px dashed #ef4444;
+    border-radius: 6px;
+    padding: 6px 8px;
+    margin: 6px 0;
+    font-size: 9px;
+    color: #fca5a5;
+    text-align: center;
+  }
+  .gate strong { color: #f87171; }
+</style>
+</head>
+<body>
+
+<h1>DeepAudit v0.4 &mdash; System Architecture</h1>
+<p class="subtitle">Automated ML Paper Reproducibility Verification Pipeline &nbsp;|&nbsp; ML 论文可复现性自动验证系统架构</p>
+
+<div class="pipeline">
+
+  <!-- INPUTS -->
+  <div class="inputs">
+    <div class="input-box">
+      <div class="icon">&#128196;</div>
+      <div class="label">Paper (MD)</div>
+      <div class="label-cn">论文 Markdown</div>
+    </div>
+    <div class="input-box">
+      <div class="icon">&#128193;</div>
+      <div class="label">Repository</div>
+      <div class="label-cn">代码仓库</div>
+    </div>
+  </div>
+
+  <!-- Arrow -->
+  <div class="arrow-col">
+    <svg viewBox="0 0 50 50"><polygon points="10,20 35,20 35,12 50,25 35,38 35,30 10,30" fill="#475569"/></svg>
+  </div>
+
+  <!-- PHASE 1 -->
+  <div class="phase phase-1">
+    <div class="phase-header">
+      <div class="phase-num">1</div>
+      <div>
+        <div class="phase-title">Claim Extraction</div>
+        <div class="phase-title-cn">声明提取</div>
+      </div>
+    </div>
+
+    <div class="agent">
+      <div class="agent-name">IngestPaperAgent</div>
+      <div class="agent-desc">Image &rarr; text conversion</div>
+      <div class="agent-step">S1</div>
+    </div>
+    <div class="agent">
+      <div class="agent-name">ExtractFingerprintGuideAgent</div>
+      <div class="agent-desc">Split into sentences + table blocks</div>
+      <div class="agent-step">S2</div>
+    </div>
+    <div class="agent llm">
+      <div class="agent-name">ExtractFingerprintAtomicAgent</div>
+      <div class="agent-desc">Extract atomic criteria from text</div>
+    </div>
+    <div class="agent">
+      <div class="agent-name">ExtractFingerprintFilterAgent</div>
+      <div class="agent-desc">Cluster &amp; filter claims by plausibility</div>
+      <div class="agent-step">S4</div>
+    </div>
+    <div class="agent llm">
+      <div class="agent-name">BuildClaimsIRAgent</div>
+      <div class="agent-desc">Identify experiments, group claims, assess <code>repo_coverage</code>, unique metric names</div>
+    </div>
+    <div class="agent llm">
+      <div class="agent-name">RepoAnalysisAgent</div>
+      <div class="agent-desc">Detect entrypoints, deps, file structure</div>
+    </div>
+    <div class="agent">
+      <div class="agent-name">CompileTaskSpecAgent</div>
+      <div class="agent-desc">Build metric contract + task spec</div>
+      <div class="agent-step">S7</div>
+    </div>
+
+    <div style="margin-top:10px">
+      <span class="output">claims_ir.json</span>
+      <span class="output">repo_analysis.json</span>
+      <span class="output">metric_contract.json</span>
+    </div>
+  </div>
+
+  <!-- Arrow -->
+  <div class="arrow-col">
+    <svg viewBox="0 0 50 50"><polygon points="10,20 35,20 35,12 50,25 35,38 35,30 10,30" fill="#475569"/></svg>
+  </div>
+
+  <!-- PHASE 2 -->
+  <div class="phase phase-2">
+    <div class="phase-header">
+      <div class="phase-num">2</div>
+      <div>
+        <div class="phase-title">Local Execution</div>
+        <div class="phase-title-cn">本地执行</div>
+      </div>
+    </div>
+
+    <div class="subgroup">
+      <div class="subgroup-title">Plan</div>
+      <div class="agent llm">
+        <div class="agent-name">PlannerAgent</div>
+        <div class="agent-desc">Generate ExecutionPlan: deps, steps, expected results. Incorporates failure context on replan.</div>
+      </div>
+    </div>
+
+    <div class="subgroup">
+      <div class="subgroup-title">Environment Setup</div>
+      <div class="agent">
+        <div class="agent-name">ToolAgent</div>
+        <div class="agent-desc">conda create &rarr; layered install (core &rarr; ML &rarr; paper) &rarr; validate imports</div>
+        <div class="agent-step">S9</div>
+      </div>
+    </div>
+
+    <div class="subgroup">
+      <div class="subgroup-title">Hybrid Execution</div>
+      <div class="agent">
+        <div class="agent-name">CodexExecutorAgent</div>
+        <div class="agent-desc">Per-step execution with 3-tier strategy. Setup steps skip metric extraction.</div>
+        <div class="agent-step">S10</div>
+      </div>
+      <div class="strategy-box">
+        <div class="strat-title">Execution Strategy</div>
+        <div class="strat-row"><span class="strat-num">1</span> Direct: <code>conda run</code> subprocess (guaranteed env)</div>
+        <div class="strat-row"><span class="strat-num">2</span> Recovery: Codex CLI diagnoses &amp; fixes failures</div>
+        <div class="strat-row"><span class="strat-num">3</span> Autonomous: free-form Codex exploration fallback</div>
+      </div>
+    </div>
+
+    <div class="loop-indicator">Plan &rarr; Execute &rarr; ReAct loop (max 3 attempts)</div>
+
+    <div class="agent">
+      <div class="agent-name">Phase2Orchestrator</div>
+      <div class="agent-desc">State machine: PLAN &rarr; ENV &rarr; EXEC &rarr; (micro/macro repair) &rarr; SUCCESS/FAIL</div>
+      <div class="agent-step">S11</div>
+    </div>
+
+    <div style="margin-top:10px">
+      <span class="output">run_manifest.json</span>
+      <span class="output">claim_alignment.json</span>
+      <span class="output">phase2_state.json</span>
+    </div>
+  </div>
+
+  <!-- Arrow -->
+  <div class="arrow-col">
+    <svg viewBox="0 0 50 50"><polygon points="10,20 35,20 35,12 50,25 35,38 35,30 10,30" fill="#475569"/></svg>
+  </div>
+
+  <!-- PHASE 3 -->
+  <div class="phase phase-3">
+    <div class="phase-header">
+      <div class="phase-num">3</div>
+      <div>
+        <div class="phase-title">Verify &amp; Report</div>
+        <div class="phase-title-cn">验证与报告</div>
+      </div>
+    </div>
+
+    <div class="agent">
+      <div class="agent-name">ObserveMetricsAgent</div>
+      <div class="agent-desc">Extract metrics from run manifest + stdout logs</div>
+      <div class="agent-step">S12</div>
+    </div>
+    <div class="agent">
+      <div class="agent-name">AlignEvidenceAgent</div>
+      <div class="agent-desc">Match claims &rarr; metrics with target proximity disambiguation</div>
+      <div class="agent-step">S13</div>
+    </div>
+
+    <div class="gate">
+      <strong>Gate:</strong> <code>repo_coverage = "not_found"</code> &rarr; <strong>INCONCLUSIVE</strong> (skip comparison)<br>
+      Config claims &rarr; <strong>not evaluable</strong> (need code evidence)
+    </div>
+
+    <div class="agent llm">
+      <div class="agent-name">VerifyClaimsAgent</div>
+      <div class="agent-desc">Per-claim verdict: SUPPORTED / NOT_SUPPORTED / INCONCLUSIVE. Deterministic <code>experiments_summary</code>.</div>
+    </div>
+    <div class="agent llm">
+      <div class="agent-name">AuditReportAgent</div>
+      <div class="agent-desc">Generate full report: Executive Summary, Experiment Coverage, Scoring (5&times;0-2 = 0-10)</div>
+    </div>
+
+    <div style="margin-top:10px">
+      <span class="output">verdict.json</span>
+      <span class="output">evaluability.json</span>
+      <span class="output">report.md</span>
+    </div>
+  </div>
+
+  <!-- Arrow -->
+  <div class="arrow-col">
+    <svg viewBox="0 0 50 50"><polygon points="10,20 35,20 35,12 50,25 35,38 35,30 10,30" fill="#475569"/></svg>
+  </div>
+
+  <!-- FINAL OUTPUTS -->
+  <div class="final-output">
+    <div class="output-box">
+      <div class="icon">&#128203;</div>
+      <div class="label">Audit Report</div>
+      <div class="label-cn">审计报告</div>
+    </div>
+    <div class="output-box">
+      <div class="icon">&#127942;</div>
+      <div class="label">Score 0-10</div>
+      <div class="label-cn">可复现性评分</div>
+    </div>
+    <div class="output-box">
+      <div class="icon">&#9989;</div>
+      <div class="label">Claim Verdicts</div>
+      <div class="label-cn">声明判定</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- LEGEND -->
+<div class="legend">
+  <div class="legend-item">
+    <div class="legend-dot" style="background:#f59e0b;"></div>
+    LLM-powered agent
+  </div>
+  <div class="legend-item">
+    <div class="legend-dot" style="background:#475569;"></div>
+    Deterministic agent
+  </div>
+  <div class="legend-item">
+    <div class="legend-dot" style="background:#ef4444; border-radius:50%;"></div>
+    Gate / filter (v0.4 fix)
+  </div>
+  <div class="legend-item">
+    <div class="legend-dot" style="background:#4ade80;"></div>
+    Execution strategy
+  </div>
+</div>
+
+</body>
+</html>
