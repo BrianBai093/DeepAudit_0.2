@@ -6,16 +6,16 @@
                 "title_content": [
                     {
                         "type": "text",
-                        "content": "Credit Card Fraud Detection: A Deep Learning Approach "
+                        "content": "ENSEMBLE OF GENERATIVE AND DISCRIMINATIVE TECHNIQUES FOR SENTIMENT ANALYSIS OF MOVIE REVIEWS "
                     }
                 ],
                 "level": 1
             },
             "bbox": [
-                212,
-                119,
-                784,
-                138
+                171,
+                99,
+                826,
+                174
             ]
         },
         {
@@ -24,712 +24,15 @@
                 "paragraph_content": [
                     {
                         "type": "text",
-                        "content": "Sourav Verma "
+                        "content": "Gregoire Mesnil ´ "
                     }
                 ]
             },
             "bbox": [
-                259,
-                174,
-                369,
-                188
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "ABV-Indian Institute of "
-                    }
-                ]
-            },
-            "bbox": [
-                230,
-                190,
-                393,
-                205
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "Information Technology and Management "
-                    }
-                ]
-            },
-            "bbox": [
-                173,
-                205,
-                455,
-                220
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "Gwalior-474 010 "
-                    }
-                ]
-            },
-            "bbox": [
-                254,
-                220,
-                375,
-                234
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "Email: ipg 2013108@iiitm.ac.in "
-                    }
-                ]
-            },
-            "bbox": [
-                202,
-                236,
-                424,
-                251
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "Joydip Dhar "
-                    }
-                ]
-            },
-            "bbox": [
-                633,
-                174,
-                730,
-                189
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "ABV-Indian Institute of "
-                    }
-                ]
-            },
-            "bbox": [
-                599,
-                190,
-                761,
-                205
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "Information Technology and Management "
-                    }
-                ]
-            },
-            "bbox": [
-                540,
-                205,
-                823,
-                220
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "Gwalior-474 010 "
-                    }
-                ]
-            },
-            "bbox": [
-                622,
-                220,
-                741,
-                234
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "Email: jdhar@iiitm.ac.in "
-                    }
-                ]
-            },
-            "bbox": [
-                596,
-                236,
-                767,
-                251
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "Abstract—Credit card is one of the most extensive method of installment for both online and offline mode of payment for electronic transactions in recent times. credit cards invention has provided significant ease in electronic transactions. However, it has also provided new fraud opportunities for criminals, which results in increased fraud rates. Substantial amount of money have been lost by many institutions and individuals due to fraudulent credit card transactions. Adapting improved and dynamic fraud recognition frameworks thus became essential for all credit card distributing banks to mitigate their losses. "
-                    }
-                ]
-            },
-            "bbox": [
-                81,
-                300,
-                486,
-                459
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "In fact, the problem of fraudulent credit card transactions implicates a number of relevant real-time challenges, namely: Concept drift, Class imbalance, and Verification latency. However, the vast majority of current systems are based on artificial intelligence (AI), Fuzzy logic, Machine Learning, Data mining, Genetic Algorithms, and so on, rely on assumptions that hardly address all the relevant challenges of fraud-detection system (FDS). "
-                    }
-                ]
-            },
-            "bbox": [
-                81,
-                474,
-                486,
-                589
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "This paper aims to understand & implement Deep Learning algorithms in order to obtain a high fraud coverage with very low false positive rate. Also it aims to implement an auto-encoder as an unsupervised (semi-supervised) method of learning common patterns. "
-                    }
-                ]
-            },
-            "bbox": [
-                81,
-                604,
-                486,
-                676
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "Keywords: Credit card fraud, Fraud-detection system (FDS), Electronic transactions, Concept drift, Class imbalance, Verification latency, Machine Learning, Deep Learning "
-                    }
-                ]
-            },
-            "bbox": [
-                81,
-                691,
-                486,
-                736
-            ]
-        },
-        {
-            "type": "title",
-            "content": {
-                "title_content": [
-                    {
-                        "type": "text",
-                        "content": "1. Introduction "
-                    }
-                ],
-                "level": 1
-            },
-            "bbox": [
-                83,
-                750,
-                220,
-                766
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "Fraud refers to the intentional illegal exploitation of a system which results in loss of an oblivious entity. Credit card fraud can be defined as illegal use of both online and offline mode of credit card information for electronic transactions. Credit card fraud involves the exploitation of credit card systems which results in the loss of financial resources, the most prominent being monetary although other damages such as loss of integrity and authenticity are possible. Fraud, waste, and abuse in many financial "
-                    }
-                ]
-            },
-            "bbox": [
-                81,
-                780,
-                486,
-                907
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "systems are estimated to result in billions of US dollars annually, thus has became a primary concern for financial institutions around the globe. "
-                    }
-                ]
-            },
-            "bbox": [
-                506,
-                299,
-                911,
-                342
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "Furthermore, the rapid growth of the internet has exposed credit card systems to diverse fraudsters using different mechanisms to exploit financial systems. This provided an explode in attack patterns which rendered the once effective Artificial intelligent (AI), Machine Learning and Case-based fraud detection solutions no more effective as the computational complexity increases with each new detected fraud. More seriously, there is a higher tendency for first time frauds going undetected. The Case-based detection methods are also slow as a successful exploit could multiply if the solution took time to be integrated into the system. This problem can only be addressed with a refined and dynamic techniques capable of adapting to rapidly evolving fraudulent patterns. "
-                    }
-                ]
-            },
-            "bbox": [
-                506,
-                357,
-                911,
-                556
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "Also of concern to credit card fraud detection solutions is, the recognition strength that indicates a Fraud detector’s ability to correctly identify both known and novel frauds. This is usually a direct function of how much fraud samples there are to model a solution. The emergence of Deep Learning algorithms has provided credit card fraud detection experts with verse amount of features and high dimentionality of data that will enhance the detection models. Such solutions that use Deep Learning algorithms to model, offer more efficient and adaptive solutions. "
-                    }
-                ]
-            },
-            "bbox": [
-                506,
-                571,
-                913,
-                713
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "A complete credit card fraud detection model thus, "
-                    }
-                ]
-            },
-            "bbox": [
-                534,
-                728,
-                880,
-                742
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "Must have the following properties: "
-                    }
-                ]
-            },
-            "bbox": [
-                509,
-                756,
-                753,
-                771
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "1) It must be Adaptive: This refers to following abilities: "
-                    }
-                ]
-            },
-            "bbox": [
-                535,
-                782,
-                910,
-                810
-            ]
-        },
-        {
-            "type": "list",
-            "content": {
-                "list_type": "text_list",
-                "list_items": [
-                    {
-                        "item_type": "text",
-                        "item_content": [
-                            {
-                                "type": "text",
-                                "content": "Ability to detect fraudulent patterns in a matter of moment (i.e quickly). This is also referred to as its alertness. "
-                            }
-                        ]
-                    },
-                    {
-                        "item_type": "text",
-                        "item_content": [
-                            {
-                                "type": "text",
-                                "content": "Ability to detect first time fraudulent patterns with high accuracy and low false positive rate. "
-                            }
-                        ]
-                    }
-                ]
-            },
-            "bbox": [
-                584,
-                823,
-                911,
-                906
-            ]
-        },
-        {
-            "type": "page_aside_text",
-            "content": {
-                "page_aside_text_content": [
-                    {
-                        "type": "text",
-                        "content": "arXiv:2409.13406v1 [cs.LG] 20 Sep 2024 "
-                    }
-                ]
-            },
-            "bbox": [
-                22,
-                263,
-                58,
-                707
-            ]
-        }
-    ],
-    [
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "2) It must be Dynamic: This refers to following abilities: "
-                    }
-                ]
-            },
-            "bbox": [
-                107,
-                87,
-                485,
-                114
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "Ability to detect all new instances of fraudulent activities with rapid alteration of false patterns. "
-                    }
-                ]
-            },
-            "bbox": [
-                158,
-                125,
-                485,
-                167
-            ]
-        },
-        {
-            "type": "list",
-            "content": {
-                "list_type": "text_list",
-                "list_items": [
-                    {
-                        "item_type": "text",
-                        "item_content": [
-                            {
-                                "type": "text",
-                                "content": "3) It should be able to identify the fraudulent patterns accurately i.e. the true positive rate should be high. "
-                            }
-                        ]
-                    },
-                    {
-                        "item_type": "text",
-                        "item_content": [
-                            {
-                                "type": "text",
-                                "content": "4) It should be able to detect the frauds quickly i.e time complexity of the system should be low. "
-                            }
-                        ]
-                    },
-                    {
-                        "item_type": "text",
-                        "item_content": [
-                            {
-                                "type": "text",
-                                "content": "5) It should not predict a legit transaction as fraud i.e. the false positive rate should be low. "
-                            }
-                        ]
-                    }
-                ]
-            },
-            "bbox": [
-                107,
-                174,
-                485,
-                258
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "Also must address following relevant challenges, namely: "
-                    }
-                ]
-            },
-            "bbox": [
-                83,
-                267,
-                475,
-                282
-            ]
-        },
-        {
-            "type": "list",
-            "content": {
-                "list_type": "text_list",
-                "list_items": [
-                    {
-                        "item_type": "text",
-                        "item_content": [
-                            {
-                                "type": "text",
-                                "content": "1) Concept drift: As customers’ habit changes, fraudsters change their approaches over time. "
-                            }
-                        ]
-                    },
-                    {
-                        "item_type": "text",
-                        "item_content": [
-                            {
-                                "type": "text",
-                                "content": "2) Class imbalance: More legit transactions as compare to frauds (less than "
-                            },
-                            {
-                                "type": "equation_inline",
-                                "content": "0 . 5 \\%"
-                            },
-                            {
-                                "type": "text",
-                                "content": "). "
-                            }
-                        ]
-                    },
-                    {
-                        "item_type": "text",
-                        "item_content": [
-                            {
-                                "type": "text",
-                                "content": "3) Verification latency: Only a small set of transactions are timely checked by the authorities. "
-                            }
-                        ]
-                    }
-                ]
-            },
-            "bbox": [
-                107,
-                290,
-                483,
-                375
-            ]
-        },
-        {
-            "type": "title",
-            "content": {
-                "title_content": [
-                    {
-                        "type": "text",
-                        "content": "2. Related Works "
-                    }
-                ],
-                "level": 1
-            },
-            "bbox": [
-                83,
-                391,
-                240,
-                407
-            ]
-        },
-        {
-            "type": "title",
-            "content": {
-                "title_content": [
-                    {
-                        "type": "text",
-                        "content": "2.1. Frauds and Fraudulent pattern detection "
-                    }
-                ],
-                "level": 1
-            },
-            "bbox": [
-                83,
-                425,
-                449,
-                441
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "Fraud is a synonym for illicit use of a system to get some benefits, usually resulting in loss to another person. Frauds are as diverse as fraudulent patterns. Credit card fraud is fraud within the financial industry that usually cause monetary losses. The financial industries have been the principal victims of fraudulent activities in recent times. According to [1], substantial amount of money have been lost to insurance fraud. The growth of internet uses have made it easier for fraudsters to divulge and connect in order to target financial institutions from a distance, making it more diverse in nature. This further entangles the threats to credit card security systems, thus fraud detection and prevention are important concern to all financial institutions. "
-                    }
-                ]
-            },
-            "bbox": [
-                81,
-                455,
-                485,
-                638
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "By many estimates, approximately "
-                    },
-                    {
-                        "type": "equation_inline",
-                        "content": "10 \\%"
-                    },
-                    {
-                        "type": "text",
-                        "content": "of insurance company payments are for fraudulent claims, and the global sum of these fraudulent payments, amounts to substantial amount of money. "
-                    }
-                ]
-            },
-            "bbox": [
-                81,
-                652,
-                485,
-                710
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "Fraud detection refers to mechanisms to detect frauds when fraudulent activities occur, while Fraud prevention refers to all measures put in place to prevent frauds from happening, [2]. A necessary requirement for fraud preventive systems is their precision (i.e. predictive measure). Much concern is given to improving the precision of such systems. Fraud detection systems, conversely, need to adapt to the dynamism of threats. Hence in addition to possible predictiveness, Fraud detection systems need to be adaptive to the fraudulent patterns. A related concern usually classified under possible predictiveness is the time complexity of the system to detect fraudulent transactions. Certain systems require near real-time alertness on dubious transactions. "
-                    }
-                ]
-            },
-            "bbox": [
-                81,
-                724,
-                485,
-                907
-            ]
-        },
-        {
-            "type": "title",
-            "content": {
-                "title_content": [
-                    {
-                        "type": "text",
-                        "content": "2.2. Outlier detection "
-                    }
-                ],
-                "level": 1
-            },
-            "bbox": [
-                509,
-                85,
-                684,
-                102
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "An outlier is an observation that deviates so much from other observations as to evoke suspicion that it was generated by a different mechanism [3]. "
-                    }
-                ]
-            },
-            "bbox": [
-                508,
-                123,
-                911,
-                166
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "Unsupervised learning approaches are used to this model. Usually, the result of unsupervised learning is a new explanation or representation of the original observation data, which then lead to improved future responses or decisions. Unsupervised learning methods do not need prior knowledge of fraudulent and genuine transactions (i.e. labels) in historical databases, instead detect alteration in behavior or unusual transactions. These methods model a baseline distribution that represents normal behavior and then detect observations that show deviation from this norm. Outliers are a basic form of non-standard observation that can be used for fraud detection. In supervised methods, models are trained to discriminate between fraudulent and non-fraudulent behavior so that new observations can be assigned to different classes. Supervised methods require accurate identification of fraudulent transactions in historical databases and can only be used to detect frauds of a type that have previously occurred. An advantage of using unsupervised methods over supervised methods is that previously undiscovered types of fraud may also be detected. Supervised methods are merely trained to discriminate between legit transactions and previously known fraud. "
-                    }
-                ]
-            },
-            "bbox": [
-                506,
                 181,
-                911,
-                492
+                195,
+                302,
+                209
             ]
         },
         {
@@ -738,33 +41,15 @@
                 "paragraph_content": [
                     {
                         "type": "text",
-                        "content": "[2] proposed unsupervised credit card fraud detection techniques, using behavioral outlier detection techniques. Anomalous spending behavior and frequency of transactions can be identified as outliers, which could be possible fraud cases. "
+                        "content": "University of Montr´eal "
                     }
                 ]
             },
             "bbox": [
-                506,
-                493,
-                911,
-                564
-            ]
-        },
-        {
-            "type": "title",
-            "content": {
-                "title_content": [
-                    {
-                        "type": "text",
-                        "content": "2.3. Rule-based fraud detection "
-                    }
-                ],
-                "level": 1
-            },
-            "bbox": [
-                509,
-                587,
-                764,
-                602
+                181,
+                209,
+                336,
+                223
             ]
         },
         {
@@ -773,15 +58,15 @@
                 "paragraph_content": [
                     {
                         "type": "text",
-                        "content": "Rule-based methods consist all known fraudulent characteristics and use them to model the fraud detection system (FDS). They are classified as Supervised learning methods as they use previously known fraud to detect similar patterns. Such methods classify transactions using rules made out based on previously detected fraudulent transactions. The process used to adopt such models to evolving threats is manual, and thus such methods are not recommended for persistent threats of these days. An example of such methods include BAYES, RIPPER etc. "
+                        "content": "University of Rouen "
                     }
                 ]
             },
             "bbox": [
-                506,
-                623,
-                911,
-                765
+                181,
+                223,
+                320,
+                238
             ]
         },
         {
@@ -790,2525 +75,31 @@
                 "paragraph_content": [
                     {
                         "type": "text",
-                        "content": "Although according to [4], Rule-based fraud analysis can be very tedious to administer because the proper layout of such rules require detailed, onerous, and prolonged programming for each credible fraud instance. The dynamic emergence of multiple new fraud types, demands that these rules be constantly adapted to include existing, emerging, and future fraud options. Moreover, it also presents a major hurdle to scalability. The more data the system must process, the more severe is the performance descents. "
+                        "content": "Tomas Mikolov & Marc’Aurelio Ranzato "
                     }
                 ]
             },
             "bbox": [
-                506,
-                780,
-                911,
-                907
-            ]
-        }
-    ],
-    [
-        {
-            "type": "title",
-            "content": {
-                "title_content": [
-                    {
-                        "type": "text",
-                        "content": "2.4. Statistical fraud detection "
-                    }
-                ],
-                "level": 1
-            },
-            "bbox": [
-                84,
-                85,
-                326,
-                101
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "Statistical methods have been used to classify and detect frauds. The transactional data is known to follow a statistical distribution, and thus, transactional data points, that fall out of the normal distribution are considered dubious. Such methods include Linear Discriminant Analysis (LDA) and Logistic Regression [2]. Statistical methods can either be supervised or unsupervised. Supervised methods use known fraudulent cases to model the detector system. "
-                    }
-                ]
-            },
-            "bbox": [
-                81,
-                117,
-                485,
-                231
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "A natural problem with the Statistical method is determining the most relevant distribution to fit a data set (best fit), and with increased dimension of the data, it becomes more difficult to approximate the distribution, [5]. "
-                    }
-                ]
-            },
-            "bbox": [
-                81,
-                232,
-                485,
-                289
-            ]
-        },
-        {
-            "type": "title",
-            "content": {
-                "title_content": [
-                    {
-                        "type": "text",
-                        "content": "2.5. Machine Learning based detection "
-                    }
-                ],
-                "level": 1
-            },
-            "bbox": [
-                83,
-                306,
-                397,
-                323
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "Machine learning (ML) is the science of getting computers to act without being explicitly programmed. In the past decade, machine learning has given us self-driving cars, practical speech recognition, effective web search, and a vastly improved understanding of the human genome. "
-                    }
-                ]
-            },
-            "bbox": [
-                81,
-                339,
-                485,
-                409
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "ML evolved primarily from Artificial Intelligence (AI) and Soft computing, and also from other fields including applied mathematics, pattern recognition and computational learning theory [6]. ML algorithms are mostly used to handle problems involving automatic data classification [7]. ML algorithms are capable of analyzing data and searching for hidden patterns in data. According to [8] ML algorithms aims to predict patterns from data based on learned experiences. ML algorithms are divided into different classes, namely: supervised learning, unsupervised learning, semisupervised learning, reinforcement learning, transduction and learning to learn [8]. Most of the proposed credit card fraud detection techniques are based on supervised learning and few are based on semi-supervised learning. Some of these techniques are discussed next: "
-                    }
-                ]
-            },
-            "bbox": [
-                81,
-                410,
-                485,
-                623
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "2.5.1. Hidden Markov Model. [9] proposed a technique based on Hidden Markov Model (HMM). In the study, authors used HMM to model a sequence of credit card transactions and divide the transactions into three price ranges (clusters): low (l), medium (m), and high (h). The type of each transaction is linked to the line of business of the corresponding merchant. Afterwards, determine the three probability matrices so that representation of the HMM is complete. These three model parameters are determined in a training phase using the Baum-Welch algorithm [10]. Authors considered the special case of fully connected HMM in which every state of the model can be reached in a single step from every other state. "
-                    }
-                ]
-            },
-            "bbox": [
-                81,
-                638,
-                485,
-                821
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "An HMM is initially trained with the normal behaviour of the cardholder. Thereafter, authors constructed sequences from training data-set and trained the model. In the testing and validation phase, if an incoming credit card transaction is not accepted by the trained HMM with sufficiently high probability, it is considered to be fraudulent. authors also "
-                    }
-                ]
-            },
-            "bbox": [
-                81,
-                821,
-                485,
-                907
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "claim to minimize the true positive rates. "
-                    }
-                ]
-            },
-            "bbox": [
-                509,
-                87,
-                790,
-                102
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "Another proposed technique based on HMM is proposed by [10]. In the study also, authors used HMM to model a sequence of credit card transactions and used K-mean clustering algorithm to cluster the transactions into three price ranges (clusters): low (l), medium (m), and high (h), as proposed by [9] Afterwards, incoming transactions were tested into the trained model and authorized if accepted with sufficiently high probability. Otherwise, transaction will be terminated and IP address of the merchant to be defrauded will be traced using HMM. A notification will be sent to both the merchant system’s administrator and cardholder via mobile communications. Also as per the authors, the HMM was trained with Baum-Welch algorithm. "
-                    }
-                ]
-            },
-            "bbox": [
-                506,
-                114,
-                913,
-                299
-            ]
-        },
-        {
-            "type": "title",
-            "content": {
-                "title_content": [
-                    {
-                        "type": "text",
-                        "content": "2.5.2. Support vector machines (SVM) based techniques. "
-                    }
-                ],
-                "level": 1
-            },
-            "bbox": [
-                508,
-                313,
-                911,
-                328
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "[11] performed a comparative study between SVM and decision tree based credit card fraud detection system (FDS). Firstly, authors divided the data-set used into three groups with the ratio of fraudulent transactions to the legit ones in 1:1, 1:4, 1:9 respectively, during the implementation. As usual training to testing data-set was divided by "
-                    },
-                    {
-                        "type": "equation_inline",
-                        "content": "70 \\%"
-                    },
-                    {
-                        "type": "text",
-                        "content": "to "
-                    },
-                    {
-                        "type": "equation_inline",
-                        "content": "30 \\%"
-                    },
-                    {
-                        "type": "text",
-                        "content": ". Authors used four kernels for SVM in the setup. Also they developed seven SVM-based and decision tree based models and tested each of them. Results from experiments revealed that the Decision tree based model outperformed SVM model. The models achieved classification accuracy between the range of 83.02 to "
-                    },
-                    {
-                        "type": "equation_inline",
-                        "content": "9 4 . 7 6 \\%"
-                    },
-                    {
-                        "type": "text",
-                        "content": ". "
-                    }
-                ]
-            },
-            "bbox": [
-                506,
-                329,
-                911,
-                498
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "2.5.3. Frequent item-set mining. [12] proposed a technique based on frequent item-set mining, called Fraud-Miner. Authors separated each customer’s transaction from the whole transactional database and from each customer’s transactions again separated their legit and fraud transactions. Afterwards, applied Apriori algorithm to both the sets of legit and fraud transactions on each customer’s transactions which returns a set of frequent item-sets of both legit and fraud transactions. for testing, authors propose a matching algorithm which spans the legit and fraudulent pattern databases of each customers for a match with the incoming transaction to detect fraud. If a convenient match is found with legit pattern of the corresponding customer, it matches, otherwise not. The experimental result shows that the FraudMiner outperformed the existing solutions eg. SVM, Naive Bias (NB), KNN etc. "
-                    }
-                ]
-            },
-            "bbox": [
-                506,
-                511,
-                911,
-                739
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "2.5.4. Ensemble based technique. [13] proposed a credit card fraud detection model based on bagging ensemble classifier. The primary objective of study was to compare the performance of three different advanced data mining techniques namely: SVM, NB and KNN to bagging ensemble classifier based on decision tree. To counter class imbalance problem authors divided the data-set used into four groups with fraud rates approximately "
-                    },
-                    {
-                        "type": "equation_inline",
-                        "content": "20 \\%"
-                    },
-                    {
-                        "type": "text",
-                        "content": ", "
-                    },
-                    {
-                        "type": "equation_inline",
-                        "content": "1 5 \\%"
-                    },
-                    {
-                        "type": "text",
-                        "content": ", "
-                    },
-                    {
-                        "type": "equation_inline",
-                        "content": "10 \\%"
-                    },
-                    {
-                        "type": "text",
-                        "content": ", "
-                    },
-                    {
-                        "type": "equation_inline",
-                        "content": "3 \\%"
-                    },
-                    {
-                        "type": "text",
-                        "content": "respectively also authors used 10 fold cross validation technique. To compare the results authors weigh the performance of SVM, NB and KNN and compared "
-                    }
-                ]
-            },
-            "bbox": [
-                506,
-                752,
-                913,
-                907
-            ]
-        }
-    ],
-    [
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "with the result obtained by bagging ensemble classifier. The experimental result revealed that bagging ensemble classifier achieved better fraud detection rate and an improved false positive rate. "
-                    }
-                ]
-            },
-            "bbox": [
-                86,
-                88,
-                483,
-                143
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "[14] proposed a credit card fraud detection techniques based on Ensemble classification and extended feature selection. Authors considered both the feature selection and the prediction (decision) cost for accuracy enhancement of the FDS. After selecting best features using an extended wrapper method, an ensemble classification is performed. Authors performed the ensemble classification using cost sensitive decision tree in a decision forest framework. The experimental result revealed that considering the F-measure as the evaluation metric, the proposed approach achieves 1.8 to "
-                    },
-                    {
-                        "type": "equation_inline",
-                        "content": "2 . 4 \\%"
-                    },
-                    {
-                        "type": "text",
-                        "content": "performance improvement compared to the other classifiers. "
-                    }
-                ]
-            },
-            "bbox": [
-                86,
-                157,
-                485,
-                327
-            ]
-        },
-        {
-            "type": "title",
-            "content": {
-                "title_content": [
-                    {
-                        "type": "text",
-                        "content": "2.6. Nature inspired (NI) based techniques "
-                    }
-                ],
-                "level": 1
-            },
-            "bbox": [
-                86,
-                343,
-                423,
-                359
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "Nature inspired based methods refers to algorithms inspired by nature’s problem solving ability [15]. In other words, Nature is the source of inspiration to Nature Inspired algorithms. For example, Ant Colony Optimization is inspired by the methods used by ants to seek for pathways between their colony and a food source, Bat algorithm was inspired by the echolocation behaviour of micro-bats, with varying pulse rates of emission and loudness and Genetic Algorithm is inspired by the process of natural selection, that belongs to the larger class of evolutionary algorithms (EA). [16]. NI algorithms are designed to handle complex real world classification and optimization related problems, such as timetabling problem, travelling salesman problems (TSP) and hostel allocation problems [15]. Generally, NI algorithms are used for global optimization. Some NI-based techniques used to provide solution to credit card fraud detection are discussed next. "
-                    }
-                ]
-            },
-            "bbox": [
-                86,
-                372,
-                485,
-                611
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "2.6.1. Genetic algorithm (GA) based techniques. [17] proposed a GA-based credit card FDS with the intent of detecting the fraud with minimum false positive rate. Instead of maximizing the correctly classified transactions authors prescribed an objective function with variable misclassification cost. The objective function intents at minimizing false positive rate. During classification, authors extracted credit card transaction from the database and standardize the data. Afterwords, calculated critical values for each transaction present in the database. Authors also extracted the frequent item-set for credit card usage, indigence, location where the credit card was used, balance on the account linked to credit card, average spending pattern of the credit cardholder from each transaction. Furthermore, authors used Genetic Algorithm (GA) to generate new critical values. Finally, the new critical values were then used for classification. "
-                    }
-                ]
-            },
-            "bbox": [
-                86,
-                625,
-                485,
-                849
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "2.6.2. Artificial neural network (ANN) based techniques. [18] used Simulated annealing (SA) and Back-propagation algorithm (BPA) for Feed-forward Neural Network (FFNN) "
-                    }
-                ]
-            },
-            "bbox": [
-                86,
-                864,
-                483,
-                907
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "to develop a credit card FDS with the intent of hybridizing SA and BPA for FFNN, which can join the symbolic global searching capability of SA with the precise local searching element of back-propagation FFNNs to improve the initial weights of a neural network toward getting a better result for detection fraud. Authors suggest of identifying fraud and legit transactions based on following critical values, namely: credit card usage frequency, number of locations of credit card usage, average credit card indigence and credit card book balance. "
-                    }
-                ]
-            },
-            "bbox": [
-                513,
-                87,
-                911,
-                228
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "Authors randomly initialized the weights of FFNN and evaluated weights using SA, following a temperature annealing schedule with the algorithm. While first temperature value is less than or equal to the minimum error authors selected the best solution. Furthermore, for training, authors initialize the parameters of BP learning algorithm. While the threshold epoch not reached, authors update the weights of BP to minimize the error with training data. Finally, Authors assess the execution of classification with test data to validate the study. The experimental result revealed that BPFFNN with applied SA yielded better false positive rate as compare to the simple BPFFNN algorithm. "
-                    }
-                ]
-            },
-            "bbox": [
-                513,
-                229,
-                911,
-                398
-            ]
-        },
-        {
-            "type": "title",
-            "content": {
-                "title_content": [
-                    {
-                        "type": "text",
-                        "content": "3. Proposed Methodology "
-                    }
-                ],
-                "level": 1
-            },
-            "bbox": [
-                513,
-                412,
-                733,
-                429
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "To address the major concerns of a Fraud detection system, the following infrastructural design choices were made. "
-                    }
-                ]
-            },
-            "bbox": [
-                513,
-                441,
-                911,
-                483
-            ]
-        },
-        {
-            "type": "title",
-            "content": {
-                "title_content": [
-                    {
-                        "type": "text",
-                        "content": "3.1. Deep Learning Model "
-                    }
-                ],
-                "level": 1
-            },
-            "bbox": [
-                513,
-                498,
-                722,
-                513
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "A deep learning computation model will be used to model FDS. Deep learning models are appropriate here as they serve well for data sets having large amount of data with large no. of features. The ability of such models to learn feature hierarchy composing lower level features into higher level abstractions influenced its choice here. It has the potential to discover sophisticated patterns in large data sets through its self-adjusting back-propagation algorithm. "
-                    }
-                ]
-            },
-            "bbox": [
-                513,
-                526,
-                911,
-                640
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "Furthermore, Deep Learning models address some of the big challenges posed by Big Data computation and analysis, thereby providing efficient means to the use of Big Data. "
-                    }
-                ]
-            },
-            "bbox": [
-                513,
-                640,
-                911,
-                681
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "For the purpose of this task, two Deep Learning models are used to model the credit-card fraud data and to predict fraudulent transactions. The first model will be a Multi-layer feed-forward neural network system. It is built based on the neuron units. The model works by feeding the input data into the first layer. Subsequent layers learn more concrete features from previous layers through non-linear transformations. "
-                    }
-                ]
-            },
-            "bbox": [
-                513,
-                681,
-                911,
-                792
-            ]
-        },
-        {
-            "type": "title",
-            "content": {
-                "title_content": [
-                    {
-                        "type": "text",
-                        "content": "Experiment I: Multi-layer feed-forward supervised learning "
-                    }
-                ],
-                "level": 1
-            },
-            "bbox": [
-                513,
-                808,
-                911,
-                837
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "This experiment involves tuning a feed-forward deep learning network to model financial data. Parameters such as activation function, number of epochs, hidden layers size will be adjusted until a suitable model is reached. The aim "
-                    }
-                ]
-            },
-            "bbox": [
-                513,
-                851,
-                911,
-                907
-            ]
-        }
-    ],
-    [
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "of the experiment is to find recommendations for Fraud detection system designs. "
-                    }
-                ]
-            },
-            "bbox": [
-                81,
-                87,
-                485,
-                116
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "Choices for activation function include: The Tanh function & Logistic sigmoid function with min-max or z-score normalization. After Using validation set to determine the data standardization approach and the best fit activation functions, According to experiments, It’s found that Tanh performs better than Logistic sigmoid, when using it with z-score normalization. Hence, choosing tanh followed by zscore is the best option. the Epoch numbers will be increased by factors of 10 (1, 10, 100 etc.). Hidden layers will vary between 1 to 50. The mean-squared error (MSE) function or reconstruction error is used as the loss function. "
-                    }
-                ]
-            },
-            "bbox": [
-                81,
-                116,
-                486,
-                271
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "The multi-layer feed-forward Deep Learning model is used to conduct supervised learning with the training data set, which is the majority of the data, splitted in the ratio of 3:1. Design parameters will be varied to determine a recommended design for the FDS on the data set. "
-                    }
-                ]
-            },
-            "bbox": [
-                81,
-                272,
-                486,
-                343
-            ]
-        },
-        {
-            "type": "title",
-            "content": {
-                "title_content": [
-                    {
-                        "type": "text",
-                        "content": "3.2. Anomaly Detection "
-                    }
-                ],
-                "level": 1
-            },
-            "bbox": [
-                83,
-                359,
-                274,
-                376
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "The anomaly detection model used here is Deep Autoencoders (DAE) to detect fraudulent pattern in the data-set which is an unsupervised model. "
-                    }
-                ]
-            },
-            "bbox": [
-                81,
-                391,
-                486,
-                433
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "Unsupervised means the model will be trained for both fraud and non-fraud data without feeding the labels. Since the class imbalance is very high in the credit cards, It is expected from the model to learn and memorize the patterns of legit ones after the unsupervised training, and should be able to give a credible score for any transaction as being an outlier. And this unsupervised training would be quite handy in practice especially when we don’t have enough labeled data set. Deep Auto-encoders can be used to pre-train the model before a supervised training. "
-                    }
-                ]
-            },
-            "bbox": [
-                81,
-                434,
-                486,
-                575
-            ]
-        },
-        {
-            "type": "title",
-            "content": {
-                "title_content": [
-                    {
-                        "type": "text",
-                        "content": "Experiment II: Deep Auto-encoders for detecting fraudulent patterns "
-                    }
-                ],
-                "level": 1
-            },
-            "bbox": [
-                81,
-                590,
-                486,
-                619
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "This experiment involves designing a Deep Auto-encoder to detect anomaly in the credit card data-set. The Deep Auto-encoder learns the pattern in the data-set through non-linear transformations of layers. "
-                    }
-                ]
-            },
-            "bbox": [
-                81,
-                632,
-                486,
-                688
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "To test for anomaly, it reconstructs the test data, anomalous data will deviate a lot from the legit ones and thus will have high error. A deep learning auto-encoder will be trained on "
-                    },
-                    {
-                        "type": "equation_inline",
-                        "content": "7 5 \\%"
-                    },
-                    {
-                        "type": "text",
-                        "content": "of the data set, the remaining "
-                    },
-                    {
-                        "type": "equation_inline",
-                        "content": "2 5 \\%"
-                    },
-                    {
-                        "type": "text",
-                        "content": "will be used to test for the model’s predictions. The mean-squared error (MSE) function or reconstruction error function is used as the loss function. "
-                    }
-                ]
-            },
-            "bbox": [
-                81,
-                689,
-                486,
-                787
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "Reconstruction Error Function: "
-                    }
-                ]
-            },
-            "bbox": [
-                83,
-                801,
-                299,
-                816
-            ]
-        },
-        {
-            "type": "equation_interline",
-            "content": {
-                "math_content": "L \\left(x, x ^ {\\prime}\\right) = \\left| \\left| x - x ^ {\\prime} \\right| \\right| ^ {2} \\tag {1}",
-                "math_type": "latex",
-                "image_source": {
-                    "path": "images/0d6df311aef0c9d9649dd8ada0e6506d07cbf2030cce3eb0140ddba899ff1306.jpg"
-                }
-            },
-            "bbox": [
-                207,
-                824,
-                485,
-                842
-            ]
-        },
-        {
-            "type": "title",
-            "content": {
-                "title_content": [
-                    {
-                        "type": "text",
-                        "content": "Experiment III: Optimization "
-                    }
-                ],
-                "level": 1
-            },
-            "bbox": [
-                107,
-                851,
-                326,
-                867
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "This experiment involves optimizing the performance of the proposed deep learning fraud detection model. For "
-                    }
-                ]
-            },
-            "bbox": [
-                81,
-                878,
-                486,
-                907
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "optimizing the performance of the FDS, Nature Inspired Bat Algorithm is used. The aim is to mitigate the training cost and complexity of the FDS. Also to enhance the overall performance of the model. "
-                    }
-                ]
-            },
-            "bbox": [
-                506,
-                87,
-                911,
-                143
-            ]
-        },
-        {
-            "type": "title",
-            "content": {
-                "title_content": [
-                    {
-                        "type": "text",
-                        "content": "Experiment IV: Comparison with different Scikit learn algorithms "
-                    }
-                ],
-                "level": 1
-            },
-            "bbox": [
-                506,
-                157,
-                911,
-                186
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "This experiment involves comparing different Scikitlearn methods/algorithms to classify fraudulent patterns. These comparisons are done using different performance measures e.g.: AUC scores, confusion matrices and precision-recall curves. "
-                    }
-                ]
-            },
-            "bbox": [
-                506,
-                200,
-                911,
+                181,
+                258,
+                472,
                 272
             ]
         },
         {
-            "type": "title",
-            "content": {
-                "title_content": [
-                    {
-                        "type": "text",
-                        "content": "4. Implementation & Execution "
-                    }
-                ],
-                "level": 1
-            },
-            "bbox": [
-                508,
-                287,
-                787,
-                304
-            ]
-        },
-        {
             "type": "paragraph",
             "content": {
                 "paragraph_content": [
                     {
                         "type": "text",
-                        "content": "We trained and tested our proposed FDS using Kaggle’s Credit Card Fraud Detection data-set. The summary of data-set: "
+                        "content": "Facebook Artificial Intelligence Research "
                     }
                 ]
             },
             "bbox": [
-                506,
-                316,
-                911,
-                358
-            ]
-        },
-        {
-            "type": "table",
-            "content": {
-                "image_source": {
-                    "path": "images/2d34680bb7e9d8fe3a8a4f6e48a2a04b4611521e40dd11420fb27188da151019.jpg"
-                },
-                "table_caption": [],
-                "table_footnote": [],
-                "html": "<table><tr><td colspan=\"2\">Kaggle: Credit Card Fraud Detection Data-set</td></tr><tr><td>Data Set Characteristics</td><td>Multivariate</td></tr><tr><td>Number of Attributes</td><td>31</td></tr><tr><td>Number of Instances</td><td>284807</td></tr><tr><td>Attribute Characteristics</td><td>Categorical, Float64</td></tr></table>",
-                "table_type": "complex_table",
-                "table_nest_level": 1
-            },
-            "bbox": [
-                526,
-                375,
-                895,
-                452
-            ]
-        },
-        {
-            "type": "title",
-            "content": {
-                "title_content": [
-                    {
-                        "type": "text",
-                        "content": "4.1. Data Standardization & Activation Function "
-                    }
-                ],
-                "level": 1
-            },
-            "bbox": [
-                508,
-                462,
-                901,
-                477
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "Two types of data standardization function is considered here: z-score & min-max normalization. 1) z-score normalization will normalize every column such that the resultant columns will have mean of zero and standardization of ones. And this will be a good choice if we are using Tanh activation function. This will output values on both sides of zero. Furthermore, Tanh activation function will leave values that are too extreme to still keep some outliers left after the normalization process. This might be useful to detect some extremeness in this case. "
-                    }
-                ]
-            },
-            "bbox": [
-                506,
-                489,
-                911,
-                631
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "2) min-max normalization will assure all values to be in the range [0, 1]. min-max is the default scaling approach if we are using sigmoid as our output activation function. "
-                    }
-                ]
-            },
-            "bbox": [
-                506,
-                632,
-                911,
-                675
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "Z-Score Standardization Function: "
-                    }
-                ]
-            },
-            "bbox": [
-                532,
-                688,
-                769,
-                702
-            ]
-        },
-        {
-            "type": "equation_interline",
-            "content": {
-                "math_content": "z - s c o r e = \\frac {x - \\mu}{\\sigma} \\tag {2}",
-                "math_type": "latex",
-                "image_source": {
-                    "path": "images/a1671e991d7d8880ebfb255b0f58d5051f8483ff02f10326284e6bb6181629ba.jpg"
-                }
-            },
-            "bbox": [
-                642,
-                707,
-                911,
-                734
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "Tanh Activation Function: "
-                    }
-                ]
-            },
-            "bbox": [
-                534,
-                739,
-                714,
-                753
-            ]
-        },
-        {
-            "type": "equation_interline",
-            "content": {
-                "math_content": "\\tanh  = \\frac {e ^ {2 x} - 1}{e ^ {2 x} + 1} \\tag {3}",
-                "math_type": "latex",
-                "image_source": {
-                    "path": "images/7e91be8ccfe2adb47d31df54079ae11ac6897bedee89da5808413dd9ad9a6cae.jpg"
-                }
-            },
-            "bbox": [
-                651,
-                756,
-                911,
-                787
-            ]
-        },
-        {
-            "type": "title",
-            "content": {
-                "title_content": [
-                    {
-                        "type": "text",
-                        "content": "4.2. Modeling Auto-encoder as unsupervised learning "
-                    }
-                ],
-                "level": 1
-            },
-            "bbox": [
-                506,
-                797,
-                911,
-                830
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "• Parameters: "
-                    }
-                ]
-            },
-            "bbox": [
-                534,
-                844,
-                651,
-                857
-            ]
-        },
-        {
-            "type": "list",
-            "content": {
-                "list_type": "text_list",
-                "list_items": [
-                    {
-                        "item_type": "text",
-                        "item_content": [
-                            {
-                                "type": "text",
-                                "content": "– learning rate "
-                            },
-                            {
-                                "type": "equation_inline",
-                                "content": "= 0 . 0 1"
-                            }
-                        ]
-                    },
-                    {
-                        "item_type": "text",
-                        "item_content": [
-                            {
-                                "type": "text",
-                                "content": "– training epochs "
-                            },
-                            {
-                                "type": "equation_inline",
-                                "content": "= 6 0"
-                            },
-                            {
-                                "type": "text",
-                                "content": "(Optimal) "
-                            }
-                        ]
-                    },
-                    {
-                        "item_type": "text",
-                        "item_content": [
-                            {
-                                "type": "text",
-                                "content": "– batch size "
-                            },
-                            {
-                                "type": "equation_inline",
-                                "content": "= 2 5 6"
-                            }
-                        ]
-                    }
-                ]
-            },
-            "bbox": [
-                578,
-                864,
-                820,
-                906
-            ]
-        }
-    ],
-    [
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "– display step "
-                    },
-                    {
-                        "type": "equation_inline",
-                        "content": "= 1"
-                    }
-                ]
-            },
-            "bbox": [
-                151,
-                87,
-                292,
-                103
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "• Network Parameters: "
-                    }
-                ]
-            },
-            "bbox": [
-                109,
-                108,
-                292,
-                122
-            ]
-        },
-        {
-            "type": "list",
-            "content": {
-                "list_type": "text_list",
-                "list_items": [
-                    {
-                        "item_type": "text",
-                        "item_content": [
-                            {
-                                "type": "text",
-                                "content": "– n hidden "
-                            },
-                            {
-                                "type": "equation_inline",
-                                "content": ". 1 = 1 5"
-                            }
-                        ]
-                    },
-                    {
-                        "item_type": "text",
-                        "item_content": [
-                            {
-                                "type": "text",
-                                "content": "– n hidden "
-                            },
-                            {
-                                "type": "equation_inline",
-                                "content": "2 = 1 5"
-                            }
-                        ]
-                    }
-                ]
-            },
-            "bbox": [
-                151,
-                128,
-                300,
-                157
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "• For FC layers: "
-                    }
-                ]
-            },
-            "bbox": [
-                109,
-                162,
-                245,
-                178
-            ]
-        },
-        {
-            "type": "list",
-            "content": {
-                "list_type": "text_list",
-                "list_items": [
-                    {
-                        "item_type": "text",
-                        "item_content": [
-                            {
-                                "type": "text",
-                                "content": "hidden size "
-                            },
-                            {
-                                "type": "equation_inline",
-                                "content": "= 4"
-                            },
-                            {
-                                "type": "text",
-                                "content": "(Best hidden size based on validation) "
-                            }
-                        ]
-                    },
-                    {
-                        "item_type": "text",
-                        "item_content": [
-                            {
-                                "type": "text",
-                                "content": "– output size "
-                            },
-                            {
-                                "type": "equation_inline",
-                                "content": "= 2"
-                            },
-                            {
-                                "type": "text",
-                                "content": "(classes: 1 & 0) "
-                            }
-                        ]
-                    }
-                ]
-            },
-            "bbox": [
-                151,
-                183,
-                485,
-                227
-            ]
-        },
-        {
-            "type": "title",
-            "content": {
-                "title_content": [
-                    {
-                        "type": "text",
-                        "content": "4.3. Optimization "
-                    }
-                ],
-                "level": 1
-            },
-            "bbox": [
-                83,
-                241,
-                225,
-                258
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "Optimization is done using Nature Inspired Bat Algorithm. "
-                    }
-                ]
-            },
-            "bbox": [
-                83,
-                268,
-                486,
-                297
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "4.3.1. Binary Bat Algorithm. The binary bat algorithm has been inspired by the echolocation behaviour of bats [19]. The characteristics of bats for finding its pray are being used in this algorithm. Bats tend to decrease the loudness and increase the rate of emitting ultrasonic waves, when they chase pray. "
-                    }
-                ]
-            },
-            "bbox": [
-                81,
-                310,
-                486,
-                395
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "In binary bat algorithm each artificial bat has a position vector, a velocity vector and a frequency vector. The position of the bats in binary bat algorithm is either 0 or 1. The velocity can be updated using the following equations: "
-                    }
-                ]
-            },
-            "bbox": [
-                81,
-                395,
-                485,
-                452
-            ]
-        },
-        {
-            "type": "equation_interline",
-            "content": {
-                "math_content": "V _ {i} (t + 1) = V _ {i} (t) + \\left(X _ {i} (t) - X ^ {*}\\right) F _ {i} \\tag {4}",
-                "math_type": "latex",
-                "image_source": {
-                    "path": "images/ce1e8e23dc38879c3cc8e2d033e3c937b174a14255168ed8f70221d2a87f0044.jpg"
-                }
-            },
-            "bbox": [
-                158,
-                458,
-                486,
-                474
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "Where Vi , Xi and Fi are the velocity, position and frequency of ith bat. "
-                    },
-                    {
-                        "type": "equation_inline",
-                        "content": "X ^ { * }"
-                    },
-                    {
-                        "type": "text",
-                        "content": "is the current global best location. "
-                    }
-                ]
-            },
-            "bbox": [
-                81,
-                481,
-                485,
-                508
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "The frequency of the ith bat can be updated using the following formula: "
-                    }
-                ]
-            },
-            "bbox": [
-                83,
-                508,
-                485,
-                537
-            ]
-        },
-        {
-            "type": "equation_interline",
-            "content": {
-                "math_content": "F _ {i} = F _ {\\min } + \\left(F _ {\\max } - F _ {\\min }\\right) \\beta \\tag {5}",
-                "math_type": "latex",
-                "image_source": {
-                    "path": "images/0497fcb38dfdbeb8e41f12c40a5030f1077ded2959f3deebba9e22eae7c70514.jpg"
-                }
-            },
-            "bbox": [
-                176,
-                544,
-                485,
-                561
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "Where "
-                    },
-                    {
-                        "type": "equation_inline",
-                        "content": "F _ { m i n }"
-                    },
-                    {
-                        "type": "text",
-                        "content": "is the minimum frequency and "
-                    },
-                    {
-                        "type": "equation_inline",
-                        "content": "F _ { m a x }"
-                    },
-                    {
-                        "type": "text",
-                        "content": "is the maximum frequency. "
-                    },
-                    {
-                        "type": "equation_inline",
-                        "content": "\\beta"
-                    },
-                    {
-                        "type": "text",
-                        "content": "represents a random number which lies between 0 and 1. "
-                    }
-                ]
-            },
-            "bbox": [
-                81,
-                566,
-                486,
-                609
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "The position of bats can be updated based on following function: "
-                    }
-                ]
-            },
-            "bbox": [
-                83,
-                609,
-                485,
-                636
-            ]
-        },
-        {
-            "type": "equation_interline",
-            "content": {
-                "math_content": "X _ {i} (t + 1) = X _ {i} (t) + V _ {i} (t) \\tag {6}",
-                "math_type": "latex",
-                "image_source": {
-                    "path": "images/94d6f74332f3fce38e099669ffa70dc706d8de9dedf9aa8c043da041d9907859.jpg"
-                }
-            },
-            "bbox": [
-                192,
-                637,
-                485,
-                654
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "The loudness and pulse rate of binary bat algorithm is A and r. These two variables can be updated as follows: "
-                    }
-                ]
-            },
-            "bbox": [
-                83,
-                659,
-                486,
-                688
-            ]
-        },
-        {
-            "type": "equation_interline",
-            "content": {
-                "math_content": "A _ {i} (t + 1) = \\alpha A _ {i} (t) \\tag {7}",
-                "math_type": "latex",
-                "image_source": {
-                    "path": "images/3767ca2a531b37cac659c4c6d56259aad5bc6781607106eac5f73ebe8ee95819.jpg"
-                }
-            },
-            "bbox": [
-                215,
-                695,
-                485,
-                710
-            ]
-        },
-        {
-            "type": "equation_interline",
-            "content": {
-                "math_content": "r _ {i} (t + 1) = r _ {i} (0) [ 1 - \\exp (- \\gamma t) ] \\tag {8}",
-                "math_type": "latex",
-                "image_source": {
-                    "path": "images/91f6de78a63d9ad323e7c020872d990b1c26789eade6fac2e29fac051e76554c.jpg"
-                }
-            },
-            "bbox": [
-                173,
-                717,
-                485,
-                733
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "Where "
-                    },
-                    {
-                        "type": "equation_inline",
-                        "content": "\\alpha"
-                    },
-                    {
-                        "type": "text",
-                        "content": "and "
-                    },
-                    {
-                        "type": "equation_inline",
-                        "content": "\\gamma"
-                    },
-                    {
-                        "type": "text",
-                        "content": "are constants. The loudness and the pulse rate are updated when we optimize the new solutions to ensure that the bats are moving toward the best solutions. "
-                    }
-                ]
-            },
-            "bbox": [
-                81,
-                739,
-                486,
-                782
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "4.3.2. Optimization using Binary Bat Algorithm. By using Nature Inspired Bat Algorithm for feature selection process, It is found that some features can be dropped to mitigate the training cost and the complexity of the entire system. Also it enhances the test AUC score significantly. Features dropped were: "
-                    }
-                ]
-            },
-            "bbox": [
-                81,
-                794,
-                486,
-                878
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "’V28’, ’V27’, ’V26’, ’V25’, ’V24’, ’V23’, ’V22’, ’V20’, ’V15’, ’V13’, ’V8’ "
-                    }
-                ]
-            },
-            "bbox": [
-                83,
-                878,
-                485,
-                907
-            ]
-        },
-        {
-            "type": "algorithm",
-            "content": {
-                "algorithm_caption": [
-                    {
-                        "type": "text",
-                        "content": "Algorithm 1: Pseudo code for Binary Bat Algorithm: "
-                    }
-                ],
-                "algorithm_content": [
-                    {
-                        "type": "text",
-                        "content": "1 Initialize the bat's position and velocity,  "
-                    },
-                    {
-                        "type": "equation_inline",
-                        "content": "X_{i}"
-                    },
-                    {
-                        "type": "text",
-                        "content": " and  "
-                    },
-                    {
-                        "type": "equation_inline",
-                        "content": "V_{i}"
-                    },
-                    {
-                        "type": "equation_inline",
-                        "content": "(\\mathrm{i} = 1,2,3,\\dots \\mathrm{n})"
-                    },
-                    {
-                        "type": "text",
-                        "content": "   \n2 Initialize frequency  "
-                    },
-                    {
-                        "type": "equation_inline",
-                        "content": "(F_{i})"
-                    },
-                    {
-                        "type": "text",
-                        "content": " pulse rate  "
-                    },
-                    {
-                        "type": "equation_inline",
-                        "content": "(r_i)"
-                    },
-                    {
-                        "type": "text",
-                        "content": " and loudness  "
-                    },
-                    {
-                        "type": "equation_inline",
-                        "content": "(A_{i})"
-                    },
-                    {
-                        "type": "text",
-                        "content": "   \n3 while iteration  "
-                    },
-                    {
-                        "type": "equation_inline",
-                        "content": "<"
-                    },
-                    {
-                        "type": "text",
-                        "content": " max_iteration do   \n4 Generate new solutions by adjusting frequencies   \n5 Update velocity and locations for each solution   \n6 if rand  "
-                    },
-                    {
-                        "type": "equation_inline",
-                        "content": ">r_i"
-                    },
-                    {
-                        "type": "text",
-                        "content": " then   \n7 Select a solution among the best solution   \n8 Generate a local solution among the selected best   \n9 end   \n10 Generate a new solution by flying (around) randomly   \n11 if rand  "
-                    },
-                    {
-                        "type": "equation_inline",
-                        "content": "<  A_{i}"
-                    },
-                    {
-                        "type": "text",
-                        "content": " and  "
-                    },
-                    {
-                        "type": "equation_inline",
-                        "content": "F(X_{i}) <   F(X^{*})"
-                    },
-                    {
-                        "type": "text",
-                        "content": " then   \n12 Accept the new solution   \n13 increase  "
-                    },
-                    {
-                        "type": "equation_inline",
-                        "content": "r_i"
-                    },
-                    {
-                        "type": "text",
-                        "content": " and reduce  "
-                    },
-                    {
-                        "type": "equation_inline",
-                        "content": "A_{i}"
-                    },
-                    {
-                        "type": "text",
-                        "content": "   \n14 end   \n15 Rank the bats and find current best X\\*   \n16 end "
-                    }
-                ]
-            },
-            "bbox": [
-                516,
-                123,
-                911,
-                425
-            ]
-        },
-        {
-            "type": "title",
-            "content": {
-                "title_content": [
-                    {
-                        "type": "text",
-                        "content": "5. Result & Analysis "
-                    }
-                ],
-                "level": 1
-            },
-            "bbox": [
-                509,
-                450,
-                694,
-                468
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "This section presents the outcomes of the experiments designed to provide Fraud detection systems. "
-                    }
-                ]
-            },
-            "bbox": [
-                508,
-                479,
-                911,
-                510
-            ]
-        },
-        {
-            "type": "title",
-            "content": {
-                "title_content": [
-                    {
-                        "type": "text",
-                        "content": "5.1. Performance Measures "
-                    }
-                ],
-                "level": 1
-            },
-            "bbox": [
-                509,
-                539,
-                730,
-                554
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "The following standard evaluation measures were used in describing the predictive Fraud detection models: "
-                    }
-                ]
-            },
-            "bbox": [
-                508,
-                566,
-                911,
-                597
-            ]
-        },
-        {
-            "type": "list",
-            "content": {
-                "list_type": "text_list",
-                "list_items": [
-                    {
-                        "item_type": "text",
-                        "item_content": [
-                            {
-                                "type": "text",
-                                "content": "1) Mean Square Error (MSE): It is used to assess the quality of a predictor models. It takes values in the range [0, 1]. The goal is to minimize MSE value. A ideal model will have MSE value "
-                            },
-                            {
-                                "type": "equation_inline",
-                                "content": "= 0"
-                            },
-                            {
-                                "type": "text",
-                                "content": ". "
-                            }
-                        ]
-                    },
-                    {
-                        "item_type": "text",
-                        "item_content": [
-                            {
-                                "type": "text",
-                                "content": "2) Accuracy: Accuracy is the simplest performance measure that refers to the closeness of a measured value to a standard or known value. Mathematically, it is the ratio between the number of correct predictions and the total number of predictions. "
-                            }
-                        ]
-                    }
-                ]
-            },
-            "bbox": [
-                534,
-                603,
-                911,
-                732
-            ]
-        },
-        {
-            "type": "equation_interline",
-            "content": {
-                "math_content": "A c c u r a c y = \\frac {\\# C o r r e c t}{\\# P r e d i c t i o n s} \\tag {9}",
-                "math_type": "latex",
-                "image_source": {
-                    "path": "images/a721c614dc627ed45dde6e4ad367699ca719d791bf8d8f95da168b3180667d8b.jpg"
-                }
-            },
-            "bbox": [
-                640,
-                736,
-                911,
-                767
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "3) Confusion Matrix: A confusion matrix (or confusion table) is a table that is often used to describe the performance of a prediction model on a set of test data for which the true values are known. In other words, it is a matrix between Real Classes and Predicted Classes. "
-                    }
-                ]
-            },
-            "bbox": [
-                534,
-                773,
-                913,
-                857
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "Confusion Matrix has following terms: "
-                    }
-                ]
-            },
-            "bbox": [
-                566,
-                858,
-                833,
-                873
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "True Positive (TP): Means no of positive cases which are predicted positive. "
-                    }
-                ]
-            },
-            "bbox": [
-                584,
-                878,
-                911,
-                909
-            ]
-        }
-    ],
-    [
-        {
-            "type": "list",
-            "content": {
-                "list_type": "text_list",
-                "list_items": [
-                    {
-                        "item_type": "text",
-                        "item_content": [
-                            {
-                                "type": "text",
-                                "content": "False Positive (FP): Means no of negative cases which are predicted positive. "
-                            }
-                        ]
-                    },
-                    {
-                        "item_type": "text",
-                        "item_content": [
-                            {
-                                "type": "text",
-                                "content": "True Negative (TN): Means no of negative cases which are predicted negative. "
-                            }
-                        ]
-                    },
-                    {
-                        "item_type": "text",
-                        "item_content": [
-                            {
-                                "type": "text",
-                                "content": "False Negative (FN): Means no of positive cases which are predicted negative. "
-                            }
-                        ]
-                    }
-                ]
-            },
-            "bbox": [
-                158,
-                87,
-                485,
-                172
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "4) Precision & Recall (PR): Precision is a measure of classifier’s exactness. Whereas, Recall is a measure of classifier’s exactness. "
-                    }
-                ]
-            },
-            "bbox": [
-                107,
-                178,
-                486,
-                220
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "In other words, Precision refers to how many selected items are relevant? Whereas, Recall refers to how many relevant items are selected? "
-                    }
-                ]
-            },
-            "bbox": [
-                138,
-                220,
-                485,
-                263
-            ]
-        },
-        {
-            "type": "equation_interline",
-            "content": {
-                "math_content": "P r e c i s i o n = \\frac {T P}{T P + F P} \\tag {10}",
-                "math_type": "latex",
-                "image_source": {
-                    "path": "images/177eeab35fba58882788e0546b93ef696d8e7bb990e56cfdaeaf9b8a605cea74.jpg"
-                }
-            },
-            "bbox": [
-                227,
-                267,
-                485,
-                299
-            ]
-        },
-        {
-            "type": "equation_interline",
-            "content": {
-                "math_content": "\\text {R e c a l l} = \\frac {T P}{T P + F N} \\tag {11}",
-                "math_type": "latex",
-                "image_source": {
-                    "path": "images/6bd86196664c09661cc134eaecbd4cd162aa169f5a09be8215cd1ddc0be3f56e.jpg"
-                }
-            },
-            "bbox": [
-                240,
-                301,
-                485,
-                333
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "5) F-scores (F1): F1 score is simply the harmonic mean of precision and recall values. "
-                    }
-                ]
-            },
-            "bbox": [
-                107,
-                337,
-                485,
-                366
-            ]
-        },
-        {
-            "type": "equation_interline",
-            "content": {
-                "math_content": "F 1 = 2 * \\frac {\\text {P r e c i s i o n} * \\text {R e c a l l}}{\\text {P r e c i s i o n} + \\text {R e c a l l}} \\tag {12}",
-                "math_type": "latex",
-                "image_source": {
-                    "path": "images/4d0a2d19a090ccb0bc62b09bfe89dc011c23af7a1eba3631ab35e78684787c21.jpg"
-                }
-            },
-            "bbox": [
-                207,
-                369,
-                485,
-                401
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "6) Area Under Curve (AUC): Also known as ”Area Under the Receiver Operating Characteristic curve (AUROC).” It is used to observe the usefulness of a model. AUROC curve is plotted between the true positive rate and the false positive rate at different threshold values. "
-                    }
-                ]
-            },
-            "bbox": [
-                107,
-                404,
-                486,
-                489
-            ]
-        },
-        {
-            "type": "title",
-            "content": {
-                "title_content": [
-                    {
-                        "type": "text",
-                        "content": "5.2. Experiment I & II: Result & Analysis "
-                    }
-                ],
-                "level": 1
-            },
-            "bbox": [
-                83,
-                503,
-                426,
-                521
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "The first & second experiment involves the use of Multilayer feed-forward networks to model Credit Card Fraud data and then to use the proposed deep auto-encoder to classify the fraudulent patterns with greater accuracy. "
-                    }
-                ]
-            },
-            "bbox": [
-                81,
-                532,
-                486,
-                588
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "To perform this, TensorFlow software library is used. It is an open-source library used for data-flow programming across a range of tasks. "
-                    }
-                ]
-            },
-            "bbox": [
-                81,
-                589,
-                486,
-                632
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "Test AUC Score: "
-                    },
-                    {
-                        "type": "equation_inline",
-                        "content": "9 5 . 3 3 \\%"
-                    }
-                ]
-            },
-            "bbox": [
-                83,
-                645,
-                256,
-                657
-            ]
-        },
-        {
-            "type": "image",
-            "content": {
-                "image_source": {
-                    "path": "images/2a37994bd2faa07532e7fc22d321023e1adabfa98470bad6dbc50dec4fb1b639.jpg"
-                },
-                "image_caption": [
-                    {
-                        "type": "text",
-                        "content": "Figure 1. Auto Encoder confusion matrix "
-                    }
-                ],
-                "image_footnote": []
-            },
-            "bbox": [
-                135,
-                674,
-                429,
-                864
-            ]
-        },
-        {
-            "type": "image",
-            "content": {
-                "image_source": {
-                    "path": "images/6e03b94223aaa6f27cb2c6cc096e21c0418115028cdcb84af84ca94274c63f30.jpg"
-                },
-                "image_caption": [
-                    {
-                        "type": "text",
-                        "content": "Figure 2. Auto Encoder AUROC Curve "
-                    }
-                ],
-                "image_footnote": []
-            },
-            "bbox": [
-                540,
-                113,
-                887,
-                300
-            ]
-        },
-        {
-            "type": "image",
-            "content": {
-                "image_source": {
-                    "path": "images/a0fa09086bf3dc30dcf1a1ed96c782769cc8102cc752e4a03914f9c08c66874d.jpg"
-                },
-                "image_caption": [
-                    {
-                        "type": "text",
-                        "content": "Figure 3. Show distribution of all MSE "
-                    }
-                ],
-                "image_footnote": []
-            },
-            "bbox": [
-                527,
-                390,
-                893,
-                569
-            ]
-        },
-        {
-            "type": "image",
-            "content": {
-                "image_source": {
-                    "path": "images/2c02a4548d00b1bde5f5d8715987256a9a7eece14e69f438ab5c91a59372a8ba.jpg"
-                },
-                "image_caption": [
-                    {
-                        "type": "text",
-                        "content": "Figure 4. Display only fraud cases "
-                    }
-                ],
-                "image_footnote": []
-            },
-            "bbox": [
-                529,
-                659,
-                905,
-                856
-            ]
-        }
-    ],
-    [
-        {
-            "type": "title",
-            "content": {
-                "title_content": [
-                    {
-                        "type": "text",
-                        "content": "5.3. Experiment III: Result & Analysis "
-                    }
-                ],
-                "level": 1
-            },
-            "bbox": [
-                83,
-                85,
-                398,
-                103
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "The third experiment involves Nature Inspired Bat Algorithm for optimizing the FDS implemented using the first and the second experiment. The optimization is done using binary bat algorithm in the feature selection stage. It is found that this optimization can mitigate the training cost and the complexity of the entire system. Also it enhances the test AUC score significantly. "
-                    }
-                ]
-            },
-            "bbox": [
-                81,
-                114,
-                486,
-                215
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "Test AUC Score: "
-                    },
-                    {
-                        "type": "equation_inline",
-                        "content": "9 6 . 2 1 \\%"
-                    }
-                ]
-            },
-            "bbox": [
-                83,
-                228,
-                261,
-                242
-            ]
-        },
-        {
-            "type": "image",
-            "content": {
-                "image_source": {
-                    "path": "images/3a09172fca95737af9f55ed8fc1d9b333cf22cb9472724012be4232ed16a2ef7.jpg"
-                },
-                "image_caption": [
-                    {
-                        "type": "text",
-                        "content": "Figure 5. Auto Encoder confusion matrix "
-                    }
-                ],
-                "image_footnote": []
-            },
-            "bbox": [
-                109,
-                263,
-                478,
-                503
-            ]
-        },
-        {
-            "type": "image",
-            "content": {
-                "image_source": {
-                    "path": "images/73312c453dfb87c1c694b2ddb9c34cc5bfbd990af9c1781bd75c539ed2c48579.jpg"
-                },
-                "image_caption": [
-                    {
-                        "type": "text",
-                        "content": "Figure 6. Auto Encoder AUROC Curve "
-                    }
-                ],
-                "image_footnote": []
-            },
-            "bbox": [
-                114,
-                563,
-                460,
-                752
-            ]
-        },
-        {
-            "type": "title",
-            "content": {
-                "title_content": [
-                    {
-                        "type": "text",
-                        "content": "5.4. Experiment IV: Result & Analysis "
-                    }
-                ],
-                "level": 1
-            },
-            "bbox": [
-                509,
-                85,
-                821,
-                103
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "The forth and final experiment involves Comparing different Scikit-learn methods/algorithms to classify fraudulent patterns. These comparisons are done using different performance measures e.g.: AUC scores, confusion matrices and precision-recall curves. "
-                    }
-                ]
-            },
-            "bbox": [
-                506,
-                114,
-                913,
-                186
-            ]
-        },
-        {
-            "type": "title",
-            "content": {
-                "title_content": [
-                    {
-                        "type": "text",
-                        "content": "5.4.1. FDS using different Scikit learn methods with Under-sampling. This experimentation uses Undersampling to handle class imbalance problem. "
-                    }
-                ],
-                "level": 1
-            },
-            "bbox": [
-                506,
-                200,
-                911,
-                243
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "Under-sampling intends to balance class distribution by randomly eliminating majority class observations. This is practised until the majority and minority class instances are balanced out. "
-                    }
-                ]
-            },
-            "bbox": [
-                506,
-                243,
-                911,
-                299
-            ]
-        },
-        {
-            "type": "image",
-            "content": {
-                "image_source": {
-                    "path": "images/1f0663fa831369493c6a15d46875885824dd4dcc2636b5ce6635c3e7b0ecd960.jpg"
-                },
-                "image_caption": [
-                    {
-                        "type": "text",
-                        "content": "Figure 7. AUCROC Curve with Under-sampling "
-                    }
-                ],
-                "image_footnote": []
-            },
-            "bbox": [
-                540,
-                321,
-                888,
-                511
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "We can see that XGB performs better than any other Scikit learn algorithms but the proposed FDS and the optimization outperforms it. "
-                    }
-                ]
-            },
-            "bbox": [
-                506,
-                559,
-                911,
-                603
-            ]
-        },
-        {
-            "type": "title",
-            "content": {
-                "title_content": [
-                    {
-                        "type": "text",
-                        "content": "5.4.2. FDS using different Scikit learn methods with Over-sampling. This experimentation uses Synthetic Minority Over-sampling Technique (SMOTE) to handle class imbalance problem. "
-                    }
-                ],
-                "level": 1
-            },
-            "bbox": [
-                506,
-                616,
-                911,
-                672
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "SMOTE is used to avoid over-fitting which occurs when exact replicas of minority class instances are added to the main data-set. "
-                    }
-                ]
-            },
-            "bbox": [
-                506,
-                672,
-                911,
-                714
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "A subset of data is taken from the minority class distribution as an example and then new, synthetic similar instances are created. These synthetic instances are then added to the original data-set. The new data-set is used as a sample to train the classification models. "
-                    }
-                ]
-            },
-            "bbox": [
-                506,
-                715,
-                911,
-                786
-            ]
-        }
-    ],
-    [
-        {
-            "type": "image",
-            "content": {
-                "image_source": {
-                    "path": "images/fc26e2d5ab9e597311551517f1a04b1b61e4535811c8c03de7d054fcc8722527.jpg"
-                },
-                "image_caption": [
-                    {
-                        "type": "text",
-                        "content": "Figure 8. AUCROC Curve with Over-sampling "
-                    }
-                ],
-                "image_footnote": []
-            },
-            "bbox": [
-                117,
-                95,
-                467,
+                181,
+                273,
+                457,
                 287
             ]
         },
@@ -3318,15 +109,15 @@
                 "paragraph_content": [
                     {
                         "type": "text",
-                        "content": "In this case Random Forest is the brightest performer, in fact it turns out to be almost an ideal classifier. But it might be the case that after applying SMOTE, the model gets over-fitted that means its credibility is not guaranteed. "
+                        "content": "Yoshua Bengio "
                     }
                 ]
             },
             "bbox": [
-                81,
-                338,
-                486,
-                396
+                181,
+                308,
+                290,
+                321
             ]
         },
         {
@@ -3335,95 +126,15 @@
                 "paragraph_content": [
                     {
                         "type": "text",
-                        "content": "5.4.3. FDS using different Scikit learn methods with Stratified 3-fold sampling. This experimentation uses different Scikit learn method to implement FDS on the given data-set. Also in this experiment Stratified 3-fold sampling is used to demonstrate the different performance measures of these algorithms at three different folds. "
+                        "content": "University of Montr´eal "
                     }
                 ]
             },
             "bbox": [
-                81,
-                409,
-                486,
-                494
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "Below is the best fold demonstration for different Scikit learn algorithms: "
-                    }
-                ]
-            },
-            "bbox": [
-                83,
-                494,
-                486,
-                523
-            ]
-        },
-        {
-            "type": "image",
-            "content": {
-                "image_source": {
-                    "path": "images/715f7eb6c202a20edbe7f5d298eae36dd1dc62caa453c840949257da37a20a50.jpg"
-                },
-                "image_caption": [
-                    {
-                        "type": "text",
-                        "content": "• Random Forest (RF): "
-                    },
-                    {
-                        "type": "text",
-                        "content": "Figure 9. RF Confusion Matrix "
-                    }
-                ],
-                "image_footnote": []
-            },
-            "bbox": [
-                114,
-                558,
-                493,
-                832
-            ]
-        },
-        {
-            "type": "image",
-            "content": {
-                "image_source": {
-                    "path": "images/d19a5779ab2ed6301b926c00b9506c08f7c238055a306a46e4fb9ef482855eee.jpg"
-                },
-                "image_caption": [
-                    {
-                        "type": "text",
-                        "content": "Figure 13. DT with entropy Classification Report "
-                    }
-                ],
-                "image_footnote": []
-            },
-            "bbox": [
-                542,
-                90,
-                906,
-                199
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "Figure 10. RF Classification Report "
-                    }
-                ]
-            },
-            "bbox": [
-                612,
-                215,
-                808,
-                229
+                181,
+                321,
+                336,
+                335
             ]
         },
         {
@@ -3432,35 +143,16 @@
                 "title_content": [
                     {
                         "type": "text",
-                        "content": "• Linear Regression (LR): "
+                        "content": "ABSTRACT "
                     }
                 ],
                 "level": 1
             },
             "bbox": [
-                534,
-                252,
-                738,
-                267
-            ]
-        },
-        {
-            "type": "table",
-            "content": {
-                "image_source": {
-                    "path": "images/21fc7aee8b5888f601358dc13a5c39c005195cabbc35a8b8100a0f9c4f08a2c0.jpg"
-                },
-                "table_caption": [],
-                "table_footnote": [],
-                "html": "<table><tr><td colspan=\"4\">Coefficient:</td></tr><tr><td>[-5.13666891e-09</td><td>-1.94003929e-03</td><td>2.85955120e-03</td><td>-5.12566968e-03</td></tr><tr><td>3.82127084e-03</td><td>-2.34242973e-03</td><td>-1.70713138e-03</td><td>-6.92689998e-03</td></tr><tr><td>9.84500022e-04</td><td>-3.61701850e-03</td><td>-8.06975037e-03</td><td>6.22972168e-03</td></tr><tr><td>-1.08467353e-02</td><td>-1.87312931e-04</td><td>-1.31613033e-02</td><td>-2.09226924e-04</td></tr><tr><td>-9.36694484e-03</td><td>-1.61326157e-02</td><td>-5.64633721e-03</td><td>1.94153822e-03</td></tr><tr><td>2.57593383e-04</td><td>2.08422229e-03</td><td>1.77236969e-04</td><td>1.01074257e-04</td></tr><tr><td>-5.02834707e-04</td><td>3.00092273e-04</td><td>3.43306751e-04</td><td>1.44082788e-03</td></tr><tr><td>1.17774065e-03</td><td>7.15060808e-06]</td><td></td><td></td></tr><tr><td colspan=\"4\">Intercept:</td></tr><tr><td colspan=\"4\">0.0015802378973</td></tr><tr><td colspan=\"4\">Accuracy = 0.525421124788</td></tr></table>",
-                "table_type": "complex_table",
-                "table_nest_level": 1
-            },
-            "bbox": [
-                537,
-                280,
-                908,
-                391
+                450,
+                373,
+                545,
+                388
             ]
         },
         {
@@ -3469,15 +161,15 @@
                 "paragraph_content": [
                     {
                         "type": "text",
-                        "content": "Figure 11. LR Classification Report "
+                        "content": "Sentiment analysis is a common task in natural language processing that aims to detect polarity of a text document (typically a consumer review). In the simplest settings, we discriminate only between positive and negative sentiment, turning the task into a standard binary classification problem. We compare several machine learning approaches to this problem, and combine them to achieve a new state of the art. We show how to use for this task the standard generative language models, which are slightly complementary to the state of the art techniques. We achieve strong results on a well-known dataset of IMDB movie reviews. Our results are easily reproducible, as we publish also the code needed to repeat the experiments. This should simplify further advance of the state of the art, as other researchers can combine their techniques with ours with little effort. "
                     }
                 ]
             },
             "bbox": [
-                612,
-                406,
-                808,
-                419
+                228,
+                402,
+                769,
+                556
             ]
         },
         {
@@ -3486,248 +178,952 @@
                 "title_content": [
                     {
                         "type": "text",
-                        "content": "• Logistic Regression (LOR): "
+                        "content": "1 INTRODUCTION "
                     }
                 ],
                 "level": 1
             },
             "bbox": [
-                534,
-                430,
-                759,
-                445
-            ]
-        },
-        {
-            "type": "table",
-            "content": {
-                "image_source": {
-                    "path": "images/adacd1a03bada7bed64b992d45cb9254d879494daf7b4f6ee3fce8f5f8012038.jpg"
-                },
-                "table_caption": [],
-                "table_footnote": [],
-                "html": "<table><tr><td colspan=\"2\">Coefficient: \n[[-7.07873101e-05 3.10375906e-01 -4.39220249e-01 -8.03621195e-01 \n1.02051153e-01 -1.18303954e-02 -5.80886115e-02 2.97149895e-01 \n-3.13064087e-01 -3.61117841e-01 -2.02536358e-01 -2.81515103e-01 \n2.63285979e-02 -2.93581993e-01 -6.54243726e-01 -4.33720511e-01 \n-2.92949221e-01 -4.72907602e-01 1.94575437e-02 2.64922477e-02 \n1.05852994e-01 2.52719436e-01 3.49222013e-01 1.08728798e-01 \n-3.89816931e-02 -3.16207443e-01 5.00063890e-02 -9.07856182e-02 \n2.71164375e-02 -5.99714346e-03]]</td></tr><tr><td>Intercept: \n[-1.59521329]</td><td></td></tr><tr><td colspan=\"2\">Accuracy = 0.999120460099</td></tr></table>",
-                "table_type": "complex_table",
-                "table_nest_level": 1
-            },
-            "bbox": [
-                534,
-                460,
-                893,
-                566
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "Figure 12. LOR Classification Report "
-                    }
-                ]
-            },
-            "bbox": [
-                607,
-                580,
-                815,
+                173,
+                579,
+                336,
                 594
             ]
         },
         {
-            "type": "title",
+            "type": "paragraph",
             "content": {
-                "title_content": [
+                "paragraph_content": [
                     {
                         "type": "text",
-                        "content": "Decision Tree Classifier using entropy criterion (DT): "
+                        "content": "Sentiment analysis is among the most popular, simple and useful tasks in natural language processing. It aims at predicting the attitude of text, typically a sentence or a review. For instance, movies or restaurant are often rated with a certain number of stars, which indicate the degree to which the reviewer was satisfied. "
                     }
-                ],
-                "level": 1
+                ]
             },
             "bbox": [
-                534,
-                604,
-                911,
-                633
-            ]
-        },
-        {
-            "type": "table",
-            "content": {
-                "image_source": {
-                    "path": "images/b831abcf99d1b59d0fcd790b0377b538de9c90cd5dd37fdede2be8ab35a3151b.jpg"
-                },
-                "table_caption": [],
-                "table_footnote": [],
-                "html": "<table><tr><td colspan=\"5\">---Classification Report---</td></tr><tr><td></td><td>precision</td><td>recall</td><td>f1-score</td><td>support</td></tr><tr><td>0</td><td>1.00</td><td>1.00</td><td>1.00</td><td>94772</td></tr><tr><td>1</td><td>0.72</td><td>0.78</td><td>0.75</td><td>164</td></tr><tr><td>avg / total</td><td>1.00</td><td>1.00</td><td>1.00</td><td>94936</td></tr><tr><td colspan=\"5\">Accuracy = 0.999104659981</td></tr></table>",
-                "table_type": "complex_table",
-                "table_nest_level": 1
-            },
-            "bbox": [
-                537,
-                650,
-                887,
-                753
-            ]
-        }
-    ],
-    [
-        {
-            "type": "image",
-            "content": {
-                "image_source": {
-                    "path": "images/d218a06abd0e497c47f7669c77729034e0a28dbfb5952d4e79be00acc1dea6b0.jpg"
-                },
-                "image_caption": [
-                    {
-                        "type": "text",
-                        "content": "Figure 14. DT with entropy Confusion Matrix "
-                    }
-                ],
-                "image_footnote": []
-            },
-            "bbox": [
-                106,
-                88,
-                490,
-                364
-            ]
-        },
-        {
-            "type": "image",
-            "content": {
-                "image_source": {
-                    "path": "images/493bd94128e391c96f1083a4b81dadcfce23e0acf1443792f7d6fdb53b622240.jpg"
-                },
-                "image_caption": [
-                    {
-                        "type": "text",
-                        "content": "• Decision Tree Classifier using gini criterion (DT): "
-                    },
-                    {
-                        "type": "text",
-                        "content": "Figure 15. DT with gini Confusion Matrix "
-                    }
-                ],
-                "image_footnote": []
-            },
-            "bbox": [
-                117,
-                452,
-                488,
-                720
-            ]
-        },
-        {
-            "type": "image",
-            "content": {
-                "image_source": {
-                    "path": "images/d5709ced92b68b2d18bf8728e4453c2a457d73981c5304d873fd9fb0e1e1eeba.jpg"
-                },
-                "image_caption": [
-                    {
-                        "type": "text",
-                        "content": "Figure 16. DT with gini Classification Report "
-                    }
-                ],
-                "image_footnote": []
-            },
-            "bbox": [
-                540,
-                90,
-                895,
-                196
-            ]
-        },
-        {
-            "type": "image",
-            "content": {
-                "image_source": {
-                    "path": "images/1d629e237a7b5e91b21c38a3e8da3e70d744c3698772397056441e585af4887e.jpg"
-                },
-                "image_caption": [
-                    {
-                        "type": "text",
-                        "content": "• Gradient Boosting Machine (GBM): "
-                    },
-                    {
-                        "type": "text",
-                        "content": "Figure 17. GBM Confusion Matrix "
-                    }
-                ],
-                "image_footnote": []
-            },
-            "bbox": [
-                532,
-                277,
-                916,
-                554
-            ]
-        },
-        {
-            "type": "image",
-            "content": {
-                "image_source": {
-                    "path": "images/e5f01e01f74797b331343fceaa4d329574b2b2e828539ffdb7957cf60fb451dc.jpg"
-                },
-                "image_caption": [
-                    {
-                        "type": "text",
-                        "content": "Figure 18. GBM Classification Report "
-                    }
-                ],
-                "image_footnote": []
-            },
-            "bbox": [
-                532,
+                169,
                 609,
-                898,
-                719
+                823,
+                666
+            ]
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "This task is often considered as one of the simplest in NLP because basic machine learning techniques can yield strong baselines (Wang & Manning, 2012), often beating much more intricate approaches (Socher et al., 2011). In the simplest settings, this task can be seen as a binary classification between positive and negative sentiment. "
+                    }
+                ]
+            },
+            "bbox": [
+                169,
+                672,
+                823,
+                729
+            ]
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "However, there are several challenges towards achieving the best possible accuracy. It is not obvious how to represent variable length documents beyond simple bag of words approaches that lose word order information. One can use advanced machine learning techniques such as recurrent neural networks and their variations (Mikolov et al., 2010; Socher et al., 2011), however it is not clear if these provide any significant gain over simple bag-of-words and bag-of-ngram techniques (Pang & Lee, 2008; Wang & Manning, 2012). "
+                    }
+                ]
+            },
+            "bbox": [
+                169,
+                734,
+                826,
+                821
+            ]
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "In this work, we compared several different approaches and realized, without much surprise, that model combination performs better than any individual technique. The ensemble best benefits from models that are complementary, thus having diverse set of techniques is desirable. The vast majority of models proposed in the literature are discriminative in nature, as their parameters are tuned for the classification task directly. In this work, we boost the performance of the ensemble by considering a generative language model. To this end, we train two language models, one on the positive reviews and one on the negative ones, and use the likelihood ratio of these two models "
+                    }
+                ]
+            },
+            "bbox": [
+                169,
+                825,
+                828,
+                926
+            ]
+        },
+        {
+            "type": "page_header",
+            "content": {
+                "page_header_content": [
+                    {
+                        "type": "text",
+                        "content": "Accepted as a workshop contribution at ICLR 2015 "
+                    }
+                ]
+            },
+            "bbox": [
+                171,
+                32,
+                514,
+                47
+            ]
+        },
+        {
+            "type": "page_aside_text",
+            "content": {
+                "page_aside_text_content": [
+                    {
+                        "type": "text",
+                        "content": "arXiv:1412.5335v7 [cs.CL] 27 May 2015 "
+                    }
+                ]
+            },
+            "bbox": [
+                22,
+                239,
+                60,
+                676
+            ]
+        },
+        {
+            "type": "page_number",
+            "content": {
+                "page_number_content": [
+                    {
+                        "type": "text",
+                        "content": "1 "
+                    }
+                ]
+            },
+            "bbox": [
+                493,
+                948,
+                504,
+                960
             ]
         }
     ],
     [
         {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "evaluated on the test data as an additional feature. For example, we assume that a positive review will have higher likelihood to be generated by a model that was trained on a large set of positive reviews, and lower likelihood given the negative model. In this paper, we constrained our work to binary classification where we trained two generative models, positive and negative. One could consider a higher number of classes since this approach scales linearily with the number of models to be train, i.e. one for each class. The large pool of diverse models is a) simple to implement (in line with previous work by Wang and Manning (Wang & Manning, 2012)) and b) it yields state of the art performance on one of the largest publicly available benchmarks of movie reviews, the Stanford IMDB dataset of reviews. Code to reproduce our experiments is available at https://github.com/mesnilgr/iclr15. "
+                    }
+                ]
+            },
+            "bbox": [
+                169,
+                104,
+                826,
+                243
+            ]
+        },
+        {
             "type": "title",
             "content": {
                 "title_content": [
                     {
                         "type": "text",
-                        "content": "• XGBoost Classifier (XGB): "
+                        "content": "2 DESCRIPTION OF THE MODELS "
                     }
                 ],
                 "level": 1
             },
             "bbox": [
-                109,
-                87,
-                331,
-                102
+                171,
+                271,
+                465,
+                287
+            ]
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "In this section we describe in detail the approaches we considered in our study. The novelty of this paper consists in combining both generative and discriminative models together for sentiment prediciton. "
+                    }
+                ]
+            },
+            "bbox": [
+                169,
+                306,
+                826,
+                349
+            ]
+        },
+        {
+            "type": "title",
+            "content": {
+                "title_content": [
+                    {
+                        "type": "text",
+                        "content": "2.1 GENERATIVE MODEL "
+                    }
+                ],
+                "level": 1
+            },
+            "bbox": [
+                171,
+                375,
+                364,
+                387
+            ]
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "A generative model defines a distribution over the input. By training a generative model for each class, we can then use Bayes rule to predict which class a test sample belongs to. More formally, given a dataset of pairs "
+                    },
+                    {
+                        "type": "equation_inline",
+                        "content": "\\{ x ^ { ( i ) } , y ^ { ( i ) } \\} _ { i = 1 , \\dots , N }"
+                    },
+                    {
+                        "type": "text",
+                        "content": "where "
+                    },
+                    {
+                        "type": "equation_inline",
+                        "content": "x ^ { ( i ) }"
+                    },
+                    {
+                        "type": "text",
+                        "content": "is the "
+                    },
+                    {
+                        "type": "equation_inline",
+                        "content": "i"
+                    },
+                    {
+                        "type": "text",
+                        "content": "-th document in the training set, "
+                    },
+                    {
+                        "type": "equation_inline",
+                        "content": "y ^ { ( i ) } \\in"
+                    },
+                    {
+                        "type": "equation_inline",
+                        "content": "\\bar { \\{ } - 1 , + 1 \\}"
+                    },
+                    {
+                        "type": "text",
+                        "content": "is the corresponding label and "
+                    },
+                    {
+                        "type": "equation_inline",
+                        "content": "_ \\mathrm { N }"
+                    },
+                    {
+                        "type": "text",
+                        "content": "is the number of training samples, we train two models: "
+                    },
+                    {
+                        "type": "equation_inline",
+                        "content": "p ^ { + } ( x | y = + 1 )"
+                    },
+                    {
+                        "type": "text",
+                        "content": "for "
+                    },
+                    {
+                        "type": "equation_inline",
+                        "content": "\\{ x ^ { ( i ) }"
+                    },
+                    {
+                        "type": "text",
+                        "content": "subject to "
+                    },
+                    {
+                        "type": "equation_inline",
+                        "content": "y ^ { ( i ) } = + 1 \\}"
+                    },
+                    {
+                        "type": "text",
+                        "content": "and "
+                    },
+                    {
+                        "type": "equation_inline",
+                        "content": "p ^ { - } ( x | y = - 1 )"
+                    },
+                    {
+                        "type": "text",
+                        "content": "for "
+                    },
+                    {
+                        "type": "equation_inline",
+                        "content": "\\{ x"
+                    },
+                    {
+                        "type": "text",
+                        "content": "subject to "
+                    },
+                    {
+                        "type": "equation_inline",
+                        "content": "y = - 1 \\}"
+                    },
+                    {
+                        "type": "text",
+                        "content": "Then, given an input "
+                    },
+                    {
+                        "type": "equation_inline",
+                        "content": "x"
+                    },
+                    {
+                        "type": "text",
+                        "content": "at test time we compute the ratio (derived from Bayes rule): "
+                    },
+                    {
+                        "type": "equation_inline",
+                        "content": "r = p ^ { + } ( x | y ="
+                    },
+                    {
+                        "type": "equation_inline",
+                        "content": "+ 1 ) / p ^ { - } ( x | y = - 1 ) \\times p ( y = + 1 ) / p ( y = - 1 ) ."
+                    },
+                    {
+                        "type": "text",
+                        "content": ". If "
+                    },
+                    {
+                        "type": "equation_inline",
+                        "content": "r > 1"
+                    },
+                    {
+                        "type": "text",
+                        "content": ", then "
+                    },
+                    {
+                        "type": "equation_inline",
+                        "content": "x"
+                    },
+                    {
+                        "type": "text",
+                        "content": "is assigned to the positive class, otherwise to the negative class. "
+                    }
+                ]
+            },
+            "bbox": [
+                169,
+                402,
+                823,
+                518
+            ]
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "We have a few different choices of distribution we can choose from. The most common one is the n-gram, a count-based non-parametric method to compute "
+                    },
+                    {
+                        "type": "equation_inline",
+                        "content": "p ( x _ { k } ^ { ( i ) } | x _ { k - 1 } ^ { ( i ) } , x _ { k - 2 } ^ { ( i ) } , \\ldots , x _ { k - N + 1 } ^ { ( i ) } )"
+                    },
+                    {
+                        "type": "text",
+                        "content": ", where "
+                    },
+                    {
+                        "type": "equation_inline",
+                        "content": "\\boldsymbol { x } _ { k } ^ { ( i ) }"
+                    },
+                    {
+                        "type": "text",
+                        "content": "xk is the "
+                    },
+                    {
+                        "type": "equation_inline",
+                        "content": "k"
+                    },
+                    {
+                        "type": "text",
+                        "content": "-th word in the "
+                    },
+                    {
+                        "type": "equation_inline",
+                        "content": "i"
+                    },
+                    {
+                        "type": "text",
+                        "content": "-th document. In order to compute the likelihood of a document, we use thedocument: "
+                    },
+                    {
+                        "type": "equation_inline",
+                        "content": "\\begin{array} { r } { p ( x ^ { ( i ) } ) = \\prod _ { k = 1 } ^ { \\bar { K _ { } } } p ( x _ { k } ^ { ( i ) } | x _ { k - 1 } ^ { ( i ) } , x _ { k - 2 } ^ { ( i ) } , \\ldots , x _ { k - N + 1 } ^ { ( i ) } ) } \\end{array}"
+                    },
+                    {
+                        "type": "text",
+                        "content": ". . , x(i)k−N+1) m probabilities over all words in the. As mentioned before, we train one n-gram language model using the positive documents and one model using the negative ones. "
+                    }
+                ]
+            },
+            "bbox": [
+                169,
+                523,
+                823,
+                618
+            ]
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "In our experiments, we used SRILM toolkit (Stolcke et al., 2002) to train the n-gram language models using modified Kneser-Ney smoothing (Kneser & Ney, 1995). Furthermore, as both language models are trained on different datasets, there is a mismatch between vocabularies: some words can appear only in one of the training sets. This can be a problem during scoring, as the test data contain novel words that were not seen in at least one of the training datasets. To avoid this problem, it is needed to add penalty during scoring for each out of vocabulary word. "
+                    }
+                ]
+            },
+            "bbox": [
+                169,
+                623,
+                823,
+                708
+            ]
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "N-grams are a very simple data-driven way to build language models. However, they suffer from both data sparsity and large memory requirement. Since the number of word combinations grows exponentially with the length of the context, there is always little data to accurately estimate probabilities for higher order n-grams. "
+                    }
+                ]
+            },
+            "bbox": [
+                169,
+                714,
+                823,
+                771
+            ]
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "In contrast with N-grams languages models, Recurrent neural networks (RNNs) (Mikolov et al., 2010) are parametric models that can address these issues. The inner architecture of the RNNs gives them potentially infinite context window, allowing them to perform smoother predictions. We know that in practice, the context window is limited due to exploding and vanishing gradients (Pascanu et al., 2012). Still, RNNs outperform significantly n-grams and are the state of the art for statistical language modeling. A review of these techniques is beyond the scope of this short paper and we point the reader to (Mikolov, 2012) for a more in depth discussion on this topic. "
+                    }
+                ]
+            },
+            "bbox": [
+                169,
+                777,
+                823,
+                875
+            ]
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "Both when using n-grams and RNNs, we compute the probability of the test document belonging to the positive and negative class via Bayes’ rule. These scores are then averaged in the ensemble with other models, as explained in Section 2.4. "
+                    }
+                ]
+            },
+            "bbox": [
+                169,
+                881,
+                823,
+                924
+            ]
+        },
+        {
+            "type": "page_header",
+            "content": {
+                "page_header_content": [
+                    {
+                        "type": "text",
+                        "content": "Accepted as a workshop contribution at ICLR 2015 "
+                    }
+                ]
+            },
+            "bbox": [
+                171,
+                32,
+                513,
+                47
+            ]
+        },
+        {
+            "type": "page_number",
+            "content": {
+                "page_number_content": [
+                    {
+                        "type": "text",
+                        "content": "2 "
+                    }
+                ]
+            },
+            "bbox": [
+                491,
+                948,
+                504,
+                959
+            ]
+        }
+    ],
+    [
+        {
+            "type": "table",
+            "content": {
+                "image_source": {
+                    "path": "images/325010a85e9c4a97e5cd782a17fe920c9809100f9c245a506d8960acc551e8a0.jpg"
+                },
+                "table_caption": [
+                    {
+                        "type": "text",
+                        "content": "Table 1: Performance of SVM with Wang & Manning (2012) rescaling for different N-grams "
+                    }
+                ],
+                "table_footnote": [],
+                "html": "<table><tr><td>Input features</td><td>Accuracy</td></tr><tr><td>Unigrams</td><td>88.61%</td></tr><tr><td>Unigrams+Bigrams</td><td>91.56%</td></tr><tr><td>Unigrams+Bigrams+Trigrams</td><td>91.87%</td></tr></table>",
+                "table_type": "simple_table",
+                "table_nest_level": 1
+            },
+            "bbox": [
+                346,
+                130,
+                651,
+                193
+            ]
+        },
+        {
+            "type": "title",
+            "content": {
+                "title_content": [
+                    {
+                        "type": "text",
+                        "content": "2.2 LINEAR CLASSIFICATION OF WEIGHTED N-GRAM FEATURES "
+                    }
+                ],
+                "level": 1
+            },
+            "bbox": [
+                171,
+                223,
+                629,
+                238
+            ]
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "Among purely discriminative methods, the most popular choice is a linear classifier on top of a bagof-word representation of the document. The input representation is usually a tf-idf weighted word counts of the document. In order to preserve local ordering of the words, a better representation would consider also the position-independent n-gram counts of the document (bag-of-n-grams). "
+                    }
+                ]
+            },
+            "bbox": [
+                169,
+                250,
+                826,
+                306
+            ]
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "In our ensemble, we used a supervised reweighing of the counts as in the Naive Bayes Support Vector Machine (NB-SVM) approach (Wang & Manning, 2012). This approach computes a log-ratio vector between the average word counts extracted from positive documents and the average word counts extracted from negative documents. The input to the logistic regression classifier corresponds to the log-ratio vector multiplied by the binary pattern for each word in the document vector. Note that the logictic regression can be replaced by a linear SVM. Our implementation1 slightly improved the performance reported in (Wang & Manning, 2012) by adding tri-grams (improvement of "
+                    },
+                    {
+                        "type": "equation_inline",
+                        "content": "+ 0 . 6 \\%"
+                    },
+                    {
+                        "type": "text",
+                        "content": "), as shown in Table 1. "
+                    }
+                ]
+            },
+            "bbox": [
+                169,
+                311,
+                826,
+                426
+            ]
+        },
+        {
+            "type": "title",
+            "content": {
+                "title_content": [
+                    {
+                        "type": "text",
+                        "content": "2.3 SENTENCE VECTORS "
+                    }
+                ],
+                "level": 1
+            },
+            "bbox": [
+                171,
+                441,
+                362,
+                455
+            ]
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "Recently, (Le & Mikolov, 2014) proposed an unsupervised method to learn distributed representations of words and paragraphs. The key idea is to learn a compact representation of a word or paragraph by predicting nearby words in a fixed context window. This captures co-occurence statistics and it learns embeddings of words and paragraphs that capture rich semantics. Synonym words and similar paragraphs often are surrounded by similar context, and therefore, they will be mapped into nearby feature vectors (and vice versa). "
+                    }
+                ]
+            },
+            "bbox": [
+                169,
+                467,
+                826,
+                551
+            ]
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "Such embeddings can then be used to represent a new document (for instance, by averaging the representations of the paragraphs that constitute the document) via a fixed size feature vector. The authors then use such a document descriptor as input to a one hidden layer neural network for sentiment discrimination. "
+                    }
+                ]
+            },
+            "bbox": [
+                169,
+                558,
+                826,
+                614
+            ]
+        },
+        {
+            "type": "title",
+            "content": {
+                "title_content": [
+                    {
+                        "type": "text",
+                        "content": "2.4 MODEL ENSEMBLE "
+                    }
+                ],
+                "level": 1
+            },
+            "bbox": [
+                171,
+                631,
+                354,
+                645
+            ]
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "In this work, we combine the log probability scores of the above mentioned models via linear interpolation. More formally, we define the overall probability score as the weighted geometric mean of baseline models: "
+                    },
+                    {
+                        "type": "equation_inline",
+                        "content": "p ( y \\dot { = } + 1 | x ) = \\prod p ^ { k } ( y = + \\dot { 1 } | x ) ^ { \\alpha _ { k } }"
+                    },
+                    {
+                        "type": "text",
+                        "content": ", with "
+                    },
+                    {
+                        "type": "equation_inline",
+                        "content": "\\alpha _ { k } > 0"
+                    },
+                    {
+                        "type": "text",
+                        "content": ". "
+                    }
+                ]
+            },
+            "bbox": [
+                169,
+                657,
+                826,
+                702
+            ]
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "We find the best setting of weights via brute force grid search, quantizing the coefficient values in the interval [0, 1] at increments of 0.1. The search is evaluated on a validation set to avoid overfitting. We do not focus on a smarter way to find the "
+                    },
+                    {
+                        "type": "equation_inline",
+                        "content": "\\alpha"
+                    },
+                    {
+                        "type": "text",
+                        "content": "since we consider only 3 models in our approach and we consider it out of the scope of this paper. Using more models would make the use of such method prohibitive. For a larger number of models, one might want to consider random search of the "
+                    },
+                    {
+                        "type": "equation_inline",
+                        "content": "\\alpha"
+                    },
+                    {
+                        "type": "text",
+                        "content": "coefficients or even Bayesian approaches as these techniques will give better running time performance. "
+                    }
+                ]
+            },
+            "bbox": [
+                169,
+                705,
+                826,
+                806
+            ]
+        },
+        {
+            "type": "title",
+            "content": {
+                "title_content": [
+                    {
+                        "type": "text",
+                        "content": "3 RESULTS "
+                    }
+                ],
+                "level": 1
+            },
+            "bbox": [
+                171,
+                825,
+                282,
+                840
+            ]
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "In this section we report results on one of the largest publicly available sentiment analysis datasets, the IMDB dataset of movie reviews. The dataset consists of 50, 000 movie reviews which are categorized as being either positive or negative. We use 25, 000 reviews for training and the rest for "
+                    }
+                ]
+            },
+            "bbox": [
+                169,
+                856,
+                825,
+                901
+            ]
+        },
+        {
+            "type": "page_header",
+            "content": {
+                "page_header_content": [
+                    {
+                        "type": "text",
+                        "content": "Accepted as a workshop contribution at ICLR 2015 "
+                    }
+                ]
+            },
+            "bbox": [
+                171,
+                32,
+                513,
+                47
+            ]
+        },
+        {
+            "type": "page_footnote",
+            "content": {
+                "page_footnote_content": [
+                    {
+                        "type": "text",
+                        "content": "1https://github.com/mesnilgr/nbsvm "
+                    }
+                ]
+            },
+            "bbox": [
+                191,
+                909,
+                408,
+                924
+            ]
+        },
+        {
+            "type": "page_number",
+            "content": {
+                "page_number_content": [
+                    {
+                        "type": "text",
+                        "content": "3 "
+                    }
+                ]
+            },
+            "bbox": [
+                493,
+                948,
+                504,
+                959
+            ]
+        }
+    ],
+    [
+        {
+            "type": "table",
+            "content": {
+                "image_source": {
+                    "path": "images/de85b1366af9ad8c0eaecdf608582ee7d83fd9a71116bbe20f19172169f88ef9.jpg"
+                },
+                "table_caption": [
+                    {
+                        "type": "text",
+                        "content": "Table 2: Performance of Individual Models "
+                    }
+                ],
+                "table_footnote": [],
+                "html": "<table><tr><td>Single Methods</td><td>Accuracy</td></tr><tr><td>N-gram</td><td>86.5%</td></tr><tr><td>RNN-LM</td><td>86.6%</td></tr><tr><td>Sentence Vectors</td><td>88.73%</td></tr><tr><td>NB-SVM Trigram</td><td>91.87%</td></tr></table>",
+                "table_type": "simple_table",
+                "table_nest_level": 1
+            },
+            "bbox": [
+                383,
+                128,
+                612,
+                203
             ]
         },
         {
             "type": "table",
             "content": {
                 "image_source": {
-                    "path": "images/0e0c79f9f51e270380f44785a6ccbd1e124b9df53845dc594eace2fd6d44ccc1.jpg"
+                    "path": "images/12ab650dd907cfcbf2dddd66e1b51b50852a16466a31925e323a594ce1bf9517.jpg"
                 },
                 "table_caption": [
                     {
                         "type": "text",
-                        "content": "Figure 19. XGBoost Classification Report "
+                        "content": "Table 3: Performance of Different Model Combinations "
                     }
                 ],
                 "table_footnote": [],
-                "html": "<table><tr><td colspan=\"5\">---Classification Report---</td></tr><tr><td></td><td>precision</td><td>recall</td><td>f1-score</td><td>support</td></tr><tr><td>0</td><td>0.98</td><td>0.99</td><td>0.99</td><td>94771</td></tr><tr><td>1</td><td>0.99</td><td>0.98</td><td>0.99</td><td>94771</td></tr><tr><td>avg / total</td><td>0.99</td><td>0.99</td><td>0.99</td><td>189542</td></tr><tr><td colspan=\"5\">Accuracy = 0.987680830634</td></tr></table>",
-                "table_type": "complex_table",
+                "html": "<table><tr><td>Ensemble</td><td>Accuracy</td></tr><tr><td>RNN-LM + NB SVM Trigram</td><td>92.13%</td></tr><tr><td>RNN-LM + Sentence Vectors</td><td>90.4%</td></tr><tr><td>Sentence Vectors + NB-SVM Trigrams</td><td>92.39%</td></tr><tr><td>All</td><td>92.57%</td></tr><tr><td>State of the art</td><td>91.22%</td></tr></table>",
+                "table_type": "simple_table",
                 "table_nest_level": 1
             },
             "bbox": [
-                109,
-                116,
-                460,
-                231
+                316,
+                250,
+                679,
+                339
+            ]
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "testing, using the same protocol proposed by (Maas et al., 2011). All experiments can be reproduced using the code available at https://github.com/mesnilgr/iclr15. "
+                    }
+                ]
+            },
+            "bbox": [
+                169,
+                371,
+                823,
+                398
+            ]
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "Table 2 reports the results of each individual model. We have found that generative models performed the worst, with RNNs slightly better than n-grams. The most competitive method is the method based on reweighed bag-of-words (Wang & Manning, 2012) 2. Favoring simplicity and reproducibility of our performance, all results reported in this paper were produced by a linear classifier. "
+                    }
+                ]
+            },
+            "bbox": [
+                169,
+                406,
+                823,
+                474
+            ]
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "Finally, Table 3 reports the results of combining the previous models into an ensemble. When we interpolate the scores of RNN, sentence vectors and NB-SVM, we achieve a new state-of-the-art performance of "
+                    },
+                    {
+                        "type": "equation_inline",
+                        "content": "9 2 . 5 7 \\%"
+                    },
+                    {
+                        "type": "text",
+                        "content": ", to be compared to "
+                    },
+                    {
+                        "type": "equation_inline",
+                        "content": "9 1 . 2 2 \\%"
+                    },
+                    {
+                        "type": "text",
+                        "content": "reported by (Wang & Manning, 2012). Notice that our implementation of the Sentence Vectors method (Le & Mikolov, 2014) alone yielded only "
+                    },
+                    {
+                        "type": "equation_inline",
+                        "content": "8 8 . 7 3 \\%"
+                    },
+                    {
+                        "type": "text",
+                        "content": "(a difference of "
+                    },
+                    {
+                        "type": "equation_inline",
+                        "content": "\\simeq 4 \\%"
+                    },
+                    {
+                        "type": "text",
+                        "content": "). In order to measure the contribution of each model to the final ensemble classifier, we remove one model at a time from the ensemble. We observe that the removal of the generative model affects the least the ensemble performance. Overall, all three models contribute to the success of the overall ensemble, suggesting that these three models pick up complimentary features useful for discrimination. In Table 4, we show test reviews misclassified by single models but classified accurately by the ensemble. "
+                    }
+                ]
+            },
+            "bbox": [
+                169,
+                482,
+                826,
+                623
             ]
         },
         {
@@ -3736,61 +1132,153 @@
                 "title_content": [
                     {
                         "type": "text",
-                        "content": "• ADABoost Classifier (ADAB): "
+                        "content": "4 CONCLUSION "
                     }
                 ],
                 "level": 1
             },
             "bbox": [
-                107,
-                270,
-                352,
-                285
+                171,
+                643,
+                318,
+                657
             ]
         },
         {
-            "type": "image",
+            "type": "paragraph",
             "content": {
-                "image_source": {
-                    "path": "images/0ae592f697e57cb6a70d6416bae19fa8bbff47a5780dd225bfd2334250f21e19.jpg"
-                },
-                "image_caption": [
+                "paragraph_content": [
                     {
                         "type": "text",
-                        "content": "Figure 20. ADABoost Confusion Matrix "
+                        "content": "We have proposed a very simple yet powerful ensemble system for sentiment analysis. We combine three rather complementary and conceptually different baseline models: one based on a generative approach (language models), one based on continuous representations of sentences and one based on a clever reweighing of tf-idf bag-of-word representation of the document. Each such model contributes to the success of the overall system, achieving the new state of the art performance on the challenging IMDB movie review dataset. Code to reproduce our experiments is available at: https://github.com/mesnilgr/iclr15. We hope researchers will take advantage of our code to include their new results into our ensemble and focus on improving the state of the art for Sentiment Analysis. "
                     }
-                ],
-                "image_footnote": []
+                ]
             },
             "bbox": [
-                109,
-                299,
-                488,
-                571
+                169,
+                674,
+                826,
+                801
             ]
         },
+        {
+            "type": "title",
+            "content": {
+                "title_content": [
+                    {
+                        "type": "text",
+                        "content": "REFERENCES "
+                    }
+                ],
+                "level": 1
+            },
+            "bbox": [
+                171,
+                821,
+                285,
+                835
+            ]
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "Kneser, Reinhard and Ney, Hermann. Improved backing-off for m-gram language modeling. In Acoustics, Speech, and Signal Processing, 1995. ICASSP-95., 1995 International Conference on, "
+                    }
+                ]
+            },
+            "bbox": [
+                171,
+                844,
+                823,
+                875
+            ]
+        },
+        {
+            "type": "page_header",
+            "content": {
+                "page_header_content": [
+                    {
+                        "type": "text",
+                        "content": "Accepted as a workshop contribution at ICLR 2015 "
+                    }
+                ]
+            },
+            "bbox": [
+                173,
+                32,
+                513,
+                47
+            ]
+        },
+        {
+            "type": "page_footnote",
+            "content": {
+                "page_footnote_content": [
+                    {
+                        "type": "text",
+                        "content": "2In our experiments, to match the results from (Le & Mikolov, 2014), we followed the suggestion by Quoc Le to use hierarchical softmax instead of negative sampling. However, this produces the "
+                    },
+                    {
+                        "type": "equation_inline",
+                        "content": "9 2 . 6 \\%"
+                    },
+                    {
+                        "type": "text",
+                        "content": "accuracy result only when the training and test data are not shuffled. Thus, we consider this result to be invalid. "
+                    }
+                ]
+            },
+            "bbox": [
+                169,
+                883,
+                823,
+                925
+            ]
+        },
+        {
+            "type": "page_number",
+            "content": {
+                "page_number_content": [
+                    {
+                        "type": "text",
+                        "content": "4 "
+                    }
+                ]
+            },
+            "bbox": [
+                493,
+                948,
+                504,
+                959
+            ]
+        }
+    ],
+    [
         {
             "type": "table",
             "content": {
                 "image_source": {
-                    "path": "images/606054536a4f0b44a2a1482dd53857bb6f0f23603667edd164dbf7e2b4ffe2ac.jpg"
+                    "path": "images/46c705c87ccc6e6cd0c5f553e7cc2b9b2861cc2d62d02519a25bcbec8fa0ca3f.jpg"
                 },
                 "table_caption": [
                     {
                         "type": "text",
-                        "content": "Figure 21. ADABoost Classification Report "
+                        "content": "Table 4: Reviews misclassified by Single Models but classified accurately by the Ensemble "
                     }
                 ],
                 "table_footnote": [],
-                "html": "<table><tr><td colspan=\"5\">---Classification Report---</td></tr><tr><td></td><td>precision</td><td>recall</td><td>f1-score</td><td>support</td></tr><tr><td>0</td><td>1.00</td><td>1.00</td><td>1.00</td><td>94772</td></tr><tr><td>1</td><td>0.92</td><td>0.82</td><td>0.87</td><td>164</td></tr><tr><td>avg / total</td><td>1.00</td><td>1.00</td><td>1.00</td><td>94936</td></tr><tr><td colspan=\"5\">Accuracy = 0.999568130109</td></tr></table>",
-                "table_type": "complex_table",
+                "html": "<table><tr><td>Model</td><td>Sentences</td></tr><tr><td>NB-SVM</td><td>(positive) a really realistic , sensible movie by ramgopal verma . no stupidity like songs as in other Hindi movies . class acting by nana patekar . much similarities to real ‘encounters’. \n(negative) leslie nielson is a very talented actor , who made a huge mistake by doing this film . it doesn’t even come close to being funny . the best word to describe it is stupid !</td></tr><tr><td>RNN-LM</td><td>(positive) this is a good film . this is very funny . yet after this film there were no good ernest films! \n(negative) a real hoot , unintentionally . sidney portier’s character is so sweet and lovable you want to smack him . nothing about this movie rings true . and it’s boring to boot .</td></tr><tr><td>Sentence Vector</td><td>(positive) this movie is based on the novel island of dr . moreau by version by john frankenheimer. \n(negative) if it wasn’t for the terrific music , i would not hesitate to give this cinematic underachievement 2/10 . but the music actually makes me like certain passages , and so i give it 5/10 .</td></tr></table>",
+                "table_type": "simple_table",
                 "table_nest_level": 1
             },
             "bbox": [
-                114,
-                625,
-                475,
-                731
+                173,
+                142,
+                877,
+                385
             ]
         },
         {
@@ -3799,102 +1287,15 @@
                 "paragraph_content": [
                     {
                         "type": "text",
-                        "content": "In this case again Random Forest is the brightest performer, as we can see its false positive rate. But looking at the recall value, its below our expectations. i.e we can again say that out proposed FDS model with the optimization outperforms this case as well. "
+                        "content": "volume 1, pp. 181–184. IEEE, 1995. "
                     }
                 ]
             },
             "bbox": [
-                81,
-                781,
-                486,
-                852
-            ]
-        },
-        {
-            "type": "title",
-            "content": {
-                "title_content": [
-                    {
-                        "type": "text",
-                        "content": "6. Conclusion "
-                    }
-                ],
-                "level": 1
-            },
-            "bbox": [
-                509,
-                85,
-                633,
-                101
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "The proposed methodology has made a useful contribution through the unsupervised Fraud detection method. In fact this can be a step towards more automation in the Fraud detection systems. This is important because it reduces human intervention in the whole process and therefore mitigates time and cost. Also it obtains a high fraud coverage with low false alarm rate. "
-                    }
-                ]
-            },
-            "bbox": [
-                506,
-                114,
-                911,
-                213
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "The supervised Fraud detection approaches have been shown to be an effective classifier. But the proposed method is useful even when labeled data is not available. "
-                    }
-                ]
-            },
-            "bbox": [
-                506,
-                214,
-                911,
-                256
-            ]
-        },
-        {
-            "type": "paragraph",
-            "content": {
-                "paragraph_content": [
-                    {
-                        "type": "text",
-                        "content": "The proposed Fraud detection approach can be a very effective method especially as the two fields (large amount of data and Deep learning) are rapidly evolving but more importantly because Deep learning is posited to be the most promising Machine learning method for Big Data analytic. "
-                    }
-                ]
-            },
-            "bbox": [
-                506,
-                256,
-                911,
-                328
-            ]
-        },
-        {
-            "type": "title",
-            "content": {
-                "title_content": [
-                    {
-                        "type": "text",
-                        "content": "References "
-                    }
-                ],
-                "level": 1
-            },
-            "bbox": [
-                509,
-                342,
-                607,
-                357
+                187,
+                415,
+                431,
+                430
             ]
         },
         {
@@ -3907,7 +1308,7 @@
                         "item_content": [
                             {
                                 "type": "text",
-                                "content": "[1] A. Dal Pozzolo, G. Boracchi, O. Caelen, C. Alippi, and G. Bontempi, “Credit card fraud detection: a realistic modeling and a novel learning strategy,” IEEE Transactions on Neural Networks and Learning Systems, 2017. "
+                                "content": "Le, Quoc V. and Mikolov, Tomas. Distributed representations of sentences and documents. In International Conference on Machine Learning, 2014. "
                             }
                         ]
                     },
@@ -3916,7 +1317,7 @@
                         "item_content": [
                             {
                                 "type": "text",
-                                "content": "[2] R. J. Bolton and D. J. Hand, “Statistical fraud detection: A review,” Statistical science, pp. 235–249, 2002. "
+                                "content": "Maas, Andrew L., Daly, Raymond E., Pham, Peter T., Huang, Dan, Ng, Andrew Y., and Potts, Christopher. Learning word vectors for sentiment analysis. In Proceedings of the Annual Meeting of the Association for Computational Linguistics. Association for Computational Linguistics, 2011. "
                             }
                         ]
                     },
@@ -3925,7 +1326,7 @@
                         "item_content": [
                             {
                                 "type": "text",
-                                "content": "[3] E. Hung and D. W. Cheung, “Parallel algorithm for mining outliers in large database,” in Proc. 9th International Database Conference (IDC’99), Hong Kong, 1999. "
+                                "content": "Mikolov, Tom´aˇs. Statistical language models based on neural networks. PhD thesis, 2012. "
                             }
                         ]
                     },
@@ -3934,7 +1335,7 @@
                         "item_content": [
                             {
                                 "type": "text",
-                                "content": "[4] Y. Kou, C.-T. Lu, S. Sirwongwattana, and Y.-P. Huang, “Survey of fraud detection techniques,” in Networking, sensing and control, 2004 IEEE international conference on, vol. 2. IEEE, 2004, pp. 749–754. "
+                                "content": "Mikolov, Tomas, Karafi´at, Martin, Burget, Lukas, Cernock`y, Jan, and Khudanpur, Sanjeev. Recurrent neural network based language model. In INTERSPEECH, pp. 1045–1048, 2010. "
                             }
                         ]
                     },
@@ -3943,7 +1344,7 @@
                         "item_content": [
                             {
                                 "type": "text",
-                                "content": "[5] P.-N. Tan, M. Steinbach, and V. Kumar, “Introduction to data mining. 1st,” 2005. "
+                                "content": "Pang, Bo and Lee, Lillian. Opinion mining and sentiment analysis. Foundations and trends in information retrieval, 2(1-2):1–135, 2008. "
                             }
                         ]
                     },
@@ -3952,7 +1353,7 @@
                         "item_content": [
                             {
                                 "type": "text",
-                                "content": "[6] A. O. Adewumi and A. A. Akinyelu, “A survey of machine-learning and nature-inspired based credit card fraud detection techniques,” International Journal of System Assurance Engineering and Management, pp. 1–17, 2016. "
+                                "content": "Pascanu, Razvan, Mikolov, Tomas, and Bengio, Yoshua. On the difficulty of training recurrent neural networks. arXiv preprint arXiv:1211.5063, 2012. "
                             }
                         ]
                     },
@@ -3961,7 +1362,7 @@
                         "item_content": [
                             {
                                 "type": "text",
-                                "content": "[7] A. Bergholz, J. H. Chang, G. Paass, F. Reichartz, and S. Strobel, “Improved phishing detection using model-based features.” in CEAS, 2008. "
+                                "content": "Socher, Richard, Pennington, Jeffrey, Huang, Eric, Ng, Andrew, and Manning, Christopher D. Semisupervised recursive autoencoders for predicting sentiment distributions. Conference on Empirical Methods in Natural Language Processing, 2011. "
                             }
                         ]
                     },
@@ -3970,7 +1371,7 @@
                         "item_content": [
                             {
                                 "type": "text",
-                                "content": "[8] T. O. Ayodele, “Types of machine learning algorithms,” in New advances in machine learning. InTech, 2010. "
+                                "content": "Stolcke, Andreas et al. Srilm-an extensible language modeling toolkit. In INTERSPEECH, 2002. "
                             }
                         ]
                     },
@@ -3979,123 +1380,51 @@
                         "item_content": [
                             {
                                 "type": "text",
-                                "content": "[9] A. Srivastava, A. Kundu, S. Sural, and A. Majumdar, “Credit card fraud detection using hidden markov model,” IEEE Transactions on dependable and secure computing, vol. 5, no. 1, pp. 37–48, 2008. "
-                            }
-                        ]
-                    },
-                    {
-                        "item_type": "text",
-                        "item_content": [
-                            {
-                                "type": "text",
-                                "content": "[10] M. Z. Khan, J. D. Pathan, and A. H. E. Ahmed, “Credit card fraud detection system using hidden markov model and k-clustering,” International Journal of Advanced Research in Computer and Communication Engineering, vol. 3, no. 2, pp. 5458–5461, 2014. "
-                            }
-                        ]
-                    },
-                    {
-                        "item_type": "text",
-                        "item_content": [
-                            {
-                                "type": "text",
-                                "content": "[11] Y. G. S¸ahin and E. Duman, “Detecting credit card fraud by decision trees and support vector machines,” Newswood Limited, 2011. "
-                            }
-                        ]
-                    },
-                    {
-                        "item_type": "text",
-                        "item_content": [
-                            {
-                                "type": "text",
-                                "content": "[12] K. Seeja and M. Zareapoor, “Fraudminer: a novel credit card fraud detection model based on frequent itemset mining,” The Scientific World Journal, vol. 2014, 2014. "
-                            }
-                        ]
-                    },
-                    {
-                        "item_type": "text",
-                        "item_content": [
-                            {
-                                "type": "text",
-                                "content": "[13] M. Zareapoor and P. Shamsolmoali, “Application of credit card fraud detection: Based on bagging ensemble classifier,” Procedia Computer Science, vol. 48, pp. 679–685, 2015. "
-                            }
-                        ]
-                    },
-                    {
-                        "item_type": "text",
-                        "item_content": [
-                            {
-                                "type": "text",
-                                "content": "[14] F. Fadaei Noghani and M. Moattar, “Ensemble classification and extended feature selection for credit card fraud detection,” Journal of AI and Data Mining, vol. 5, no. 2, pp. 235–243, 2017. "
+                                "content": "Wang, Sida and Manning, Christopher D. Baselines and bigrams: Simple, good sentiment and topic classification. In Proceedings of the 50th Annual Meeting of the Association for Computational Linguistics: Short Papers-Volume 2, pp. 90–94. Association for Computational Linguistics, 2012. "
                             }
                         ]
                     }
                 ]
             },
             "bbox": [
-                509,
-                373,
-                913,
-                907
+                173,
+                439,
+                823,
+                797
             ]
-        }
-    ],
-    [
+        },
         {
-            "type": "list",
+            "type": "page_header",
             "content": {
-                "list_type": "reference_list",
-                "list_items": [
+                "page_header_content": [
                     {
-                        "item_type": "text",
-                        "item_content": [
-                            {
-                                "type": "text",
-                                "content": "[15] G. Rozenberg, T. Bck, and J. N. Kok, Handbook of natural computing. Springer Publishing Company, Incorporated, 2011. "
-                            }
-                        ]
-                    },
-                    {
-                        "item_type": "text",
-                        "item_content": [
-                            {
-                                "type": "text",
-                                "content": "[16] M. Mitchell, An introduction to genetic algorithms. MIT press, 1998. "
-                            }
-                        ]
-                    },
-                    {
-                        "item_type": "text",
-                        "item_content": [
-                            {
-                                "type": "text",
-                                "content": "[17] R. D. Patel and D. K. Singh, “Credit card fraud detection & prevention of fraud using genetic algorithm,” International Journal of Soft Computing and Engineering, vol. 2, no. 6, 2013. "
-                            }
-                        ]
-                    },
-                    {
-                        "item_type": "text",
-                        "item_content": [
-                            {
-                                "type": "text",
-                                "content": "[18] A. H. Awlla, “A hybrid simulated annealing and back-propagation algorithm for feed-forward neural network to detect credit card fraud,” UHD Journal of Science and Technology, vol. 1, no. 2, pp. 31–36, 2017. "
-                            }
-                        ]
-                    },
-                    {
-                        "item_type": "text",
-                        "item_content": [
-                            {
-                                "type": "text",
-                                "content": "[19] X.-S. Yang, Nature-inspired optimization algorithms. Elsevier, 2014. "
-                            }
-                        ]
+                        "type": "text",
+                        "content": "Accepted as a workshop contribution at ICLR 2015 "
                     }
                 ]
             },
             "bbox": [
-                84,
-                89,
-                486,
-                239
+                173,
+                32,
+                514,
+                47
+            ]
+        },
+        {
+            "type": "page_number",
+            "content": {
+                "page_number_content": [
+                    {
+                        "type": "text",
+                        "content": "5 "
+                    }
+                ]
+            },
+            "bbox": [
+                493,
+                946,
+                504,
+                959
             ]
         }
     ]

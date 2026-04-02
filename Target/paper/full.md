@@ -1,487 +1,116 @@
-# Credit Card Fraud Detection: A Deep Learning Approach
+# ENSEMBLE OF GENERATIVE AND DISCRIMINATIVE TECHNIQUES FOR SENTIMENT ANALYSIS OF MOVIE REVIEWS
 
-Sourav Verma
+Gregoire Mesnil ´
 
-ABV-Indian Institute of
+University of Montr´eal
 
-Information Technology and Management
+University of Rouen
 
-Gwalior-474 010
+Tomas Mikolov & Marc’Aurelio Ranzato
 
-Email: ipg 2013108@iiitm.ac.in
+Facebook Artificial Intelligence Research
 
-Joydip Dhar
+Yoshua Bengio
 
-ABV-Indian Institute of
+University of Montr´eal
 
-Information Technology and Management
+# ABSTRACT
 
-Gwalior-474 010
+Sentiment analysis is a common task in natural language processing that aims to detect polarity of a text document (typically a consumer review). In the simplest settings, we discriminate only between positive and negative sentiment, turning the task into a standard binary classification problem. We compare several machine learning approaches to this problem, and combine them to achieve a new state of the art. We show how to use for this task the standard generative language models, which are slightly complementary to the state of the art techniques. We achieve strong results on a well-known dataset of IMDB movie reviews. Our results are easily reproducible, as we publish also the code needed to repeat the experiments. This should simplify further advance of the state of the art, as other researchers can combine their techniques with ours with little effort.
 
-Email: jdhar@iiitm.ac.in
+# 1 INTRODUCTION
 
-Abstract—Credit card is one of the most extensive method of installment for both online and offline mode of payment for electronic transactions in recent times. credit cards invention has provided significant ease in electronic transactions. However, it has also provided new fraud opportunities for criminals, which results in increased fraud rates. Substantial amount of money have been lost by many institutions and individuals due to fraudulent credit card transactions. Adapting improved and dynamic fraud recognition frameworks thus became essential for all credit card distributing banks to mitigate their losses.
+Sentiment analysis is among the most popular, simple and useful tasks in natural language processing. It aims at predicting the attitude of text, typically a sentence or a review. For instance, movies or restaurant are often rated with a certain number of stars, which indicate the degree to which the reviewer was satisfied.
 
-In fact, the problem of fraudulent credit card transactions implicates a number of relevant real-time challenges, namely: Concept drift, Class imbalance, and Verification latency. However, the vast majority of current systems are based on artificial intelligence (AI), Fuzzy logic, Machine Learning, Data mining, Genetic Algorithms, and so on, rely on assumptions that hardly address all the relevant challenges of fraud-detection system (FDS).
+This task is often considered as one of the simplest in NLP because basic machine learning techniques can yield strong baselines (Wang & Manning, 2012), often beating much more intricate approaches (Socher et al., 2011). In the simplest settings, this task can be seen as a binary classification between positive and negative sentiment.
 
-This paper aims to understand & implement Deep Learning algorithms in order to obtain a high fraud coverage with very low false positive rate. Also it aims to implement an auto-encoder as an unsupervised (semi-supervised) method of learning common patterns.
+However, there are several challenges towards achieving the best possible accuracy. It is not obvious how to represent variable length documents beyond simple bag of words approaches that lose word order information. One can use advanced machine learning techniques such as recurrent neural networks and their variations (Mikolov et al., 2010; Socher et al., 2011), however it is not clear if these provide any significant gain over simple bag-of-words and bag-of-ngram techniques (Pang & Lee, 2008; Wang & Manning, 2012).
 
-Keywords: Credit card fraud, Fraud-detection system (FDS), Electronic transactions, Concept drift, Class imbalance, Verification latency, Machine Learning, Deep Learning
+In this work, we compared several different approaches and realized, without much surprise, that model combination performs better than any individual technique. The ensemble best benefits from models that are complementary, thus having diverse set of techniques is desirable. The vast majority of models proposed in the literature are discriminative in nature, as their parameters are tuned for the classification task directly. In this work, we boost the performance of the ensemble by considering a generative language model. To this end, we train two language models, one on the positive reviews and one on the negative ones, and use the likelihood ratio of these two models
 
-# 1. Introduction
+evaluated on the test data as an additional feature. For example, we assume that a positive review will have higher likelihood to be generated by a model that was trained on a large set of positive reviews, and lower likelihood given the negative model. In this paper, we constrained our work to binary classification where we trained two generative models, positive and negative. One could consider a higher number of classes since this approach scales linearily with the number of models to be train, i.e. one for each class. The large pool of diverse models is a) simple to implement (in line with previous work by Wang and Manning (Wang & Manning, 2012)) and b) it yields state of the art performance on one of the largest publicly available benchmarks of movie reviews, the Stanford IMDB dataset of reviews. Code to reproduce our experiments is available at https://github.com/mesnilgr/iclr15.
 
-Fraud refers to the intentional illegal exploitation of a system which results in loss of an oblivious entity. Credit card fraud can be defined as illegal use of both online and offline mode of credit card information for electronic transactions. Credit card fraud involves the exploitation of credit card systems which results in the loss of financial resources, the most prominent being monetary although other damages such as loss of integrity and authenticity are possible. Fraud, waste, and abuse in many financial
+# 2 DESCRIPTION OF THE MODELS
 
-systems are estimated to result in billions of US dollars annually, thus has became a primary concern for financial institutions around the globe.
+In this section we describe in detail the approaches we considered in our study. The novelty of this paper consists in combining both generative and discriminative models together for sentiment prediciton.
 
-Furthermore, the rapid growth of the internet has exposed credit card systems to diverse fraudsters using different mechanisms to exploit financial systems. This provided an explode in attack patterns which rendered the once effective Artificial intelligent (AI), Machine Learning and Case-based fraud detection solutions no more effective as the computational complexity increases with each new detected fraud. More seriously, there is a higher tendency for first time frauds going undetected. The Case-based detection methods are also slow as a successful exploit could multiply if the solution took time to be integrated into the system. This problem can only be addressed with a refined and dynamic techniques capable of adapting to rapidly evolving fraudulent patterns.
+# 2.1 GENERATIVE MODEL
 
-Also of concern to credit card fraud detection solutions is, the recognition strength that indicates a Fraud detector’s ability to correctly identify both known and novel frauds. This is usually a direct function of how much fraud samples there are to model a solution. The emergence of Deep Learning algorithms has provided credit card fraud detection experts with verse amount of features and high dimentionality of data that will enhance the detection models. Such solutions that use Deep Learning algorithms to model, offer more efficient and adaptive solutions.
+A generative model defines a distribution over the input. By training a generative model for each class, we can then use Bayes rule to predict which class a test sample belongs to. More formally, given a dataset of pairs $\{ x ^ { ( i ) } , y ^ { ( i ) } \} _ { i = 1 , \dots , N }$ where $x ^ { ( i ) }$ is the $i$ -th document in the training set, $y ^ { ( i ) } \in$ $\bar { \{ } - 1 , + 1 \}$ is the corresponding label and $_ \mathrm { N }$ is the number of training samples, we train two models: $p ^ { + } ( x | y = + 1 )$ for $\{ x ^ { ( i ) }$ subject to $y ^ { ( i ) } = + 1 \}$ and $p ^ { - } ( x | y = - 1 )$ for $\{ x$ subject to $y = - 1 \}$ Then, given an input $x$ at test time we compute the ratio (derived from Bayes rule): $r = p ^ { + } ( x | y =$ $+ 1 ) / p ^ { - } ( x | y = - 1 ) \times p ( y = + 1 ) / p ( y = - 1 ) .$ . If $r > 1$ , then $x$ is assigned to the positive class, otherwise to the negative class.
 
-A complete credit card fraud detection model thus,
+We have a few different choices of distribution we can choose from. The most common one is the n-gram, a count-based non-parametric method to compute $p ( x _ { k } ^ { ( i ) } | x _ { k - 1 } ^ { ( i ) } , x _ { k - 2 } ^ { ( i ) } , \ldots , x _ { k - N + 1 } ^ { ( i ) } )$ , where $\boldsymbol { x } _ { k } ^ { ( i ) }$ xk is the $k$ -th word in the $i$ -th document. In order to compute the likelihood of a document, we use thedocument: $\begin{array} { r } { p ( x ^ { ( i ) } ) = \prod _ { k = 1 } ^ { \bar { K _ { } } } p ( x _ { k } ^ { ( i ) } | x _ { k - 1 } ^ { ( i ) } , x _ { k - 2 } ^ { ( i ) } , \ldots , x _ { k - N + 1 } ^ { ( i ) } ) } \end{array}$ . . , x(i)k−N+1) m probabilities over all words in the. As mentioned before, we train one n-gram language model using the positive documents and one model using the negative ones.
 
-Must have the following properties:
+In our experiments, we used SRILM toolkit (Stolcke et al., 2002) to train the n-gram language models using modified Kneser-Ney smoothing (Kneser & Ney, 1995). Furthermore, as both language models are trained on different datasets, there is a mismatch between vocabularies: some words can appear only in one of the training sets. This can be a problem during scoring, as the test data contain novel words that were not seen in at least one of the training datasets. To avoid this problem, it is needed to add penalty during scoring for each out of vocabulary word.
 
-1) It must be Adaptive: This refers to following abilities:
+N-grams are a very simple data-driven way to build language models. However, they suffer from both data sparsity and large memory requirement. Since the number of word combinations grows exponentially with the length of the context, there is always little data to accurately estimate probabilities for higher order n-grams.
 
-Ability to detect fraudulent patterns in a matter of moment (i.e quickly). This is also referred to as its alertness.   
-Ability to detect first time fraudulent patterns with high accuracy and low false positive rate.
+In contrast with N-grams languages models, Recurrent neural networks (RNNs) (Mikolov et al., 2010) are parametric models that can address these issues. The inner architecture of the RNNs gives them potentially infinite context window, allowing them to perform smoother predictions. We know that in practice, the context window is limited due to exploding and vanishing gradients (Pascanu et al., 2012). Still, RNNs outperform significantly n-grams and are the state of the art for statistical language modeling. A review of these techniques is beyond the scope of this short paper and we point the reader to (Mikolov, 2012) for a more in depth discussion on this topic.
 
-2) It must be Dynamic: This refers to following abilities:
+Both when using n-grams and RNNs, we compute the probability of the test document belonging to the positive and negative class via Bayes’ rule. These scores are then averaged in the ensemble with other models, as explained in Section 2.4.
 
-Ability to detect all new instances of fraudulent activities with rapid alteration of false patterns.
+Table 1: Performance of SVM with Wang & Manning (2012) rescaling for different N-grams   
 
-3) It should be able to identify the fraudulent patterns accurately i.e. the true positive rate should be high.   
-4) It should be able to detect the frauds quickly i.e time complexity of the system should be low.   
-5) It should not predict a legit transaction as fraud i.e. the false positive rate should be low.
+<table><tr><td>Input features</td><td>Accuracy</td></tr><tr><td>Unigrams</td><td>88.61%</td></tr><tr><td>Unigrams+Bigrams</td><td>91.56%</td></tr><tr><td>Unigrams+Bigrams+Trigrams</td><td>91.87%</td></tr></table>
 
-Also must address following relevant challenges, namely:
+# 2.2 LINEAR CLASSIFICATION OF WEIGHTED N-GRAM FEATURES
 
-1) Concept drift: As customers’ habit changes, fraudsters change their approaches over time.   
-2) Class imbalance: More legit transactions as compare to frauds (less than $0 . 5 \%$ ).   
-3) Verification latency: Only a small set of transactions are timely checked by the authorities.
+Among purely discriminative methods, the most popular choice is a linear classifier on top of a bagof-word representation of the document. The input representation is usually a tf-idf weighted word counts of the document. In order to preserve local ordering of the words, a better representation would consider also the position-independent n-gram counts of the document (bag-of-n-grams).
 
-# 2. Related Works
+In our ensemble, we used a supervised reweighing of the counts as in the Naive Bayes Support Vector Machine (NB-SVM) approach (Wang & Manning, 2012). This approach computes a log-ratio vector between the average word counts extracted from positive documents and the average word counts extracted from negative documents. The input to the logistic regression classifier corresponds to the log-ratio vector multiplied by the binary pattern for each word in the document vector. Note that the logictic regression can be replaced by a linear SVM. Our implementation1 slightly improved the performance reported in (Wang & Manning, 2012) by adding tri-grams (improvement of $+ 0 . 6 \%$ ), as shown in Table 1.
 
-# 2.1. Frauds and Fraudulent pattern detection
+# 2.3 SENTENCE VECTORS
 
-Fraud is a synonym for illicit use of a system to get some benefits, usually resulting in loss to another person. Frauds are as diverse as fraudulent patterns. Credit card fraud is fraud within the financial industry that usually cause monetary losses. The financial industries have been the principal victims of fraudulent activities in recent times. According to [1], substantial amount of money have been lost to insurance fraud. The growth of internet uses have made it easier for fraudsters to divulge and connect in order to target financial institutions from a distance, making it more diverse in nature. This further entangles the threats to credit card security systems, thus fraud detection and prevention are important concern to all financial institutions.
+Recently, (Le & Mikolov, 2014) proposed an unsupervised method to learn distributed representations of words and paragraphs. The key idea is to learn a compact representation of a word or paragraph by predicting nearby words in a fixed context window. This captures co-occurence statistics and it learns embeddings of words and paragraphs that capture rich semantics. Synonym words and similar paragraphs often are surrounded by similar context, and therefore, they will be mapped into nearby feature vectors (and vice versa).
 
-By many estimates, approximately $10 \%$ of insurance company payments are for fraudulent claims, and the global sum of these fraudulent payments, amounts to substantial amount of money.
+Such embeddings can then be used to represent a new document (for instance, by averaging the representations of the paragraphs that constitute the document) via a fixed size feature vector. The authors then use such a document descriptor as input to a one hidden layer neural network for sentiment discrimination.
 
-Fraud detection refers to mechanisms to detect frauds when fraudulent activities occur, while Fraud prevention refers to all measures put in place to prevent frauds from happening, [2]. A necessary requirement for fraud preventive systems is their precision (i.e. predictive measure). Much concern is given to improving the precision of such systems. Fraud detection systems, conversely, need to adapt to the dynamism of threats. Hence in addition to possible predictiveness, Fraud detection systems need to be adaptive to the fraudulent patterns. A related concern usually classified under possible predictiveness is the time complexity of the system to detect fraudulent transactions. Certain systems require near real-time alertness on dubious transactions.
+# 2.4 MODEL ENSEMBLE
 
-# 2.2. Outlier detection
+In this work, we combine the log probability scores of the above mentioned models via linear interpolation. More formally, we define the overall probability score as the weighted geometric mean of baseline models: $p ( y \dot { = } + 1 | x ) = \prod p ^ { k } ( y = + \dot { 1 } | x ) ^ { \alpha _ { k } }$ , with $\alpha _ { k } > 0$ .
 
-An outlier is an observation that deviates so much from other observations as to evoke suspicion that it was generated by a different mechanism [3].
+We find the best setting of weights via brute force grid search, quantizing the coefficient values in the interval [0, 1] at increments of 0.1. The search is evaluated on a validation set to avoid overfitting. We do not focus on a smarter way to find the $\alpha$ since we consider only 3 models in our approach and we consider it out of the scope of this paper. Using more models would make the use of such method prohibitive. For a larger number of models, one might want to consider random search of the $\alpha$ coefficients or even Bayesian approaches as these techniques will give better running time performance.
 
-Unsupervised learning approaches are used to this model. Usually, the result of unsupervised learning is a new explanation or representation of the original observation data, which then lead to improved future responses or decisions. Unsupervised learning methods do not need prior knowledge of fraudulent and genuine transactions (i.e. labels) in historical databases, instead detect alteration in behavior or unusual transactions. These methods model a baseline distribution that represents normal behavior and then detect observations that show deviation from this norm. Outliers are a basic form of non-standard observation that can be used for fraud detection. In supervised methods, models are trained to discriminate between fraudulent and non-fraudulent behavior so that new observations can be assigned to different classes. Supervised methods require accurate identification of fraudulent transactions in historical databases and can only be used to detect frauds of a type that have previously occurred. An advantage of using unsupervised methods over supervised methods is that previously undiscovered types of fraud may also be detected. Supervised methods are merely trained to discriminate between legit transactions and previously known fraud.
+# 3 RESULTS
 
-[2] proposed unsupervised credit card fraud detection techniques, using behavioral outlier detection techniques. Anomalous spending behavior and frequency of transactions can be identified as outliers, which could be possible fraud cases.
+In this section we report results on one of the largest publicly available sentiment analysis datasets, the IMDB dataset of movie reviews. The dataset consists of 50, 000 movie reviews which are categorized as being either positive or negative. We use 25, 000 reviews for training and the rest for
 
-# 2.3. Rule-based fraud detection
+Table 2: Performance of Individual Models   
 
-Rule-based methods consist all known fraudulent characteristics and use them to model the fraud detection system (FDS). They are classified as Supervised learning methods as they use previously known fraud to detect similar patterns. Such methods classify transactions using rules made out based on previously detected fraudulent transactions. The process used to adopt such models to evolving threats is manual, and thus such methods are not recommended for persistent threats of these days. An example of such methods include BAYES, RIPPER etc.
+<table><tr><td>Single Methods</td><td>Accuracy</td></tr><tr><td>N-gram</td><td>86.5%</td></tr><tr><td>RNN-LM</td><td>86.6%</td></tr><tr><td>Sentence Vectors</td><td>88.73%</td></tr><tr><td>NB-SVM Trigram</td><td>91.87%</td></tr></table>
 
-Although according to [4], Rule-based fraud analysis can be very tedious to administer because the proper layout of such rules require detailed, onerous, and prolonged programming for each credible fraud instance. The dynamic emergence of multiple new fraud types, demands that these rules be constantly adapted to include existing, emerging, and future fraud options. Moreover, it also presents a major hurdle to scalability. The more data the system must process, the more severe is the performance descents.
+Table 3: Performance of Different Model Combinations   
 
-# 2.4. Statistical fraud detection
+<table><tr><td>Ensemble</td><td>Accuracy</td></tr><tr><td>RNN-LM + NB SVM Trigram</td><td>92.13%</td></tr><tr><td>RNN-LM + Sentence Vectors</td><td>90.4%</td></tr><tr><td>Sentence Vectors + NB-SVM Trigrams</td><td>92.39%</td></tr><tr><td>All</td><td>92.57%</td></tr><tr><td>State of the art</td><td>91.22%</td></tr></table>
 
-Statistical methods have been used to classify and detect frauds. The transactional data is known to follow a statistical distribution, and thus, transactional data points, that fall out of the normal distribution are considered dubious. Such methods include Linear Discriminant Analysis (LDA) and Logistic Regression [2]. Statistical methods can either be supervised or unsupervised. Supervised methods use known fraudulent cases to model the detector system.
+testing, using the same protocol proposed by (Maas et al., 2011). All experiments can be reproduced using the code available at https://github.com/mesnilgr/iclr15.
 
-A natural problem with the Statistical method is determining the most relevant distribution to fit a data set (best fit), and with increased dimension of the data, it becomes more difficult to approximate the distribution, [5].
+Table 2 reports the results of each individual model. We have found that generative models performed the worst, with RNNs slightly better than n-grams. The most competitive method is the method based on reweighed bag-of-words (Wang & Manning, 2012) 2. Favoring simplicity and reproducibility of our performance, all results reported in this paper were produced by a linear classifier.
 
-# 2.5. Machine Learning based detection
+Finally, Table 3 reports the results of combining the previous models into an ensemble. When we interpolate the scores of RNN, sentence vectors and NB-SVM, we achieve a new state-of-the-art performance of $9 2 . 5 7 \%$ , to be compared to $9 1 . 2 2 \%$ reported by (Wang & Manning, 2012). Notice that our implementation of the Sentence Vectors method (Le & Mikolov, 2014) alone yielded only $8 8 . 7 3 \%$ (a difference of $\simeq 4 \%$ ). In order to measure the contribution of each model to the final ensemble classifier, we remove one model at a time from the ensemble. We observe that the removal of the generative model affects the least the ensemble performance. Overall, all three models contribute to the success of the overall ensemble, suggesting that these three models pick up complimentary features useful for discrimination. In Table 4, we show test reviews misclassified by single models but classified accurately by the ensemble.
 
-Machine learning (ML) is the science of getting computers to act without being explicitly programmed. In the past decade, machine learning has given us self-driving cars, practical speech recognition, effective web search, and a vastly improved understanding of the human genome.
+# 4 CONCLUSION
 
-ML evolved primarily from Artificial Intelligence (AI) and Soft computing, and also from other fields including applied mathematics, pattern recognition and computational learning theory [6]. ML algorithms are mostly used to handle problems involving automatic data classification [7]. ML algorithms are capable of analyzing data and searching for hidden patterns in data. According to [8] ML algorithms aims to predict patterns from data based on learned experiences. ML algorithms are divided into different classes, namely: supervised learning, unsupervised learning, semisupervised learning, reinforcement learning, transduction and learning to learn [8]. Most of the proposed credit card fraud detection techniques are based on supervised learning and few are based on semi-supervised learning. Some of these techniques are discussed next:
+We have proposed a very simple yet powerful ensemble system for sentiment analysis. We combine three rather complementary and conceptually different baseline models: one based on a generative approach (language models), one based on continuous representations of sentences and one based on a clever reweighing of tf-idf bag-of-word representation of the document. Each such model contributes to the success of the overall system, achieving the new state of the art performance on the challenging IMDB movie review dataset. Code to reproduce our experiments is available at: https://github.com/mesnilgr/iclr15. We hope researchers will take advantage of our code to include their new results into our ensemble and focus on improving the state of the art for Sentiment Analysis.
 
-2.5.1. Hidden Markov Model. [9] proposed a technique based on Hidden Markov Model (HMM). In the study, authors used HMM to model a sequence of credit card transactions and divide the transactions into three price ranges (clusters): low (l), medium (m), and high (h). The type of each transaction is linked to the line of business of the corresponding merchant. Afterwards, determine the three probability matrices so that representation of the HMM is complete. These three model parameters are determined in a training phase using the Baum-Welch algorithm [10]. Authors considered the special case of fully connected HMM in which every state of the model can be reached in a single step from every other state.
+# REFERENCES
 
-An HMM is initially trained with the normal behaviour of the cardholder. Thereafter, authors constructed sequences from training data-set and trained the model. In the testing and validation phase, if an incoming credit card transaction is not accepted by the trained HMM with sufficiently high probability, it is considered to be fraudulent. authors also
+Kneser, Reinhard and Ney, Hermann. Improved backing-off for m-gram language modeling. In Acoustics, Speech, and Signal Processing, 1995. ICASSP-95., 1995 International Conference on,
 
-claim to minimize the true positive rates.
+Table 4: Reviews misclassified by Single Models but classified accurately by the Ensemble   
 
-Another proposed technique based on HMM is proposed by [10]. In the study also, authors used HMM to model a sequence of credit card transactions and used K-mean clustering algorithm to cluster the transactions into three price ranges (clusters): low (l), medium (m), and high (h), as proposed by [9] Afterwards, incoming transactions were tested into the trained model and authorized if accepted with sufficiently high probability. Otherwise, transaction will be terminated and IP address of the merchant to be defrauded will be traced using HMM. A notification will be sent to both the merchant system’s administrator and cardholder via mobile communications. Also as per the authors, the HMM was trained with Baum-Welch algorithm.
-
-# 2.5.2. Support vector machines (SVM) based techniques.
-
-[11] performed a comparative study between SVM and decision tree based credit card fraud detection system (FDS). Firstly, authors divided the data-set used into three groups with the ratio of fraudulent transactions to the legit ones in 1:1, 1:4, 1:9 respectively, during the implementation. As usual training to testing data-set was divided by $70 \%$ to $30 \%$ . Authors used four kernels for SVM in the setup. Also they developed seven SVM-based and decision tree based models and tested each of them. Results from experiments revealed that the Decision tree based model outperformed SVM model. The models achieved classification accuracy between the range of 83.02 to $9 4 . 7 6 \%$ .
-
-2.5.3. Frequent item-set mining. [12] proposed a technique based on frequent item-set mining, called Fraud-Miner. Authors separated each customer’s transaction from the whole transactional database and from each customer’s transactions again separated their legit and fraud transactions. Afterwards, applied Apriori algorithm to both the sets of legit and fraud transactions on each customer’s transactions which returns a set of frequent item-sets of both legit and fraud transactions. for testing, authors propose a matching algorithm which spans the legit and fraudulent pattern databases of each customers for a match with the incoming transaction to detect fraud. If a convenient match is found with legit pattern of the corresponding customer, it matches, otherwise not. The experimental result shows that the FraudMiner outperformed the existing solutions eg. SVM, Naive Bias (NB), KNN etc.
-
-2.5.4. Ensemble based technique. [13] proposed a credit card fraud detection model based on bagging ensemble classifier. The primary objective of study was to compare the performance of three different advanced data mining techniques namely: SVM, NB and KNN to bagging ensemble classifier based on decision tree. To counter class imbalance problem authors divided the data-set used into four groups with fraud rates approximately $20 \%$ , $1 5 \%$ , $10 \%$ , $3 \%$ respectively also authors used 10 fold cross validation technique. To compare the results authors weigh the performance of SVM, NB and KNN and compared
-
-with the result obtained by bagging ensemble classifier. The experimental result revealed that bagging ensemble classifier achieved better fraud detection rate and an improved false positive rate.
-
-[14] proposed a credit card fraud detection techniques based on Ensemble classification and extended feature selection. Authors considered both the feature selection and the prediction (decision) cost for accuracy enhancement of the FDS. After selecting best features using an extended wrapper method, an ensemble classification is performed. Authors performed the ensemble classification using cost sensitive decision tree in a decision forest framework. The experimental result revealed that considering the F-measure as the evaluation metric, the proposed approach achieves 1.8 to $2 . 4 \%$ performance improvement compared to the other classifiers.
-
-# 2.6. Nature inspired (NI) based techniques
-
-Nature inspired based methods refers to algorithms inspired by nature’s problem solving ability [15]. In other words, Nature is the source of inspiration to Nature Inspired algorithms. For example, Ant Colony Optimization is inspired by the methods used by ants to seek for pathways between their colony and a food source, Bat algorithm was inspired by the echolocation behaviour of micro-bats, with varying pulse rates of emission and loudness and Genetic Algorithm is inspired by the process of natural selection, that belongs to the larger class of evolutionary algorithms (EA). [16]. NI algorithms are designed to handle complex real world classification and optimization related problems, such as timetabling problem, travelling salesman problems (TSP) and hostel allocation problems [15]. Generally, NI algorithms are used for global optimization. Some NI-based techniques used to provide solution to credit card fraud detection are discussed next.
-
-2.6.1. Genetic algorithm (GA) based techniques. [17] proposed a GA-based credit card FDS with the intent of detecting the fraud with minimum false positive rate. Instead of maximizing the correctly classified transactions authors prescribed an objective function with variable misclassification cost. The objective function intents at minimizing false positive rate. During classification, authors extracted credit card transaction from the database and standardize the data. Afterwords, calculated critical values for each transaction present in the database. Authors also extracted the frequent item-set for credit card usage, indigence, location where the credit card was used, balance on the account linked to credit card, average spending pattern of the credit cardholder from each transaction. Furthermore, authors used Genetic Algorithm (GA) to generate new critical values. Finally, the new critical values were then used for classification.
-
-2.6.2. Artificial neural network (ANN) based techniques. [18] used Simulated annealing (SA) and Back-propagation algorithm (BPA) for Feed-forward Neural Network (FFNN)
-
-to develop a credit card FDS with the intent of hybridizing SA and BPA for FFNN, which can join the symbolic global searching capability of SA with the precise local searching element of back-propagation FFNNs to improve the initial weights of a neural network toward getting a better result for detection fraud. Authors suggest of identifying fraud and legit transactions based on following critical values, namely: credit card usage frequency, number of locations of credit card usage, average credit card indigence and credit card book balance.
-
-Authors randomly initialized the weights of FFNN and evaluated weights using SA, following a temperature annealing schedule with the algorithm. While first temperature value is less than or equal to the minimum error authors selected the best solution. Furthermore, for training, authors initialize the parameters of BP learning algorithm. While the threshold epoch not reached, authors update the weights of BP to minimize the error with training data. Finally, Authors assess the execution of classification with test data to validate the study. The experimental result revealed that BPFFNN with applied SA yielded better false positive rate as compare to the simple BPFFNN algorithm.
-
-# 3. Proposed Methodology
-
-To address the major concerns of a Fraud detection system, the following infrastructural design choices were made.
-
-# 3.1. Deep Learning Model
-
-A deep learning computation model will be used to model FDS. Deep learning models are appropriate here as they serve well for data sets having large amount of data with large no. of features. The ability of such models to learn feature hierarchy composing lower level features into higher level abstractions influenced its choice here. It has the potential to discover sophisticated patterns in large data sets through its self-adjusting back-propagation algorithm.
-
-Furthermore, Deep Learning models address some of the big challenges posed by Big Data computation and analysis, thereby providing efficient means to the use of Big Data.
-
-For the purpose of this task, two Deep Learning models are used to model the credit-card fraud data and to predict fraudulent transactions. The first model will be a Multi-layer feed-forward neural network system. It is built based on the neuron units. The model works by feeding the input data into the first layer. Subsequent layers learn more concrete features from previous layers through non-linear transformations.
-
-# Experiment I: Multi-layer feed-forward supervised learning
-
-This experiment involves tuning a feed-forward deep learning network to model financial data. Parameters such as activation function, number of epochs, hidden layers size will be adjusted until a suitable model is reached. The aim
-
-of the experiment is to find recommendations for Fraud detection system designs.
-
-Choices for activation function include: The Tanh function & Logistic sigmoid function with min-max or z-score normalization. After Using validation set to determine the data standardization approach and the best fit activation functions, According to experiments, It’s found that Tanh performs better than Logistic sigmoid, when using it with z-score normalization. Hence, choosing tanh followed by zscore is the best option. the Epoch numbers will be increased by factors of 10 (1, 10, 100 etc.). Hidden layers will vary between 1 to 50. The mean-squared error (MSE) function or reconstruction error is used as the loss function.
-
-The multi-layer feed-forward Deep Learning model is used to conduct supervised learning with the training data set, which is the majority of the data, splitted in the ratio of 3:1. Design parameters will be varied to determine a recommended design for the FDS on the data set.
-
-# 3.2. Anomaly Detection
-
-The anomaly detection model used here is Deep Autoencoders (DAE) to detect fraudulent pattern in the data-set which is an unsupervised model.
-
-Unsupervised means the model will be trained for both fraud and non-fraud data without feeding the labels. Since the class imbalance is very high in the credit cards, It is expected from the model to learn and memorize the patterns of legit ones after the unsupervised training, and should be able to give a credible score for any transaction as being an outlier. And this unsupervised training would be quite handy in practice especially when we don’t have enough labeled data set. Deep Auto-encoders can be used to pre-train the model before a supervised training.
-
-# Experiment II: Deep Auto-encoders for detecting fraudulent patterns
-
-This experiment involves designing a Deep Auto-encoder to detect anomaly in the credit card data-set. The Deep Auto-encoder learns the pattern in the data-set through non-linear transformations of layers.
-
-To test for anomaly, it reconstructs the test data, anomalous data will deviate a lot from the legit ones and thus will have high error. A deep learning auto-encoder will be trained on $7 5 \%$ of the data set, the remaining $2 5 \%$ will be used to test for the model’s predictions. The mean-squared error (MSE) function or reconstruction error function is used as the loss function.
-
-Reconstruction Error Function:
-
-$$
-L \left(x, x ^ {\prime}\right) = \left| \left| x - x ^ {\prime} \right| \right| ^ {2} \tag {1}
-$$
-
-# Experiment III: Optimization
-
-This experiment involves optimizing the performance of the proposed deep learning fraud detection model. For
-
-optimizing the performance of the FDS, Nature Inspired Bat Algorithm is used. The aim is to mitigate the training cost and complexity of the FDS. Also to enhance the overall performance of the model.
-
-# Experiment IV: Comparison with different Scikit learn algorithms
-
-This experiment involves comparing different Scikitlearn methods/algorithms to classify fraudulent patterns. These comparisons are done using different performance measures e.g.: AUC scores, confusion matrices and precision-recall curves.
-
-# 4. Implementation & Execution
-
-We trained and tested our proposed FDS using Kaggle’s Credit Card Fraud Detection data-set. The summary of data-set:
-
-<table><tr><td colspan="2">Kaggle: Credit Card Fraud Detection Data-set</td></tr><tr><td>Data Set Characteristics</td><td>Multivariate</td></tr><tr><td>Number of Attributes</td><td>31</td></tr><tr><td>Number of Instances</td><td>284807</td></tr><tr><td>Attribute Characteristics</td><td>Categorical, Float64</td></tr></table>
-
-# 4.1. Data Standardization & Activation Function
-
-Two types of data standardization function is considered here: z-score & min-max normalization. 1) z-score normalization will normalize every column such that the resultant columns will have mean of zero and standardization of ones. And this will be a good choice if we are using Tanh activation function. This will output values on both sides of zero. Furthermore, Tanh activation function will leave values that are too extreme to still keep some outliers left after the normalization process. This might be useful to detect some extremeness in this case.
-
-2) min-max normalization will assure all values to be in the range [0, 1]. min-max is the default scaling approach if we are using sigmoid as our output activation function.
-
-Z-Score Standardization Function:
-
-$$
-z - s c o r e = \frac {x - \mu}{\sigma} \tag {2}
-$$
-
-Tanh Activation Function:
-
-$$
-\tanh  = \frac {e ^ {2 x} - 1}{e ^ {2 x} + 1} \tag {3}
-$$
-
-# 4.2. Modeling Auto-encoder as unsupervised learning
-
-• Parameters:
-
-– learning rate $= 0 . 0 1$   
-– training epochs $= 6 0$ (Optimal)   
-– batch size $= 2 5 6$
-
-– display step $= 1$
-
-• Network Parameters:
-
-– n hidden $. 1 = 1 5$   
-– n hidden $2 = 1 5$
-
-• For FC layers:
-
-hidden size $= 4$ (Best hidden size based on validation)   
-– output size $= 2$ (classes: 1 & 0)
-
-# 4.3. Optimization
-
-Optimization is done using Nature Inspired Bat Algorithm.
-
-4.3.1. Binary Bat Algorithm. The binary bat algorithm has been inspired by the echolocation behaviour of bats [19]. The characteristics of bats for finding its pray are being used in this algorithm. Bats tend to decrease the loudness and increase the rate of emitting ultrasonic waves, when they chase pray.
-
-In binary bat algorithm each artificial bat has a position vector, a velocity vector and a frequency vector. The position of the bats in binary bat algorithm is either 0 or 1. The velocity can be updated using the following equations:
-
-$$
-V _ {i} (t + 1) = V _ {i} (t) + \left(X _ {i} (t) - X ^ {*}\right) F _ {i} \tag {4}
-$$
-
-Where Vi , Xi and Fi are the velocity, position and frequency of ith bat. $X ^ { * }$ is the current global best location.
-
-The frequency of the ith bat can be updated using the following formula:
-
-$$
-F _ {i} = F _ {\min } + \left(F _ {\max } - F _ {\min }\right) \beta \tag {5}
-$$
-
-Where $F _ { m i n }$ is the minimum frequency and $F _ { m a x }$ is the maximum frequency. $\beta$ represents a random number which lies between 0 and 1.
-
-The position of bats can be updated based on following function:
-
-$$
-X _ {i} (t + 1) = X _ {i} (t) + V _ {i} (t) \tag {6}
-$$
-
-The loudness and pulse rate of binary bat algorithm is A and r. These two variables can be updated as follows:
-
-$$
-A _ {i} (t + 1) = \alpha A _ {i} (t) \tag {7}
-$$
-
-$$
-r _ {i} (t + 1) = r _ {i} (0) [ 1 - \exp (- \gamma t) ] \tag {8}
-$$
-
-Where $\alpha$ and $\gamma$ are constants. The loudness and the pulse rate are updated when we optimize the new solutions to ensure that the bats are moving toward the best solutions.
-
-4.3.2. Optimization using Binary Bat Algorithm. By using Nature Inspired Bat Algorithm for feature selection process, It is found that some features can be dropped to mitigate the training cost and the complexity of the entire system. Also it enhances the test AUC score significantly. Features dropped were:
-
-’V28’, ’V27’, ’V26’, ’V25’, ’V24’, ’V23’, ’V22’, ’V20’, ’V15’, ’V13’, ’V8’
-
-Algorithm 1: Pseudo code for Binary Bat Algorithm:   
-1 Initialize the bat's position and velocity, $X_{i}$ and $V_{i}$ $(\mathrm{i} = 1,2,3,\dots \mathrm{n})$ 2 Initialize frequency $(F_{i})$ pulse rate $(r_i)$ and loudness $(A_{i})$ 3 while iteration $<$ max_iteration do   
-4 Generate new solutions by adjusting frequencies   
-5 Update velocity and locations for each solution   
-6 if rand $>r_i$ then   
-7 Select a solution among the best solution   
-8 Generate a local solution among the selected best   
-9 end   
-10 Generate a new solution by flying (around) randomly   
-11 if rand $<  A_{i}$ and $F(X_{i}) <   F(X^{*})$ then   
-12 Accept the new solution   
-13 increase $r_i$ and reduce $A_{i}$ 14 end   
-15 Rank the bats and find current best X\*   
-16 end
-
-# 5. Result & Analysis
-
-This section presents the outcomes of the experiments designed to provide Fraud detection systems.
-
-# 5.1. Performance Measures
-
-The following standard evaluation measures were used in describing the predictive Fraud detection models:
-
-1) Mean Square Error (MSE): It is used to assess the quality of a predictor models. It takes values in the range [0, 1]. The goal is to minimize MSE value. A ideal model will have MSE value $= 0$ .   
-2) Accuracy: Accuracy is the simplest performance measure that refers to the closeness of a measured value to a standard or known value. Mathematically, it is the ratio between the number of correct predictions and the total number of predictions.
-
-$$
-A c c u r a c y = \frac {\# C o r r e c t}{\# P r e d i c t i o n s} \tag {9}
-$$
-
-3) Confusion Matrix: A confusion matrix (or confusion table) is a table that is often used to describe the performance of a prediction model on a set of test data for which the true values are known. In other words, it is a matrix between Real Classes and Predicted Classes.
-
-Confusion Matrix has following terms:
-
-True Positive (TP): Means no of positive cases which are predicted positive.
-
-False Positive (FP): Means no of negative cases which are predicted positive.   
-True Negative (TN): Means no of negative cases which are predicted negative.   
-False Negative (FN): Means no of positive cases which are predicted negative.
-
-4) Precision & Recall (PR): Precision is a measure of classifier’s exactness. Whereas, Recall is a measure of classifier’s exactness.
-
-In other words, Precision refers to how many selected items are relevant? Whereas, Recall refers to how many relevant items are selected?
-
-$$
-P r e c i s i o n = \frac {T P}{T P + F P} \tag {10}
-$$
-
-$$
-\text {R e c a l l} = \frac {T P}{T P + F N} \tag {11}
-$$
-
-5) F-scores (F1): F1 score is simply the harmonic mean of precision and recall values.
-
-$$
-F 1 = 2 * \frac {\text {P r e c i s i o n} * \text {R e c a l l}}{\text {P r e c i s i o n} + \text {R e c a l l}} \tag {12}
-$$
-
-6) Area Under Curve (AUC): Also known as ”Area Under the Receiver Operating Characteristic curve (AUROC).” It is used to observe the usefulness of a model. AUROC curve is plotted between the true positive rate and the false positive rate at different threshold values.
-
-# 5.2. Experiment I & II: Result & Analysis
-
-The first & second experiment involves the use of Multilayer feed-forward networks to model Credit Card Fraud data and then to use the proposed deep auto-encoder to classify the fraudulent patterns with greater accuracy.
-
-To perform this, TensorFlow software library is used. It is an open-source library used for data-flow programming across a range of tasks.
-
-Test AUC Score: $9 5 . 3 3 \%$
-
-![](images/2a37994bd2faa07532e7fc22d321023e1adabfa98470bad6dbc50dec4fb1b639.jpg)  
-Figure 1. Auto Encoder confusion matrix
-
-![](images/6e03b94223aaa6f27cb2c6cc096e21c0418115028cdcb84af84ca94274c63f30.jpg)  
-Figure 2. Auto Encoder AUROC Curve
-
-![](images/a0fa09086bf3dc30dcf1a1ed96c782769cc8102cc752e4a03914f9c08c66874d.jpg)  
-Figure 3. Show distribution of all MSE
-
-![](images/2c02a4548d00b1bde5f5d8715987256a9a7eece14e69f438ab5c91a59372a8ba.jpg)  
-Figure 4. Display only fraud cases
-
-# 5.3. Experiment III: Result & Analysis
-
-The third experiment involves Nature Inspired Bat Algorithm for optimizing the FDS implemented using the first and the second experiment. The optimization is done using binary bat algorithm in the feature selection stage. It is found that this optimization can mitigate the training cost and the complexity of the entire system. Also it enhances the test AUC score significantly.
-
-Test AUC Score: $9 6 . 2 1 \%$
-
-![](images/3a09172fca95737af9f55ed8fc1d9b333cf22cb9472724012be4232ed16a2ef7.jpg)  
-Figure 5. Auto Encoder confusion matrix
-
-![](images/73312c453dfb87c1c694b2ddb9c34cc5bfbd990af9c1781bd75c539ed2c48579.jpg)  
-Figure 6. Auto Encoder AUROC Curve
-
-# 5.4. Experiment IV: Result & Analysis
-
-The forth and final experiment involves Comparing different Scikit-learn methods/algorithms to classify fraudulent patterns. These comparisons are done using different performance measures e.g.: AUC scores, confusion matrices and precision-recall curves.
-
-# 5.4.1. FDS using different Scikit learn methods with Under-sampling. This experimentation uses Undersampling to handle class imbalance problem.
-
-Under-sampling intends to balance class distribution by randomly eliminating majority class observations. This is practised until the majority and minority class instances are balanced out.
-
-![](images/1f0663fa831369493c6a15d46875885824dd4dcc2636b5ce6635c3e7b0ecd960.jpg)  
-Figure 7. AUCROC Curve with Under-sampling
-
-We can see that XGB performs better than any other Scikit learn algorithms but the proposed FDS and the optimization outperforms it.
-
-# 5.4.2. FDS using different Scikit learn methods with Over-sampling. This experimentation uses Synthetic Minority Over-sampling Technique (SMOTE) to handle class imbalance problem.
-
-SMOTE is used to avoid over-fitting which occurs when exact replicas of minority class instances are added to the main data-set.
-
-A subset of data is taken from the minority class distribution as an example and then new, synthetic similar instances are created. These synthetic instances are then added to the original data-set. The new data-set is used as a sample to train the classification models.
-
-![](images/fc26e2d5ab9e597311551517f1a04b1b61e4535811c8c03de7d054fcc8722527.jpg)  
-Figure 8. AUCROC Curve with Over-sampling
-
-In this case Random Forest is the brightest performer, in fact it turns out to be almost an ideal classifier. But it might be the case that after applying SMOTE, the model gets over-fitted that means its credibility is not guaranteed.
-
-5.4.3. FDS using different Scikit learn methods with Stratified 3-fold sampling. This experimentation uses different Scikit learn method to implement FDS on the given data-set. Also in this experiment Stratified 3-fold sampling is used to demonstrate the different performance measures of these algorithms at three different folds.
-
-Below is the best fold demonstration for different Scikit learn algorithms:
-
-![](images/715f7eb6c202a20edbe7f5d298eae36dd1dc62caa453c840949257da37a20a50.jpg)  
-• Random Forest (RF):   
-Figure 9. RF Confusion Matrix
-
-![](images/d19a5779ab2ed6301b926c00b9506c08f7c238055a306a46e4fb9ef482855eee.jpg)  
-Figure 13. DT with entropy Classification Report
-
-Figure 10. RF Classification Report
-
-# • Linear Regression (LR):
-
-<table><tr><td colspan="4">Coefficient:</td></tr><tr><td>[-5.13666891e-09</td><td>-1.94003929e-03</td><td>2.85955120e-03</td><td>-5.12566968e-03</td></tr><tr><td>3.82127084e-03</td><td>-2.34242973e-03</td><td>-1.70713138e-03</td><td>-6.92689998e-03</td></tr><tr><td>9.84500022e-04</td><td>-3.61701850e-03</td><td>-8.06975037e-03</td><td>6.22972168e-03</td></tr><tr><td>-1.08467353e-02</td><td>-1.87312931e-04</td><td>-1.31613033e-02</td><td>-2.09226924e-04</td></tr><tr><td>-9.36694484e-03</td><td>-1.61326157e-02</td><td>-5.64633721e-03</td><td>1.94153822e-03</td></tr><tr><td>2.57593383e-04</td><td>2.08422229e-03</td><td>1.77236969e-04</td><td>1.01074257e-04</td></tr><tr><td>-5.02834707e-04</td><td>3.00092273e-04</td><td>3.43306751e-04</td><td>1.44082788e-03</td></tr><tr><td>1.17774065e-03</td><td>7.15060808e-06]</td><td></td><td></td></tr><tr><td colspan="4">Intercept:</td></tr><tr><td colspan="4">0.0015802378973</td></tr><tr><td colspan="4">Accuracy = 0.525421124788</td></tr></table>
-
-Figure 11. LR Classification Report
-
-# • Logistic Regression (LOR):
-
-<table><tr><td colspan="2">Coefficient: 
-[[-7.07873101e-05 3.10375906e-01 -4.39220249e-01 -8.03621195e-01 
-1.02051153e-01 -1.18303954e-02 -5.80886115e-02 2.97149895e-01 
--3.13064087e-01 -3.61117841e-01 -2.02536358e-01 -2.81515103e-01 
-2.63285979e-02 -2.93581993e-01 -6.54243726e-01 -4.33720511e-01 
--2.92949221e-01 -4.72907602e-01 1.94575437e-02 2.64922477e-02 
-1.05852994e-01 2.52719436e-01 3.49222013e-01 1.08728798e-01 
--3.89816931e-02 -3.16207443e-01 5.00063890e-02 -9.07856182e-02 
-2.71164375e-02 -5.99714346e-03]]</td></tr><tr><td>Intercept: 
-[-1.59521329]</td><td></td></tr><tr><td colspan="2">Accuracy = 0.999120460099</td></tr></table>
-
-Figure 12. LOR Classification Report
-
-# Decision Tree Classifier using entropy criterion (DT):
-
-<table><tr><td colspan="5">---Classification Report---</td></tr><tr><td></td><td>precision</td><td>recall</td><td>f1-score</td><td>support</td></tr><tr><td>0</td><td>1.00</td><td>1.00</td><td>1.00</td><td>94772</td></tr><tr><td>1</td><td>0.72</td><td>0.78</td><td>0.75</td><td>164</td></tr><tr><td>avg / total</td><td>1.00</td><td>1.00</td><td>1.00</td><td>94936</td></tr><tr><td colspan="5">Accuracy = 0.999104659981</td></tr></table>
-
-![](images/d218a06abd0e497c47f7669c77729034e0a28dbfb5952d4e79be00acc1dea6b0.jpg)  
-Figure 14. DT with entropy Confusion Matrix
-
-![](images/493bd94128e391c96f1083a4b81dadcfce23e0acf1443792f7d6fdb53b622240.jpg)  
-• Decision Tree Classifier using gini criterion (DT):   
-Figure 15. DT with gini Confusion Matrix
-
-![](images/d5709ced92b68b2d18bf8728e4453c2a457d73981c5304d873fd9fb0e1e1eeba.jpg)  
-Figure 16. DT with gini Classification Report
-
-![](images/1d629e237a7b5e91b21c38a3e8da3e70d744c3698772397056441e585af4887e.jpg)  
-• Gradient Boosting Machine (GBM):   
-Figure 17. GBM Confusion Matrix
-
-![](images/e5f01e01f74797b331343fceaa4d329574b2b2e828539ffdb7957cf60fb451dc.jpg)  
-Figure 18. GBM Classification Report
-
-# • XGBoost Classifier (XGB):
-
-Figure 19. XGBoost Classification Report   
-
-<table><tr><td colspan="5">---Classification Report---</td></tr><tr><td></td><td>precision</td><td>recall</td><td>f1-score</td><td>support</td></tr><tr><td>0</td><td>0.98</td><td>0.99</td><td>0.99</td><td>94771</td></tr><tr><td>1</td><td>0.99</td><td>0.98</td><td>0.99</td><td>94771</td></tr><tr><td>avg / total</td><td>0.99</td><td>0.99</td><td>0.99</td><td>189542</td></tr><tr><td colspan="5">Accuracy = 0.987680830634</td></tr></table>
-
-# • ADABoost Classifier (ADAB):
-
-![](images/0ae592f697e57cb6a70d6416bae19fa8bbff47a5780dd225bfd2334250f21e19.jpg)  
-Figure 20. ADABoost Confusion Matrix
-
-Figure 21. ADABoost Classification Report   
-
-<table><tr><td colspan="5">---Classification Report---</td></tr><tr><td></td><td>precision</td><td>recall</td><td>f1-score</td><td>support</td></tr><tr><td>0</td><td>1.00</td><td>1.00</td><td>1.00</td><td>94772</td></tr><tr><td>1</td><td>0.92</td><td>0.82</td><td>0.87</td><td>164</td></tr><tr><td>avg / total</td><td>1.00</td><td>1.00</td><td>1.00</td><td>94936</td></tr><tr><td colspan="5">Accuracy = 0.999568130109</td></tr></table>
-
-In this case again Random Forest is the brightest performer, as we can see its false positive rate. But looking at the recall value, its below our expectations. i.e we can again say that out proposed FDS model with the optimization outperforms this case as well.
-
-# 6. Conclusion
-
-The proposed methodology has made a useful contribution through the unsupervised Fraud detection method. In fact this can be a step towards more automation in the Fraud detection systems. This is important because it reduces human intervention in the whole process and therefore mitigates time and cost. Also it obtains a high fraud coverage with low false alarm rate.
-
-The supervised Fraud detection approaches have been shown to be an effective classifier. But the proposed method is useful even when labeled data is not available.
-
-The proposed Fraud detection approach can be a very effective method especially as the two fields (large amount of data and Deep learning) are rapidly evolving but more importantly because Deep learning is posited to be the most promising Machine learning method for Big Data analytic.
-
-# References
-
-[1] A. Dal Pozzolo, G. Boracchi, O. Caelen, C. Alippi, and G. Bontempi, “Credit card fraud detection: a realistic modeling and a novel learning strategy,” IEEE Transactions on Neural Networks and Learning Systems, 2017.   
-[2] R. J. Bolton and D. J. Hand, “Statistical fraud detection: A review,” Statistical science, pp. 235–249, 2002.   
-[3] E. Hung and D. W. Cheung, “Parallel algorithm for mining outliers in large database,” in Proc. 9th International Database Conference (IDC’99), Hong Kong, 1999.   
-[4] Y. Kou, C.-T. Lu, S. Sirwongwattana, and Y.-P. Huang, “Survey of fraud detection techniques,” in Networking, sensing and control, 2004 IEEE international conference on, vol. 2. IEEE, 2004, pp. 749–754.   
-[5] P.-N. Tan, M. Steinbach, and V. Kumar, “Introduction to data mining. 1st,” 2005.   
-[6] A. O. Adewumi and A. A. Akinyelu, “A survey of machine-learning and nature-inspired based credit card fraud detection techniques,” International Journal of System Assurance Engineering and Management, pp. 1–17, 2016.   
-[7] A. Bergholz, J. H. Chang, G. Paass, F. Reichartz, and S. Strobel, “Improved phishing detection using model-based features.” in CEAS, 2008.   
-[8] T. O. Ayodele, “Types of machine learning algorithms,” in New advances in machine learning. InTech, 2010.   
-[9] A. Srivastava, A. Kundu, S. Sural, and A. Majumdar, “Credit card fraud detection using hidden markov model,” IEEE Transactions on dependable and secure computing, vol. 5, no. 1, pp. 37–48, 2008.   
-[10] M. Z. Khan, J. D. Pathan, and A. H. E. Ahmed, “Credit card fraud detection system using hidden markov model and k-clustering,” International Journal of Advanced Research in Computer and Communication Engineering, vol. 3, no. 2, pp. 5458–5461, 2014.   
-[11] Y. G. S¸ahin and E. Duman, “Detecting credit card fraud by decision trees and support vector machines,” Newswood Limited, 2011.   
-[12] K. Seeja and M. Zareapoor, “Fraudminer: a novel credit card fraud detection model based on frequent itemset mining,” The Scientific World Journal, vol. 2014, 2014.   
-[13] M. Zareapoor and P. Shamsolmoali, “Application of credit card fraud detection: Based on bagging ensemble classifier,” Procedia Computer Science, vol. 48, pp. 679–685, 2015.   
-[14] F. Fadaei Noghani and M. Moattar, “Ensemble classification and extended feature selection for credit card fraud detection,” Journal of AI and Data Mining, vol. 5, no. 2, pp. 235–243, 2017.
-
-[15] G. Rozenberg, T. Bck, and J. N. Kok, Handbook of natural computing. Springer Publishing Company, Incorporated, 2011.   
-[16] M. Mitchell, An introduction to genetic algorithms. MIT press, 1998.   
-[17] R. D. Patel and D. K. Singh, “Credit card fraud detection & prevention of fraud using genetic algorithm,” International Journal of Soft Computing and Engineering, vol. 2, no. 6, 2013.   
-[18] A. H. Awlla, “A hybrid simulated annealing and back-propagation algorithm for feed-forward neural network to detect credit card fraud,” UHD Journal of Science and Technology, vol. 1, no. 2, pp. 31–36, 2017.   
-[19] X.-S. Yang, Nature-inspired optimization algorithms. Elsevier, 2014.
+<table><tr><td>Model</td><td>Sentences</td></tr><tr><td>NB-SVM</td><td>(positive) a really realistic , sensible movie by ramgopal verma . no stupidity like songs as in other Hindi movies . class acting by nana patekar . much similarities to real ‘encounters’. 
+(negative) leslie nielson is a very talented actor , who made a huge mistake by doing this film . it doesn’t even come close to being funny . the best word to describe it is stupid !</td></tr><tr><td>RNN-LM</td><td>(positive) this is a good film . this is very funny . yet after this film there were no good ernest films! 
+(negative) a real hoot , unintentionally . sidney portier’s character is so sweet and lovable you want to smack him . nothing about this movie rings true . and it’s boring to boot .</td></tr><tr><td>Sentence Vector</td><td>(positive) this movie is based on the novel island of dr . moreau by version by john frankenheimer. 
+(negative) if it wasn’t for the terrific music , i would not hesitate to give this cinematic underachievement 2/10 . but the music actually makes me like certain passages , and so i give it 5/10 .</td></tr></table>
+
+volume 1, pp. 181–184. IEEE, 1995.
+
+Le, Quoc V. and Mikolov, Tomas. Distributed representations of sentences and documents. In International Conference on Machine Learning, 2014.   
+Maas, Andrew L., Daly, Raymond E., Pham, Peter T., Huang, Dan, Ng, Andrew Y., and Potts, Christopher. Learning word vectors for sentiment analysis. In Proceedings of the Annual Meeting of the Association for Computational Linguistics. Association for Computational Linguistics, 2011.   
+Mikolov, Tom´aˇs. Statistical language models based on neural networks. PhD thesis, 2012.   
+Mikolov, Tomas, Karafi´at, Martin, Burget, Lukas, Cernock`y, Jan, and Khudanpur, Sanjeev. Recurrent neural network based language model. In INTERSPEECH, pp. 1045–1048, 2010.   
+Pang, Bo and Lee, Lillian. Opinion mining and sentiment analysis. Foundations and trends in information retrieval, 2(1-2):1–135, 2008.   
+Pascanu, Razvan, Mikolov, Tomas, and Bengio, Yoshua. On the difficulty of training recurrent neural networks. arXiv preprint arXiv:1211.5063, 2012.   
+Socher, Richard, Pennington, Jeffrey, Huang, Eric, Ng, Andrew, and Manning, Christopher D. Semisupervised recursive autoencoders for predicting sentiment distributions. Conference on Empirical Methods in Natural Language Processing, 2011.   
+Stolcke, Andreas et al. Srilm-an extensible language modeling toolkit. In INTERSPEECH, 2002.   
+Wang, Sida and Manning, Christopher D. Baselines and bigrams: Simple, good sentiment and topic classification. In Proceedings of the 50th Annual Meeting of the Association for Computational Linguistics: Short Papers-Volume 2, pp. 90–94. Association for Computational Linguistics, 2012.

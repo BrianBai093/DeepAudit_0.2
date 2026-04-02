@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import re
+from pathlib import Path
 from typing import Any
 
 from p2c.agents.base import BaseAgent
@@ -23,6 +25,8 @@ class ToolAgent(BaseAgent):
 
     def execute(self, ctx: dict[str, Any]) -> dict[str, Any]:
         plan: ExecutionPlan = ctx["_p2_plan"]
+        repo_dir = Path(str(ctx["repo_dir"])).resolve()
+        self._augment_plan_dependencies(plan, repo_dir)
         self._env_mgr = CondaEnvManager(
             env_name=plan.env_name,
             python_version=plan.python_version,
@@ -64,8 +68,10 @@ class ToolAgent(BaseAgent):
         # 3. Pre-install commands
         for cmd in plan.pre_install_commands:
             self.log("PROGRESS", f"pre-install: {cmd[:80]}")
-            proc = self._env_mgr.run_in_env(cmd, cwd=".", timeout_sec=120)
+            proc = self._env_mgr.run_in_env(cmd, cwd=str(repo_dir), timeout_sec=120)
             result.install_commands.append(f"pre-install({cmd[:60]}) rc={proc.returncode}")
+            if proc.returncode != 0:
+                result.reason_codes.append("PREINSTALL_FAILED")
 
         # 4 & 5. Dependencies — layered or flat install
         use_layered = os.getenv("P2C_LAYERED_INSTALL", "1") == "1"
@@ -311,6 +317,50 @@ class ToolAgent(BaseAgent):
 
     def _persist(self, result: EnvSetupResult) -> None:
         self.artifacts.write_json("execution/env_setup_result.json", result.model_dump())
+
+    @staticmethod
+    def _base_pkg_name(spec: str) -> str:
+        token = str(spec or "").strip()
+        token = token.split(";")[0].strip()
+        token = token.split("#")[0].strip()
+        return re.split(r"[<>=!~\[\s]", token, maxsplit=1)[0].strip().lower()
+
+    @classmethod
+    def _parse_requirements_file(cls, path: Path) -> list[str]:
+        requirements: list[str] = []
+        try:
+            text = path.read_text(encoding="utf-8", errors="ignore")
+        except Exception:  # noqa: BLE001
+            return requirements
+        for raw_line in text.splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith(("-r", "--", "git+", "http://", "https://", "-e ")):
+                continue
+            requirements.append(line)
+        return requirements
+
+    @classmethod
+    def _augment_plan_dependencies(cls, plan: ExecutionPlan, repo_dir: Path) -> None:
+        manifest_candidates = ["requirements.txt", "requirements-dev.txt", "requirements_dev.txt"]
+        existing = {cls._base_pkg_name(dep) for dep in plan.pip_dependencies}
+        aliases = {
+            "theano": "theano-pymc",
+            "sklearn": "scikit-learn",
+        }
+        for manifest_name in manifest_candidates:
+            manifest = repo_dir / manifest_name
+            if not manifest.is_file():
+                continue
+            for requirement in cls._parse_requirements_file(manifest):
+                base = cls._base_pkg_name(requirement)
+                if not base:
+                    continue
+                if base in existing or aliases.get(base) in existing:
+                    continue
+                plan.pip_dependencies.append(requirement)
+                existing.add(base)
 
     @staticmethod
     def _derive_key_imports(plan: ExecutionPlan) -> list[str]:

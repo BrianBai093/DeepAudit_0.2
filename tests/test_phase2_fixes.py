@@ -669,6 +669,87 @@ def test_planner_sanitizes_help_probe_and_passive_fallbacks(tmp_path):
     assert plan.execution_steps[1].fallback_commands == ["PYTHONUNBUFFERED=1 python src/predict_fraud.py"]
 
 
+def test_planner_rewrites_wrapper_derived_shell_steps(tmp_path):
+    """Wrapper-derived entrypoints should keep their inferred cwd and command."""
+    from p2c.agents.phase2.planner import PlannerAgent
+    from p2c.schemas import ExecutionPlan, ExecutionStep
+
+    repo_dir = tmp_path / "repo"
+    workdir = repo_dir / "workdir"
+    scripts_dir = repo_dir / "scripts"
+    workdir.mkdir(parents=True)
+    scripts_dir.mkdir(parents=True)
+    (repo_dir / "run.sh").write_text("#!/usr/bin/env bash\ncd workdir\n../scripts/do.sh\n", encoding="utf-8")
+    (scripts_dir / "do.sh").write_text("#!/usr/bin/env bash\npython ../scripts/tool.py\n", encoding="utf-8")
+    (scripts_dir / "tool.py").write_text("print('ok')\n", encoding="utf-8")
+
+    repo_analysis = {
+        "entrypoint_candidates": [
+            {
+                "entrypoint_id": "shell:run.sh",
+                "path": "run.sh",
+                "command": "bash run.sh",
+                "cwd": ".",
+                "runtime": "shell",
+                "confidence": 0.99,
+                "evidence": "README verified shell command",
+                "reason_codes": ["README_WORKFLOW_PRIMARY"],
+            },
+            {
+                "entrypoint_id": "shell-derived:run.sh:scripts/do.sh@workdir",
+                "path": "scripts/do.sh",
+                "command": "bash ../scripts/do.sh",
+                "cwd": "workdir",
+                "runtime": "shell",
+                "confidence": 0.9,
+                "evidence": "derived from shell wrapper `run.sh`",
+                "reason_codes": ["ENTRYPOINT_DERIVED_FROM_WRAPPER", "ENTRYPOINT_CWD_FROM_WRAPPER"],
+                "path_resolution_mode": "wrapper_virtual_cwd",
+                "derived_from_wrapper": "run.sh",
+            },
+        ]
+    }
+    task_spec = {
+        "tasks": [
+            {
+                "task_id": "task_01",
+                "entrypoint": "scripts/do.sh",
+                "command": "bash ../scripts/do.sh",
+                "cwd": "workdir",
+                "runtime": "shell",
+                "confidence": 0.9,
+                "evidence": "derived from shell wrapper `run.sh`",
+                "reason_codes": ["ENTRYPOINT_DERIVED_FROM_WRAPPER", "ENTRYPOINT_CWD_FROM_WRAPPER"],
+                "path_resolution_mode": "wrapper_virtual_cwd",
+                "derived_from_wrapper": "run.sh",
+            }
+        ]
+    }
+
+    plan = ExecutionPlan(
+        plan_id="plan",
+        env_name="env",
+        execution_steps=[
+            ExecutionStep(
+                step_id="run_wrapper_child",
+                description="run wrapper-derived child",
+                command="bash scripts/do.sh",
+                cwd=".",
+                required_artifacts=["../data/input.csv", "scores/out.txt"],
+            )
+        ],
+    )
+
+    PlannerAgent._sanitize_plan(plan, str(repo_dir), repo_analysis=repo_analysis, task_spec=task_spec)
+
+    step = plan.execution_steps[0]
+    assert step.command == "bash ../scripts/do.sh"
+    assert step.cwd == "workdir"
+    assert step.path_resolution_mode == "wrapper_virtual_cwd"
+    assert step.derived_from_wrapper == "run.sh"
+    assert step.required_artifacts == ["data/input.csv", "workdir/scores/out.txt"]
+
+
 def test_derive_key_imports_maps_imblearn():
     """Environment validation should import imbalanced-learn via `imblearn`."""
     from p2c.agents.phase2.tool_agent import ToolAgent
@@ -685,6 +766,83 @@ def test_derive_key_imports_maps_imblearn():
 
     assert "imblearn" in imports
     assert "sklearn" in imports
+
+
+def test_tool_agent_augments_missing_requirements_dependency(tmp_path):
+    """Repo requirements should backfill planner omissions like passage."""
+    from p2c.agents.phase2.tool_agent import ToolAgent
+    from p2c.schemas import ExecutionPlan
+
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    (repo_dir / "requirements.txt").write_text(
+        "numpy>=1.8.2\npandas>=0.16.0\nTheano>=0.7\npassage>=0.2.4\n",
+        encoding="utf-8",
+    )
+
+    plan = ExecutionPlan(
+        plan_id="plan",
+        env_name="env",
+        execution_steps=[],
+        pip_dependencies=["numpy==1.23.5", "pandas==1.5.3", "Theano-PyMC==1.1.2"],
+    )
+
+    ToolAgent._augment_plan_dependencies(plan, repo_dir)
+
+    assert "passage>=0.2.4" in plan.pip_dependencies
+    assert "Theano>=0.7" not in plan.pip_dependencies
+
+
+def test_tool_agent_runs_preinstall_in_repo_dir(tmp_path, monkeypatch):
+    """Pre-install commands should resolve paths relative to repo_dir, not project cwd."""
+    from p2c.agents.phase2.tool_agent import ToolAgent
+    from p2c.schemas import ExecutionPlan
+
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    artifacts_dir = tmp_path / "artifacts"
+    from p2c.io_artifacts import ArtifactManager
+
+    artifacts = ArtifactManager(artifacts_dir, "run_tool")
+    artifacts.ensure_tree()
+
+    calls = {"pre": []}
+
+    class DummyEnvMgr:
+        backend = "dummy"
+        def __init__(self, *args, **kwargs):
+            self.env_name = kwargs.get("env_name", "env")
+            self.python_version = kwargs.get("python_version", "3.10")
+        def create(self):
+            return {"ok": True, "log": ""}
+        def env_path_actual(self):
+            return "/tmp/env"
+        def run_in_env(self, command, cwd=".", timeout_sec=600):
+            import subprocess
+            calls["pre"].append((command, cwd, timeout_sec))
+            if command == "pip freeze":
+                return subprocess.CompletedProcess(args=[command], returncode=0, stdout="", stderr="")
+            return subprocess.CompletedProcess(args=[command], returncode=0, stdout="", stderr="")
+        def install_layered(self, layers):
+            return []
+        def validate(self, key_imports=None):
+            return True
+        def freeze(self):
+            return ""
+
+    monkeypatch.setattr("p2c.agents.phase2.tool_agent.CondaEnvManager", DummyEnvMgr)
+
+    plan = ExecutionPlan(
+        plan_id="plan",
+        env_name="env",
+        execution_steps=[],
+        pre_install_commands=["python - <<'PY'\nprint('ok')\nPY"],
+    )
+
+    agent = ToolAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
+    agent.execute({"_p2_plan": plan, "repo_dir": str(repo_dir)})
+
+    assert calls["pre"][0][1] == str(repo_dir)
 
 
 def test_observe_metrics_reads_step_stdout_logs(tmp_path, monkeypatch):
@@ -853,3 +1011,101 @@ def test_execute_step_static_inspection_does_not_emit_metrics(tmp_path):
 
     assert result["exit_code"] == 0
     assert result["metrics"] == {}
+
+
+def test_execute_step_shell_false_success_is_forced_failed(tmp_path):
+    """Shell wrappers with path errors should not be marked successful on rc=0 alone."""
+    import subprocess
+    from p2c.agents.phase2.codex_executor import CodexExecutorAgent
+    from p2c.io_artifacts import ArtifactManager
+    from p2c.schemas import ExecutionStep, MetricContract
+
+    repo_dir = tmp_path / "repo"
+    scripts_dir = repo_dir / "scripts"
+    scripts_dir.mkdir(parents=True)
+    (scripts_dir / "run.sh").write_text("#!/usr/bin/env bash\ncd missing_dir\npython train.py\n", encoding="utf-8")
+
+    artifacts = ArtifactManager(tmp_path / "artifacts", "run_shell_false_success")
+    artifacts.ensure_tree()
+    agent = CodexExecutorAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
+
+    class DummyEnvMgr:
+        def __init__(self):
+            self.commands = []
+
+        def run_in_env(self, command, cwd=".", timeout_sec=600):
+            self.commands.append((command, cwd, timeout_sec))
+            return subprocess.CompletedProcess(
+                args=[command],
+                returncode=0,
+                stdout="",
+                stderr="scripts/run.sh: line 2: cd: missing_dir: No such file or directory\n",
+            )
+
+    env_mgr = DummyEnvMgr()
+    result = agent._execute_step(
+        step=ExecutionStep(
+            step_id="wrapper",
+            description="run shell wrapper",
+            command="bash scripts/run.sh",
+            produced_artifacts=["models/best_model.joblib"],
+            path_resolution_mode="repo_root",
+        ),
+        env_mgr=env_mgr,
+        repo_dir=str(repo_dir),
+        contract=MetricContract(),
+        outputs_dir=str(artifacts.path("execution/codex_outputs")),
+        timeout_sec=60,
+    )
+
+    assert env_mgr.commands == [("bash -euo pipefail scripts/run.sh", str(repo_dir), 60)]
+    assert result["exit_code"] == 1
+    assert result["status"] == "failed"
+    assert result["params"]["effective_cwd"] == "."
+    assert result["params"]["path_resolution_mode"] == "repo_root"
+    assert "SHELL_WRAPPER_FALSE_SUCCESS" in result["reason_codes"]
+
+
+def test_execute_step_pipeline_with_tee_preserves_failure(tmp_path):
+    """Pipeline commands should run under pipefail so tee cannot mask upstream failures."""
+    import subprocess
+    from p2c.agents.phase2.codex_executor import CodexExecutorAgent
+    from p2c.io_artifacts import ArtifactManager
+    from p2c.schemas import ExecutionStep, MetricContract
+
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    artifacts = ArtifactManager(tmp_path / "artifacts", "run_pipefail")
+    artifacts.ensure_tree()
+    agent = CodexExecutorAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
+
+    class DummyEnvMgr:
+        def __init__(self):
+            self.calls = []
+        def run_in_env(self, command, cwd=".", timeout_sec=600):
+            self.calls.append((command, cwd, timeout_sec))
+            return subprocess.CompletedProcess(
+                args=[command],
+                returncode=1,
+                stdout="",
+                stderr="SyntaxError: Missing parentheses in call to 'print'\n",
+            )
+
+    env_mgr = DummyEnvMgr()
+    result = agent._execute_step(
+        step=ExecutionStep(
+            step_id="pipe",
+            description="run pipeline with tee",
+            command="PYTHONPATH=.. python nbsvm.py --ngram 1 --out ../scores/NBSVM-VALID-1GRAM | tee ../scores/NBSVM-VALID-1GRAM.log",
+            retry_on_failure=False,
+        ),
+        env_mgr=env_mgr,
+        repo_dir=str(repo_dir),
+        contract=MetricContract(),
+        outputs_dir=str(artifacts.path("execution/codex_outputs")),
+        timeout_sec=60,
+    )
+
+    assert env_mgr.calls[0][0].startswith("set -euo pipefail; ")
+    assert result["exit_code"] == 1
+    assert result["status"] == "failed"

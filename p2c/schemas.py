@@ -169,6 +169,8 @@ class Entrypoint(BaseModel):
     dependency_profile_id: str | None = None
     confidence: float = Field(ge=0, le=1)
     evidence: str
+    path_resolution_mode: str | None = None
+    derived_from_wrapper: str | None = None
     reason_codes: list[str] = Field(default_factory=list)
 
 
@@ -196,6 +198,9 @@ class TaskItem(BaseModel):
     hyperparams: dict[str, Any] = Field(default_factory=dict)
     confidence: float = Field(ge=0, le=1, default=0.7)
     evidence: str = ""
+    path_resolution_mode: str | None = None
+    derived_from_wrapper: str | None = None
+    reason_codes: list[str] = Field(default_factory=list)
 
 
 class TaskSpec(BaseModel):
@@ -453,6 +458,10 @@ class ExecutionStep(BaseModel):
     is_setup: bool = False
     retry_on_failure: bool = True
     fallback_commands: list[str] = Field(default_factory=list)
+    required_artifacts: list[str] = Field(default_factory=list)
+    produced_artifacts: list[str] = Field(default_factory=list)
+    path_resolution_mode: str | None = None
+    derived_from_wrapper: str | None = None
 
 
 class CompatibilityIssue(BaseModel):

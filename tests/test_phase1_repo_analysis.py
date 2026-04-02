@@ -96,3 +96,49 @@ def test_repo_analysis_prefers_training_script_as_primary(tmp_path: Path) -> Non
     assert analysis.primary_entrypoint_id is not None
     primary = next(ep for ep in analysis.entrypoint_candidates if ep.entrypoint_id == analysis.primary_entrypoint_id)
     assert primary.path == "src/train_model.py"
+
+
+def test_repo_analysis_detects_readme_wrapper_and_derived_cwd(tmp_path: Path) -> None:
+    repo_dir = tmp_path / "repo"
+    workdir = repo_dir / "workdir"
+    scripts_dir = repo_dir / "scripts"
+    workdir.mkdir(parents=True)
+    scripts_dir.mkdir(parents=True)
+    (repo_dir / "README.md").write_text("./run.sh\n", encoding="utf-8")
+    (repo_dir / "run.sh").write_text(
+        "#!/usr/bin/env bash\n"
+        "cd workdir\n"
+        "../scripts/do.sh\n",
+        encoding="utf-8",
+    )
+    (scripts_dir / "do.sh").write_text(
+        "#!/usr/bin/env bash\n"
+        "python ../scripts/tool.py\n",
+        encoding="utf-8",
+    )
+    (scripts_dir / "tool.py").write_text(
+        "if __name__ == '__main__':\n"
+        "    print('ok')\n",
+        encoding="utf-8",
+    )
+
+    analysis = SystemRepoAnalyzer(repo_dir).analyze()
+
+    primary = next(ep for ep in analysis.entrypoint_candidates if ep.entrypoint_id == analysis.primary_entrypoint_id)
+    assert primary.path == "run.sh"
+    assert "README_WORKFLOW_PRIMARY" in primary.reason_codes
+
+    derived_shell = next(
+        ep for ep in analysis.entrypoint_candidates
+        if ep.path == "scripts/do.sh" and ep.derived_from_wrapper == "run.sh"
+    )
+    assert derived_shell.cwd == "workdir"
+    assert derived_shell.command == "bash ../scripts/do.sh"
+    assert derived_shell.path_resolution_mode == "wrapper_virtual_cwd"
+
+    derived_python = next(
+        ep for ep in analysis.entrypoint_candidates
+        if ep.path == "scripts/tool.py" and ep.derived_from_wrapper == "run.sh"
+    )
+    assert derived_python.cwd == "workdir"
+    assert derived_python.command == "python ../scripts/tool.py"

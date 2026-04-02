@@ -25,7 +25,7 @@ SYSTEM_PROMPT = (
 USER_PROMPT_TEMPLATE = (
     "Inputs: fingerprint/claims_ir.json + repo_dir scan\n"
     "Outputs: task/task_spec.json and task/metric_contract.json\n"
-    "Constraints: keep tasks <= 5, include at least one metric observer."
+    "Constraints: prefer wrapper-first workflow coverage and include at least one metric observer."
 )
 
 
@@ -112,9 +112,46 @@ class CompileTaskSpecAgent(BaseAgent):
                     hyperparams=hyperparams,
                     confidence=ep.confidence,
                     evidence=ep.evidence,
+                    path_resolution_mode=ep.path_resolution_mode,
+                    derived_from_wrapper=ep.derived_from_wrapper,
+                    reason_codes=ep.reason_codes,
                 )
             )
         return items
+
+    @staticmethod
+    def _select_entrypoints(candidates: list[Entrypoint], primary_id: str) -> list[Entrypoint]:
+        selected: list[Entrypoint] = []
+        seen: set[str] = set()
+
+        def add(candidate: Entrypoint) -> None:
+            candidate_id = str(candidate.entrypoint_id or candidate.path)
+            if candidate_id in seen:
+                return
+            seen.add(candidate_id)
+            selected.append(candidate)
+
+        if primary_id:
+            for candidate in candidates:
+                if str(candidate.entrypoint_id or "") == primary_id:
+                    add(candidate)
+                    break
+
+        primary_wrapper = selected[0].path if selected and "README_WORKFLOW_PRIMARY" in selected[0].reason_codes else None
+        for candidate in candidates:
+            if "README_WORKFLOW_PRIMARY" in candidate.reason_codes:
+                add(candidate)
+        if primary_wrapper:
+            for candidate in candidates:
+                if candidate.derived_from_wrapper == primary_wrapper:
+                    add(candidate)
+
+        for candidate in candidates:
+            if candidate.runtime in {"python", "shell", "make"}:
+                add(candidate)
+            if len(selected) >= 12:
+                break
+        return selected
 
     @staticmethod
     def _default_metric_patterns() -> dict[str, list[str]]:
@@ -196,15 +233,7 @@ class CompileTaskSpecAgent(BaseAgent):
         repo_analysis = self._load_repo_analysis(self.artifacts, repo_dir)
         candidates = [Entrypoint(**row) if isinstance(row, dict) else row for row in repo_analysis.entrypoint_candidates]
         primary_id = str(repo_analysis.primary_entrypoint_id or "")
-        selected: list[Entrypoint] = []
-        if primary_id:
-            selected.extend([e for e in candidates if str(e.entrypoint_id or "") == primary_id][:1])
-        for candidate in candidates:
-            if len(selected) >= 5:
-                break
-            if any(str(x.entrypoint_id or "") == str(candidate.entrypoint_id or "") for x in selected):
-                continue
-            selected.append(candidate)
+        selected = self._select_entrypoints(candidates, primary_id)
 
         reason_codes = list(repo_analysis.reason_codes)
         if selected:
@@ -273,8 +302,6 @@ class CompileTaskSpecAgent(BaseAgent):
         for e in output.task_spec.entrypoints:
             if not (repo_dir / e.path).exists():
                 raise ValueError(f"Entrypoint does not exist: {e.path}")
-        if len(output.task_spec.entrypoints) > 5:
-            raise ValueError("Too many entrypoints")
 
         return {
             "task_spec": output.task_spec.model_dump(),

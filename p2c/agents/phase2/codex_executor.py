@@ -63,6 +63,7 @@ class CodexExecutorAgent(BaseAgent):
         all_metrics: dict[str, Any] = {}
         step_failures: list[StepFailure] = []
         any_success = False
+        any_completed_step = False
         t_start = time.time()
 
         # Execution journal — accumulates results across steps so each
@@ -107,6 +108,8 @@ class CodexExecutorAgent(BaseAgent):
             })
 
             all_runs.append(run_result)
+            if int(run_result.get("exit_code", 1)) == 0:
+                any_completed_step = True
             if run_result.get("metrics"):
                 all_metrics.update(run_result["metrics"])
                 any_success = True
@@ -150,12 +153,34 @@ class CodexExecutorAgent(BaseAgent):
                 "metrics": all_metrics,
             }
 
+        if any_completed_step and not step_failures:
+            step_failures.append(
+                StepFailure(
+                    step_id="phase2_metrics",
+                    command="phase2 execution",
+                    exit_code=1,
+                    error_type="unknown",
+                    error_message="Execution completed without producing expected metrics",
+                    stdout_tail="",
+                    stderr_tail="",
+                    failure_code="RESULT_MISSING_METRICS",
+                    failure_layer="result",
+                    repair_strategy="replan",
+                    repair_action="Adjust planner/extraction so successful runs emit metrics",
+                    auto_repair_confidence=0.4,
+                )
+            )
+
         failure = ExecutionFailure(
             attempt=int(ctx.get("_p2_attempt", 1)),
             plan_version=plan.plan_version,
             stage="execution",
             step_failures=step_failures,
-            overall_error=f"{len(step_failures)} steps failed",
+            overall_error=(
+                "Execution completed but produced no metrics"
+                if any_completed_step and not any_success
+                else f"{len(step_failures)} steps failed"
+            ),
             is_dependency_issue=any(
                 sf.error_type in ("dependency", "import") for sf in step_failures
             ),
@@ -275,14 +300,16 @@ class CodexExecutorAgent(BaseAgent):
         for index, command in enumerate(planned_commands, start=1):
             remaining = max(1, timeout_sec - int(time.time() - started))
             attempt_started = time.time()
-            proc = env_mgr.run_in_env(command, cwd=cwd, timeout_sec=remaining)
+            executed_command = self._prepare_command_for_execution(command)
+            proc = env_mgr.run_in_env(executed_command, cwd=cwd, timeout_sec=remaining)
             attempt_runtime = time.time() - attempt_started
             label = "direct:primary" if index == 1 else f"direct:fallback_{index - 1}"
-            self._append_attempt_output(stdout_parts, label, command, proc.stdout or "")
-            self._append_attempt_output(stderr_parts, label, command, proc.stderr or "")
+            self._append_attempt_output(stdout_parts, label, executed_command, proc.stdout or "")
+            self._append_attempt_output(stderr_parts, label, executed_command, proc.stderr or "")
             attempt_records.append({
                 "mode": label,
                 "command": command,
+                "executed_command": executed_command,
                 "exit_code": proc.returncode,
                 "runtime_sec": attempt_runtime,
                 "attempt_index": index,
@@ -303,6 +330,7 @@ class CodexExecutorAgent(BaseAgent):
                     stderr_text="".join(stderr_parts),
                     attempt_records=attempt_records,
                     execution_mode="direct",
+                    effective_cwd=step.cwd,
                 )
 
         remaining = timeout_sec - int(time.time() - started)
@@ -332,6 +360,7 @@ class CodexExecutorAgent(BaseAgent):
             attempt_records.append({
                 "mode": "codex:recovery",
                 "command": last_command,
+                "executed_command": last_command,
                 "exit_code": proc.returncode,
                 "runtime_sec": attempt_runtime,
                 "attempt_index": len(attempt_records) + 1,
@@ -349,6 +378,7 @@ class CodexExecutorAgent(BaseAgent):
                 stderr_text="".join(stderr_parts),
                 attempt_records=attempt_records,
                 execution_mode="codex_recovery",
+                effective_cwd=step.cwd,
             )
 
         if last_proc is None:
@@ -365,6 +395,7 @@ class CodexExecutorAgent(BaseAgent):
             stderr_text="".join(stderr_parts),
             attempt_records=attempt_records,
             execution_mode="direct_failed",
+            effective_cwd=step.cwd,
         )
 
     def _finalize_step_result(
@@ -380,6 +411,7 @@ class CodexExecutorAgent(BaseAgent):
         stderr_text: str,
         attempt_records: list[dict[str, Any]],
         execution_mode: str,
+        effective_cwd: str,
     ) -> dict[str, Any]:
         stored = self.artifacts.read_json(step_result_relative)
         metrics = stored.get("metrics") if isinstance(stored.get("metrics"), dict) else {}
@@ -401,6 +433,18 @@ class CodexExecutorAgent(BaseAgent):
         if selected_attempt is None and attempt_records:
             selected_attempt = attempt_records[-1]
 
+        selected_stdout = str((selected_attempt or {}).get("stdout") or proc.stdout or "")
+        selected_stderr = str((selected_attempt or {}).get("stderr") or proc.stderr or "")
+        forced_failure = False
+        if effective_exit_code == 0 and self._looks_like_false_shell_success(
+            step=step,
+            metrics=metrics,
+            stdout=selected_stdout,
+            stderr=selected_stderr,
+        ):
+            effective_exit_code = 1
+            forced_failure = True
+
         if isinstance(stored.get("command"), str):
             effective_command = stored.get("command")
         elif selected_attempt is not None and isinstance(selected_attempt.get("command"), str):
@@ -411,16 +455,24 @@ class CodexExecutorAgent(BaseAgent):
         primary_attempt = attempt_records[0] if attempt_records else None
         degraded_success = self._is_degraded_success(primary_attempt, selected_attempt, effective_exit_code, effective_command)
         run_status = "partial" if degraded_success else ("ok" if effective_exit_code == 0 else "failed")
-        run_params: dict[str, Any] = {}
+        run_params: dict[str, Any] = {
+            "effective_cwd": effective_cwd,
+            "path_resolution_mode": step.path_resolution_mode or "default",
+            "derived_from_wrapper": step.derived_from_wrapper,
+        }
         run_reason_codes: list[str] = []
         if degraded_success and primary_attempt is not None:
-            run_params = {
+            run_params.update({
                 "planned_command": step.command,
                 "primary_exit_code": int(primary_attempt.get("exit_code", 1)),
                 "fallback_used": True,
                 "degraded_success": True,
-            }
+            })
             run_reason_codes = ["PRIMARY_FAILED_FALLBACK_SUCCEEDED", "NON_EQUIVALENT_FALLBACK"]
+        if forced_failure:
+            run_status = "failed"
+            run_reason_codes = list(dict.fromkeys([*run_reason_codes, "SHELL_WRAPPER_FALSE_SUCCESS", "PATH_RESOLUTION_FAILURE"]))
+            notes = f"{notes}\n- shell wrapper returned success despite path-resolution failure; forced to failed."
 
         self.artifacts.write_json(
             step_result_relative,
@@ -434,8 +486,8 @@ class CodexExecutorAgent(BaseAgent):
         self.artifacts.write_text(f"execution/codex_outputs/step_{step.step_id}_stdout.log", stdout_text)
         self.artifacts.write_text(f"execution/codex_outputs/step_{step.step_id}_stderr.log", stderr_text)
 
-        classify_stdout = (selected_attempt or {}).get("stdout", proc.stdout or "")
-        classify_stderr = (selected_attempt or {}).get("stderr", proc.stderr or "")
+        classify_stdout = selected_stdout or stdout_text
+        classify_stderr = selected_stderr or stderr_text
         if effective_exit_code != 0:
             classify_stdout = (selected_attempt or {}).get("stdout", classify_stdout) or stdout_text
             classify_stderr = (selected_attempt or {}).get("stderr", classify_stderr) or stderr_text
@@ -475,6 +527,107 @@ class CodexExecutorAgent(BaseAgent):
         }
 
     @staticmethod
+    def _split_assignments(tokens: list[str]) -> tuple[list[str], list[str]]:
+        assignments: list[str] = []
+        remaining = list(tokens)
+        while remaining and "=" in remaining[0] and not remaining[0].startswith("-"):
+            name, _, value = remaining[0].partition("=")
+            if name.isidentifier() and value:
+                assignments.append(remaining.pop(0))
+                continue
+            break
+        return assignments, remaining
+
+    @classmethod
+    def _prepare_command_for_execution(cls, command: str) -> str:
+        try:
+            tokens = shlex.split(command)
+        except ValueError:
+            return command
+        assignments, remaining = cls._split_assignments(tokens)
+        if not remaining:
+            return command
+        head = remaining[0]
+        if head in {"bash", "sh"} and len(remaining) >= 2 and remaining[1].endswith(".sh"):
+            return shlex.join([*assignments, "bash", "-euo", "pipefail", *remaining[1:]])
+        if (head.startswith("./") or head.startswith("../")) and head.endswith(".sh"):
+            return shlex.join([*assignments, "bash", "-euo", "pipefail", *remaining])
+        if cls._is_shell_compound_command(command):
+            return f"set -euo pipefail; {command}"
+        return command
+
+    @classmethod
+    def _is_shell_step(cls, command: str) -> bool:
+        try:
+            tokens = shlex.split(command)
+        except ValueError:
+            return False
+        _, remaining = cls._split_assignments(tokens)
+        if not remaining:
+            return False
+        head = remaining[0]
+        if head in {"bash", "sh"} and len(remaining) >= 2 and remaining[1].endswith(".sh"):
+            return True
+        return (head.startswith("./") or head.startswith("../")) and head.endswith(".sh")
+
+    @staticmethod
+    def _is_shell_compound_command(command: str) -> bool:
+        raw = str(command or "")
+        if not raw.strip():
+            return False
+        if "\n" in raw:
+            return True
+        markers = ("|", "&&", ";", "||")
+        if any(marker in raw for marker in markers):
+            return True
+        return raw.lstrip().startswith("cd ")
+
+    @staticmethod
+    def _contains_path_resolution_error(stdout: str, stderr: str) -> bool:
+        combined = f"{stdout}\n{stderr}".lower()
+        patterns = (
+            "no such file or directory",
+            "can't open file",
+            "cannot open",
+            "cd:",
+        )
+        return any(pattern in combined for pattern in patterns)
+
+    @staticmethod
+    def _contains_runtime_failure_signal(stdout: str, stderr: str) -> bool:
+        combined = f"{stdout}\n{stderr}".lower()
+        patterns = (
+            "traceback (most recent call last)",
+            "modulenotfounderror",
+            "importerror",
+            "syntaxerror",
+            "nameerror",
+            "typeerror",
+            "valueerror",
+            "assertionerror",
+            "runtimeerror",
+        )
+        return any(pattern in combined for pattern in patterns)
+
+    @classmethod
+    def _looks_like_false_shell_success(
+        cls,
+        *,
+        step: ExecutionStep,
+        metrics: dict[str, Any],
+        stdout: str,
+        stderr: str,
+    ) -> bool:
+        shell_like = cls._is_shell_step(step.command) or cls._is_shell_compound_command(step.command)
+        if not shell_like:
+            return False
+        if not (cls._contains_path_resolution_error(stdout, stderr) or cls._contains_runtime_failure_signal(stdout, stderr)):
+            return False
+        if step.produced_artifacts or step.expected_metrics:
+            return not metrics
+        return True
+
+    @staticmethod
     def _append_attempt_output(target: list[str], label: str, command: str, content: str) -> None:
         body = content or ""
         if body and not body.endswith("\n"):
@@ -485,10 +638,12 @@ class CodexExecutorAgent(BaseAgent):
     def _build_attempt_notes(attempt_records: list[dict[str, Any]]) -> str:
         lines = ["Execution attempts:"]
         for attempt in attempt_records:
-            lines.append(
-                f"- {attempt['mode']}: `{attempt['command']}` "
-                f"(exit {attempt['exit_code']}, {attempt['runtime_sec']:.2f}s)"
-            )
+            executed = str(attempt.get("executed_command") or attempt["command"])
+            details = f"- {attempt['mode']}: `{attempt['command']}`"
+            if executed != attempt["command"]:
+                details += f" -> `{executed}`"
+            details += f" (exit {attempt['exit_code']}, {attempt['runtime_sec']:.2f}s)"
+            lines.append(details)
         return "\n".join(lines)
 
     @staticmethod

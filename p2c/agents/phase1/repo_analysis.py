@@ -47,6 +47,7 @@ _SCRIPT_PRIORITY = {
 }
 
 _SOURCE_PRIORITY = {
+    "readme_workflow_primary": 600,
     "manifest_explicit": 500,
     "code_cli": 400,
     "notebook_explicit": 350,
@@ -90,7 +91,7 @@ def _dedupe_str(items: list[str]) -> list[str]:
 
 class SystemRepoAnalyzer:
     def __init__(self, repo_dir: Path) -> None:
-        self.repo_dir = repo_dir
+        self.repo_dir = repo_dir.resolve()
 
     def analyze(self) -> RepoAnalysis:
         profiles = self._build_dependency_profiles()
@@ -112,7 +113,7 @@ class SystemRepoAnalyzer:
         return RepoAnalysis(
             ecosystems=ecosystems,
             dependency_profiles=profiles,
-            entrypoint_candidates=candidates[:5],
+            entrypoint_candidates=candidates,
             primary_entrypoint_id=primary.entrypoint_id if primary else None,
             reason_codes=_dedupe_str(reason_codes),
         )
@@ -132,6 +133,229 @@ class SystemRepoAnalyzer:
                 continue
             files.append(path)
         return files
+
+    def _rel_or_none(self, path: Path) -> str | None:
+        try:
+            return path.relative_to(self.repo_dir).as_posix()
+        except Exception:  # noqa: BLE001
+            return None
+
+    def _cwd_rel(self, path: Path) -> str:
+        rel = self._rel_or_none(path)
+        return rel or "."
+
+    def _resolve_from_virtual_cwd(self, raw_path: str, virtual_cwd: Path) -> Path | None:
+        cleaned = str(raw_path or "").strip()
+        if not cleaned:
+            return None
+        candidate = (virtual_cwd / cleaned).resolve()
+        if self._rel_or_none(candidate) is None:
+            return None
+        return candidate
+
+    @staticmethod
+    def _shell_tokens(line: str) -> list[str]:
+        try:
+            return shlex.split(line)
+        except ValueError:
+            return []
+
+    @staticmethod
+    def _strip_shell_comment(line: str) -> str:
+        if "#" not in line:
+            return line.strip()
+        if line.lstrip().startswith("#"):
+            return ""
+        return re.sub(r"\s+#.*$", "", line).strip()
+
+    @staticmethod
+    def _is_readme_workflow_primary(rel_path: str) -> bool:
+        rel = str(rel_path or "").strip()
+        parent = Path(rel).parent.as_posix()
+        name = Path(rel).name.lower()
+        return parent in {"", "."} and name.startswith(("run", "start", "launch"))
+
+    def _shell_candidate_command(self, rel_path: str, *, cwd: str, runtime: str) -> str:
+        if runtime == "python":
+            target = Path(rel_path).name if cwd != "." else rel_path
+            return f"python {target}"
+        if runtime == "make":
+            return "make"
+        target = Path(rel_path).name if cwd != "." else rel_path
+        return f"bash {target}"
+
+    def _make_entrypoint(
+        self,
+        *,
+        entrypoint_id: str,
+        path: str,
+        command: str,
+        cwd: str,
+        runtime: str,
+        dependency_profile_id: str | None,
+        confidence: float,
+        evidence: str,
+        reason_codes: list[str] | None = None,
+        path_resolution_mode: str | None = None,
+        derived_from_wrapper: str | None = None,
+    ) -> Entrypoint:
+        return Entrypoint(
+            entrypoint_id=entrypoint_id,
+            path=path,
+            command=command,
+            cwd=cwd,
+            runtime=runtime,
+            dependency_profile_id=dependency_profile_id,
+            confidence=confidence,
+            evidence=evidence,
+            reason_codes=_dedupe_str(reason_codes or []),
+            path_resolution_mode=path_resolution_mode,
+            derived_from_wrapper=derived_from_wrapper,
+        )
+
+    def _derive_from_shell_wrapper(
+        self,
+        script_rel: str,
+        *,
+        invoke_cwd: str,
+        profile_map: dict[str, DependencyProfile],
+        root_wrapper: str | None = None,
+        seen: set[tuple[str, str]] | None = None,
+    ) -> list[Entrypoint]:
+        script_path = self.repo_dir / script_rel
+        if not script_path.is_file():
+            return []
+
+        if seen is None:
+            seen = set()
+        key = (script_rel, invoke_cwd)
+        if key in seen:
+            return []
+        seen.add(key)
+
+        try:
+            text = script_path.read_text(encoding="utf-8", errors="ignore")
+        except Exception:  # noqa: BLE001
+            return []
+
+        wrapper_id = root_wrapper or script_rel
+        virtual_cwd = (self.repo_dir / invoke_cwd).resolve()
+        derived: list[Entrypoint] = []
+
+        for raw_line in text.splitlines():
+            line = self._strip_shell_comment(raw_line)
+            if not line or line.startswith(("if ", "then", "fi", "for ", "while ", "case ", "do ", "done", "else")):
+                continue
+            if "$" in line:
+                continue
+            tokens = self._shell_tokens(line)
+            if not tokens:
+                continue
+
+            while tokens and "=" in tokens[0] and not tokens[0].startswith("-"):
+                name, _, value = tokens[0].partition("=")
+                if name.isidentifier() and value:
+                    tokens = tokens[1:]
+                    continue
+                break
+            if not tokens:
+                continue
+
+            head = tokens[0]
+            if head == "cd" and len(tokens) >= 2:
+                next_cwd = self._resolve_from_virtual_cwd(tokens[1], virtual_cwd)
+                if next_cwd is not None and next_cwd.is_dir():
+                    virtual_cwd = next_cwd
+                continue
+
+            current_cwd = self._cwd_rel(virtual_cwd)
+            profile = self._match_profile(virtual_cwd, "python", profile_map)
+            reason_codes = ["ENTRYPOINT_DERIVED_FROM_WRAPPER"]
+            if current_cwd != ".":
+                reason_codes.append("ENTRYPOINT_CWD_FROM_WRAPPER")
+
+            if head == "make":
+                target_cwd = current_cwd
+                make_tokens = list(tokens)
+                if "-C" in make_tokens:
+                    idx = make_tokens.index("-C")
+                    if idx + 1 < len(make_tokens):
+                        resolved_dir = self._resolve_from_virtual_cwd(make_tokens[idx + 1], virtual_cwd)
+                        if resolved_dir is not None:
+                            target_cwd = self._cwd_rel(resolved_dir)
+                        del make_tokens[idx:idx + 2]
+                makefile_rel = f"{target_cwd}/Makefile" if target_cwd != "." else "Makefile"
+                if (self.repo_dir / makefile_rel).exists():
+                    derived.append(
+                        self._make_entrypoint(
+                            entrypoint_id=f"shell-derived:{wrapper_id}:{makefile_rel}@{target_cwd}",
+                            path=makefile_rel,
+                            command=shlex.join(make_tokens),
+                            cwd=target_cwd,
+                            runtime="make",
+                            dependency_profile_id=profile.profile_id if profile else None,
+                            confidence=0.78,
+                            evidence=f"derived from shell wrapper `{script_rel}`",
+                            reason_codes=reason_codes,
+                            path_resolution_mode="wrapper_virtual_cwd",
+                            derived_from_wrapper=wrapper_id,
+                        )
+                    )
+                continue
+
+            runtime = None
+            raw_target = None
+            command_tokens = list(tokens)
+            if head in {"python", "python3"} and len(tokens) >= 2 and tokens[1].endswith(".py"):
+                runtime = "python"
+                raw_target = tokens[1]
+            elif head in {"bash", "sh"} and len(tokens) >= 2 and tokens[1].endswith(".sh"):
+                runtime = "shell"
+                raw_target = tokens[1]
+                command_tokens[0] = "bash"
+            elif (head.startswith("./") or head.startswith("../")) and head.endswith(".sh"):
+                runtime = "shell"
+                raw_target = head
+                command_tokens = ["bash", *tokens]
+
+            if runtime is None or raw_target is None:
+                continue
+
+            resolved_target = self._resolve_from_virtual_cwd(raw_target, virtual_cwd)
+            if resolved_target is None:
+                continue
+            rel_target = self._rel_or_none(resolved_target)
+            if not rel_target:
+                continue
+
+            target_profile = self._match_profile(resolved_target, "python" if runtime == "python" else "make", profile_map)
+            derived.append(
+                self._make_entrypoint(
+                    entrypoint_id=f"shell-derived:{wrapper_id}:{rel_target}@{current_cwd}",
+                    path=rel_target,
+                    command=shlex.join(command_tokens),
+                    cwd=current_cwd,
+                    runtime=runtime,
+                    dependency_profile_id=target_profile.profile_id if target_profile else None,
+                    confidence=0.86 if runtime == "shell" else 0.84,
+                    evidence=f"derived from shell wrapper `{script_rel}`",
+                    reason_codes=reason_codes,
+                    path_resolution_mode="wrapper_virtual_cwd",
+                    derived_from_wrapper=wrapper_id,
+                )
+            )
+            if runtime == "shell":
+                derived.extend(
+                    self._derive_from_shell_wrapper(
+                        rel_target,
+                        invoke_cwd=current_cwd,
+                        profile_map=profile_map,
+                        root_wrapper=wrapper_id,
+                        seen=seen,
+                    )
+                )
+
+        return derived
 
     def _build_dependency_profiles(self) -> list[DependencyProfile]:
         profiles: list[DependencyProfile] = []
@@ -279,7 +503,7 @@ class SystemRepoAnalyzer:
         return profiles
 
     def _match_profile(self, path: Path, ecosystem: str, profile_map: dict[str, DependencyProfile]) -> DependencyProfile | None:
-        rel_dir = _safe_rel(path.parent, self.repo_dir) or "."
+        rel_dir = self._rel_or_none(path.parent) or "."
         best: DependencyProfile | None = None
         best_len = -1
         for profile in profile_map.values():
@@ -503,11 +727,14 @@ class SystemRepoAnalyzer:
         for path in self._iter_files("*.sh"):
             rel = _safe_rel(path, self.repo_dir)
             filename = path.name.lower()
-            if not re.match(r"(run|train|eval|start|test).*\.sh$", filename):
+            if not (
+                re.match(r"(run|train|eval|start|test|launch).*\.sh$", filename)
+                or rel.count("/") == 0
+            ):
                 continue
             profile = self._match_profile(path, "make", profile_map)
             candidates.append(
-                Entrypoint(
+                self._make_entrypoint(
                     entrypoint_id=f"shell:{rel}",
                     path=rel,
                     command=f"bash {rel}",
@@ -516,6 +743,14 @@ class SystemRepoAnalyzer:
                     dependency_profile_id=profile.profile_id if profile else None,
                     confidence=0.58,
                     evidence="shell script candidate",
+                    path_resolution_mode="repo_root",
+                )
+            )
+            candidates.extend(
+                self._derive_from_shell_wrapper(
+                    rel,
+                    invoke_cwd=".",
+                    profile_map=profile_map,
                 )
             )
         return candidates
@@ -570,24 +805,84 @@ class SystemRepoAnalyzer:
     def _readme_commands(self) -> list[str]:
         readmes = [self.repo_dir / "README.md", self.repo_dir / "readme.md"]
         commands: list[str] = []
-        patterns = [
+        line_patterns = [
             r"^\s*(python(?:3)?\s+[^\n`]+)$",
             r"^\s*(node\s+[^\n`]+)$",
             r"^\s*((?:npm|pnpm)\s+run\s+[^\n`]+)$",
             r"^\s*(yarn\s+[^\n`]+)$",
             r"^\s*(bash\s+[^\n`]+\.sh(?:\s+[^\n`]+)*)$",
+            r"^\s*(sh\s+[^\n`]+\.sh(?:\s+[^\n`]+)*)$",
+            r"^\s*((?:\./|\.\./)[^\s`]+\.sh(?:\s+[^\n`]+)*)$",
             r"^\s*(make\s+[^\n`]+)$",
+        ]
+        fragment_patterns = [
+            r"(?:^|&&\s*|;\s*|time\s+)((?:\./|\.\./)[^\s`]+\.sh(?:\s+[^\n`]+)*)",
+            r"(?:^|&&\s*|;\s*|time\s+)(bash\s+[^\n`]+\.sh(?:\s+[^\n`]+)*)",
+            r"(?:^|&&\s*|;\s*|time\s+)(sh\s+[^\n`]+\.sh(?:\s+[^\n`]+)*)",
+            r"(?:^|&&\s*|;\s*|time\s+)(python(?:3)?\s+[^\n`]+)",
+            r"(?:^|&&\s*|;\s*|time\s+)(make\s+[^\n`]+)",
         ]
         for readme in readmes:
             if not readme.exists():
                 continue
             text = readme.read_text(encoding="utf-8", errors="ignore")
             for line in text.splitlines():
-                for pattern in patterns:
-                    m = re.match(pattern, line.strip())
+                stripped = line.strip()
+                for pattern in line_patterns:
+                    m = re.match(pattern, stripped)
+                    if m:
+                        commands.append(m.group(1).strip())
+                for pattern in fragment_patterns:
+                    m = re.search(pattern, stripped)
                     if m:
                         commands.append(m.group(1).strip())
         return _dedupe_str(commands)
+
+    def _readme_shell_candidate(
+        self,
+        command: str,
+        profile_map: dict[str, DependencyProfile],
+    ) -> Entrypoint | None:
+        try:
+            tokens = shlex.split(command)
+        except ValueError:
+            return None
+        if not tokens:
+            return None
+        runtime = "shell"
+        command_tokens = list(tokens)
+        if tokens[0] in {"bash", "sh"}:
+            if len(tokens) < 2 or not tokens[1].endswith(".sh"):
+                return None
+            raw_target = tokens[1]
+            command_tokens[0] = "bash"
+        elif tokens[0].endswith(".sh") or tokens[0].startswith(("./", "../")):
+            raw_target = tokens[0]
+            command_tokens = ["bash", *tokens]
+        else:
+            return None
+        target = self._resolve_from_virtual_cwd(raw_target, self.repo_dir)
+        if target is None or not target.exists():
+            return None
+        rel = self._rel_or_none(target)
+        if not rel:
+            return None
+        profile = self._match_profile(target, "make", profile_map)
+        reason_codes: list[str] = []
+        if self._is_readme_workflow_primary(rel):
+            reason_codes.append("README_WORKFLOW_PRIMARY")
+        return self._make_entrypoint(
+            entrypoint_id=f"readme-shell:{rel}",
+            path=rel,
+            command=shlex.join(command_tokens),
+            cwd=".",
+            runtime=runtime,
+            dependency_profile_id=profile.profile_id if profile else None,
+            confidence=0.88 if reason_codes else 0.72,
+            evidence="README verified shell command",
+            reason_codes=reason_codes,
+            path_resolution_mode="repo_root",
+        )
 
     def _apply_readme_evidence(
         self,
@@ -596,13 +891,36 @@ class SystemRepoAnalyzer:
     ) -> None:
         commands = self._readme_commands()
         for command in commands:
+            readme_shell = self._readme_shell_candidate(command, profile_map)
+            if readme_shell is not None:
+                matched = False
+                for idx, candidate in enumerate(candidates):
+                    if candidate.path == readme_shell.path and candidate.runtime == readme_shell.runtime:
+                        merged_reason_codes = list(candidate.reason_codes) + list(readme_shell.reason_codes)
+                        candidates[idx] = candidate.model_copy(
+                            update={
+                                "command": readme_shell.command,
+                                "confidence": min(1.0, max(candidate.confidence, readme_shell.confidence) + 0.04),
+                                "evidence": f"{candidate.evidence}; README verified",
+                                "reason_codes": _dedupe_str(merged_reason_codes),
+                                "path_resolution_mode": readme_shell.path_resolution_mode,
+                            }
+                        )
+                        matched = True
+                        break
+                if not matched:
+                    candidates.append(readme_shell)
+                continue
+
             matched = False
             for idx, candidate in enumerate(candidates):
                 if candidate.command == command:
+                    merged_reason_codes = list(candidate.reason_codes)
                     candidates[idx] = candidate.model_copy(
                         update={
                             "confidence": min(1.0, candidate.confidence + 0.03),
                             "evidence": f"{candidate.evidence}; README verified",
+                            "reason_codes": _dedupe_str(merged_reason_codes),
                         }
                     )
                     matched = True
@@ -619,7 +937,7 @@ class SystemRepoAnalyzer:
                     continue
                 profile = self._match_profile(path, "python", profile_map)
                 candidates.append(
-                    Entrypoint(
+                    self._make_entrypoint(
                         entrypoint_id=f"readme-python:{rel}",
                         path=rel,
                         command=f"python {rel}",
@@ -629,6 +947,7 @@ class SystemRepoAnalyzer:
                         confidence=0.68,
                         evidence="README verified python command",
                         reason_codes=["ENTRYPOINT_CWD_INFERRED"] if profile and profile.cwd != "." else [],
+                        path_resolution_mode="repo_root",
                     )
                 )
 
@@ -637,13 +956,15 @@ class SystemRepoAnalyzer:
         source_kind = "unspecified"
         evidence = str(candidate.evidence or "").lower()
         path_hint = f"{candidate.path} {candidate.command}".lower()
-        if "console script" in evidence or "package.json script" in evidence or "main" in evidence:
+        if "README_WORKFLOW_PRIMARY" in candidate.reason_codes:
+            source_kind = "readme_workflow_primary"
+        elif "console script" in evidence or "package.json script" in evidence or "main" in evidence:
             source_kind = "manifest_explicit"
         elif "notebook" in evidence:
             source_kind = "notebook_explicit"
         elif "readme verified" in evidence:
             source_kind = "readme_verified"
-        elif "makefile target" in evidence or "shell script" in evidence:
+        elif "derived from shell wrapper" in evidence or "makefile target" in evidence or "shell script" in evidence:
             source_kind = "wrapper_target"
         elif "cli" in evidence:
             source_kind = "code_cli"

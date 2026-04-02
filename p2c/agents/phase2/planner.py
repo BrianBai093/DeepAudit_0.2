@@ -14,7 +14,7 @@ from p2c.agents.phase2.local_prompt_templates import (
     PLANNER_SYSTEM_PROMPT,
     build_planner_user_prompt,
 )
-from p2c.schemas import ExecutionFailure, ExecutionPlan
+from p2c.schemas import Entrypoint, ExecutionFailure, ExecutionPlan
 
 # Files we try to read from the repo to feed into the prompt
 _DEP_FILE_NAMES = [
@@ -119,7 +119,7 @@ class PlannerAgent(BaseAgent):
 
         # Validate & persist
         plan = ExecutionPlan(**data)
-        self._sanitize_plan(plan, repo_dir)
+        self._sanitize_plan(plan, repo_dir, repo_analysis=repo_analysis, task_spec=task_spec)
         self._validate_plan(plan, repo_dir)
         self.artifacts.write_json("execution/execution_plan.json", plan.model_dump())
         self.log("DONE", f"plan v{plan.plan_version}: {len(plan.execution_steps)} steps, "
@@ -183,14 +183,25 @@ class PlannerAgent(BaseAgent):
                 step.cwd = "."  # auto-fix
 
     @classmethod
-    def _sanitize_plan(cls, plan: ExecutionPlan, repo_dir: str) -> None:
+    def _sanitize_plan(
+        cls,
+        plan: ExecutionPlan,
+        repo_dir: str,
+        *,
+        repo_analysis: dict[str, Any] | None = None,
+        task_spec: dict[str, Any] | None = None,
+    ) -> None:
         """Deterministically fix risky LLM planner outputs before execution."""
         repo_root = Path(repo_dir)
+        candidate_index = cls._candidate_index(repo_root, repo_analysis or {}, task_spec or {})
         for step in plan.execution_steps:
             rewritten = cls._rewrite_help_probe(step.command, repo_root)
             if rewritten:
                 step.command = rewritten
             step.fallback_commands = cls._sanitize_fallbacks(step.command, step.fallback_commands)
+            cls._rewrite_step_from_candidates(step, repo_root, candidate_index)
+            step.required_artifacts = cls._normalize_artifact_paths(step.required_artifacts, step.cwd, repo_root)
+            step.produced_artifacts = cls._normalize_artifact_paths(step.produced_artifacts, step.cwd, repo_root)
 
     @staticmethod
     def _extract_python_script(command: str) -> str | None:
@@ -247,3 +258,126 @@ class PlannerAgent(BaseAgent):
             if fallback_script == primary_script:
                 sanitized.append(fallback)
         return sanitized
+
+    @staticmethod
+    def _iter_entrypoint_rows(repo_analysis: dict[str, Any], task_spec: dict[str, Any]) -> list[Entrypoint]:
+        rows: list[Entrypoint] = []
+        for row in repo_analysis.get("entrypoint_candidates", []):
+            if isinstance(row, dict):
+                rows.append(Entrypoint(**row))
+        for task in task_spec.get("tasks", []):
+            if not isinstance(task, dict):
+                continue
+            rows.append(
+                Entrypoint(
+                    entrypoint_id=task.get("task_id"),
+                    path=str(task.get("entrypoint") or ""),
+                    command=str(task.get("command") or ""),
+                    cwd=str(task.get("cwd") or "."),
+                    runtime=str(task.get("runtime") or "python"),
+                    dependency_profile_id=task.get("dependency_profile_id"),
+                    confidence=float(task.get("confidence") or 0.0),
+                    evidence=str(task.get("evidence") or ""),
+                    reason_codes=list(task.get("reason_codes") or []),
+                    path_resolution_mode=task.get("path_resolution_mode"),
+                    derived_from_wrapper=task.get("derived_from_wrapper"),
+                )
+            )
+        return rows
+
+    @staticmethod
+    def _resolve_rel(path_value: str, *, cwd: str, repo_root: Path) -> str | None:
+        raw = str(path_value or "").strip()
+        if not raw:
+            return None
+        resolved = (repo_root / cwd / raw).resolve()
+        try:
+            return resolved.relative_to(repo_root.resolve()).as_posix()
+        except Exception:  # noqa: BLE001
+            return None
+
+    @classmethod
+    def _extract_command_target(cls, command: str) -> tuple[str | None, str | None]:
+        try:
+            tokens = shlex.split(command)
+        except ValueError:
+            return None, None
+        while tokens and "=" in tokens[0] and not tokens[0].startswith("-"):
+            name, _, value = tokens[0].partition("=")
+            if name.isidentifier() and value:
+                tokens = tokens[1:]
+                continue
+            break
+        if not tokens:
+            return None, None
+        head = tokens[0]
+        if head in {"python", "python3"} and len(tokens) >= 2 and tokens[1].endswith(".py"):
+            return "python", tokens[1]
+        if head in {"bash", "sh"} and len(tokens) >= 2 and tokens[1].endswith(".sh"):
+            return "shell", tokens[1]
+        if head == "make":
+            return "make", "Makefile"
+        if (head.startswith("./") or head.startswith("../")) and head.endswith(".sh"):
+            return "shell", head
+        return None, None
+
+    @classmethod
+    def _candidate_index(
+        cls,
+        repo_root: Path,
+        repo_analysis: dict[str, Any],
+        task_spec: dict[str, Any],
+    ) -> dict[tuple[str, str], Entrypoint]:
+        indexed: dict[tuple[str, str], Entrypoint] = {}
+        for candidate in cls._iter_entrypoint_rows(repo_analysis, task_spec):
+            if not candidate.path:
+                continue
+            key = (candidate.path, candidate.runtime)
+            current = indexed.get(key)
+            if current is None:
+                indexed[key] = candidate
+                continue
+            current_score = (
+                1 if "README_WORKFLOW_PRIMARY" in current.reason_codes else 0,
+                1 if current.derived_from_wrapper else 0,
+                1 if current.cwd != "." else 0,
+                current.confidence,
+            )
+            candidate_score = (
+                1 if "README_WORKFLOW_PRIMARY" in candidate.reason_codes else 0,
+                1 if candidate.derived_from_wrapper else 0,
+                1 if candidate.cwd != "." else 0,
+                candidate.confidence,
+            )
+            if candidate_score > current_score:
+                indexed[key] = candidate
+        return indexed
+
+    @classmethod
+    def _rewrite_step_from_candidates(
+        cls,
+        step,
+        repo_root: Path,
+        candidate_index: dict[tuple[str, str], Entrypoint],
+    ) -> None:
+        runtime, target = cls._extract_command_target(step.command)
+        if runtime is None or target is None:
+            return
+        resolved_target = cls._resolve_rel(target, cwd=step.cwd or ".", repo_root=repo_root)
+        if not resolved_target:
+            return
+        candidate = candidate_index.get((resolved_target, runtime))
+        if candidate is None:
+            return
+        step.command = candidate.command
+        step.cwd = candidate.cwd
+        step.path_resolution_mode = candidate.path_resolution_mode or "candidate_rewrite"
+        step.derived_from_wrapper = candidate.derived_from_wrapper
+
+    @classmethod
+    def _normalize_artifact_paths(cls, paths: list[str], cwd: str, repo_root: Path) -> list[str]:
+        normalized: list[str] = []
+        for raw in paths:
+            rel = cls._resolve_rel(raw, cwd=cwd or ".", repo_root=repo_root)
+            normalized.append(rel or str(raw))
+        return normalized
