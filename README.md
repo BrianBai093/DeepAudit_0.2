@@ -1,701 +1,265 @@
-# Paper2Code / DeepAudit
+# DeepAudit v0.4
 
-English and Chinese README for the current repository state.
+**Automated ML Paper Reproducibility Verification System**
 
----
-
-## 1. What This Repository Is
-
-### English
-
-This repository is a three-phase pipeline for turning a paper plus its code repository into an auditable execution and verification trace.
-
-High-level goal:
-
-1. Read the paper and extract verifiable claims.
-2. Inspect the repository and compile executable tasks.
-3. Run the repository inside a sandboxed environment.
-4. Compare observed evidence with the paper claims and produce a report.
-
-The current implementation contains:
-
-- A working Phase 1 pipeline for paper ingestion, fingerprint extraction, claim IR construction, repository analysis, and task compilation.
-- Two Phase 2 implementations:
-  - `legacy` phase 2: the older, heavier multi-stage Codex execution flow.
-  - `new` phase 2: a newer E2B-first, single-`codex exec` flow added as an experimental parallel path.
-- A Phase 3 verification/reporting pipeline that still expects legacy Phase 2 outputs.
-
-### 中文
-
-这个仓库实现的是一个三阶段流水线，用于把“论文 + 代码仓库”转换成一套可审计的执行与验证轨迹。
-
-整体目标是：
-
-1. 读取论文并抽取可验证 claim。
-2. 分析代码仓库并生成可执行任务。
-3. 在沙盒环境中运行仓库。
-4. 将执行证据与论文 claim 对齐，生成审计报告。
-
-当前实现状态包括：
-
-- 一个可运行的 Phase 1，用于论文摄取、指纹抽取、claim IR 构建、仓库分析和任务编译。
-- 两套 Phase 2：
-  - `legacy` phase 2：旧的、较重的多阶段 Codex 执行流。
-  - `new` phase 2：新增的、以 E2B 为中心的单次 `codex exec` 试验路径。
-- 一个 Phase 3 验证/报告流水线，但它目前仍然依赖 legacy Phase 2 的产物。
+**ML 论文可复现性自动验证系统**
 
 ---
 
-## 2. Repository Layout
+## Overview | 概述
 
-### English
+DeepAudit is a 3-phase pipeline that automatically verifies whether a code repository can reproduce the results claimed in its companion research paper. It ingests the paper, extracts quantitative claims, executes the repository code in an isolated environment, and produces a structured reproducibility audit report with a 0–10 score.
 
-Main directories:
+DeepAudit 是一个三阶段流水线系统，自动验证代码仓库是否能复现对应论文中声明的实验结果。它解析论文、提取定量声明、在隔离环境中执行仓库代码，最终生成结构化的可复现性审计报告（0-10 分评分）。
 
-- `p2c/`: core pipeline code
-- `p2c/agents/phase1/`: paper ingestion and task compilation
-- `p2c/agents/phase2/`: sandbox preparation and Codex execution
-- `p2c/agents/phase3/`: evidence parsing, claim verification, report generation
-- `p2c/runtime/`: runtime backends (`e2b` and `local`)
-- `scripts/`: helper scripts, including E2B template builder
-- `tests/`: targeted regression tests
-- `Target/`: target repository under audit
-- `artifacts/`: run outputs grouped by `run_id`
-- `output/`: intermediate paper markdown output
-
-Key files:
-
-- [`p2c/main.py`](/mnt/e/DeepAudit_0.1/p2c/main.py): CLI entrypoint
-- [`p2c/graph.py`](/mnt/e/DeepAudit_0.1/p2c/graph.py): phase orchestration and phase2 style routing
-- [`p2c/io_artifacts.py`](/mnt/e/DeepAudit_0.1/p2c/io_artifacts.py): artifact tree and placeholders
-- [`p2c/schemas.py`](/mnt/e/DeepAudit_0.1/p2c/schemas.py): Pydantic schemas
-
-### 中文
-
-主要目录：
-
-- `p2c/`：核心流水线代码
-- `p2c/agents/phase1/`：论文摄取与任务编译
-- `p2c/agents/phase2/`：沙盒准备与 Codex 执行
-- `p2c/agents/phase3/`：证据解析、claim 验证、报告生成
-- `p2c/runtime/`：运行时后端（`e2b` 与 `local`）
-- `scripts/`：辅助脚本，包括 E2B 模板构建脚本
-- `tests/`：定向回归测试
-- `Target/`：被审计的目标仓库
-- `artifacts/`：按 `run_id` 组织的运行产物
-- `output/`：论文 markdown 中间结果
-
-关键文件：
-
-- [main.py](/mnt/e/DeepAudit_0.1/p2c/main.py)：CLI 入口
-- [graph.py](/mnt/e/DeepAudit_0.1/p2c/graph.py)：阶段编排与 phase2 风格路由
-- [io_artifacts.py](/mnt/e/DeepAudit_0.1/p2c/io_artifacts.py)：产物树和占位文件
-- [schemas.py](/mnt/e/DeepAudit_0.1/p2c/schemas.py)：Pydantic 数据结构
+```
+Paper (Markdown) ──┐
+                   ├──▶ Phase 1: Extract Claims ──▶ Phase 2: Execute Code ──▶ Phase 3: Verify & Report
+Repository ────────┘
+```
 
 ---
 
-## 3. Pipeline Overview
+## Architecture | 架构
 
-### Phase 1
+### Phase 1 — Paper Ingestion & Claim Extraction | 论文解析与声明提取
 
-#### English
+Converts the paper into structured, verifiable claims grouped by experiment.
 
-Phase 1 produces the execution plan from the paper and repository.
+将论文转化为按实验分组的结构化、可验证声明。
 
-It runs these agents in order:
+| Step | Agent | Description |
+|------|-------|-------------|
+| 1 | `IngestPaperAgent` | Converts markdown images to text |
+| 2 | `ExtractFingerprintGuideAgent` | Splits paper into sentences and table blocks |
+| 3 | `ExtractFingerprintAtomicAgent` | Extracts atomic criteria via LLM |
+| 4 | `ExtractFingerprintFilterAgent` | Filters and clusters atomic criteria |
+| 5 | `BuildClaimsIRAgent` | **LLM-driven**: identifies experiments, groups claims, assesses repo coverage |
+| 6 | `RepoAnalysisAgent` | Analyzes repo structure (entrypoints, dependencies) |
+| 7 | `CompileTaskSpecAgent` | Compiles executable task specification |
 
-1. `ingest_paper`
-2. `extract_fingerprint_guide`
-3. `extract_fingerprint_atomic`
-4. `extract_fingerprint_filter`
-5. `build_claims_ir`
-6. `repo_analysis`
-7. `compile_task_spec`
+**Key outputs | 关键产物:**
+- `fingerprint/claims_ir.json` — Experiments + claims with `repo_coverage` assessment
+- `task/repo_analysis.json` — Repository entrypoints and dependency profiles
+- `task/metric_contract.json` — Regex patterns for metric extraction
 
-Important outputs:
+### Phase 2 — Local Execution | 本地执行
 
-- `fingerprint/fingerprint.json`
-- `fingerprint/claims_ir.json`
-- `task/repo_analysis.json`
-- `task/task_spec.json`
-- `task/metric_contract.json`
+Executes the repository code in an isolated conda/venv environment.
 
-#### 中文
+在隔离的 conda/venv 环境中执行仓库代码。
 
-Phase 1 的作用是从论文和代码仓库生成执行计划。
+| Step | Agent | Description |
+|------|-------|-------------|
+| 8 | `PlannerAgent` | LLM generates `ExecutionPlan` (deps, steps, expected results) |
+| 9 | `ToolAgent` | Creates conda env, layered dependency install (core → ML → paper-specific) |
+| 10 | `CodexExecutorAgent` | **Hybrid execution**: direct subprocess + Codex recovery fallback |
+| 11 | `Phase2Orchestrator` | Plan-Execute-ReAct loop with two-tier repair (micro/macro) |
 
-它按顺序运行以下 agent：
+**Execution strategy | 执行策略:**
+1. **Direct execution** — Commands run via `env_mgr.run_in_env()` (guaranteed correct environment)
+2. **Codex recovery** — If direct fails, Codex CLI diagnoses and fixes
+3. **Autonomous exploration** — Full Codex agent fallback when all plans fail
 
-1. `ingest_paper`
-2. `extract_fingerprint_guide`
-3. `extract_fingerprint_atomic`
-4. `extract_fingerprint_filter`
-5. `build_claims_ir`
-6. `repo_analysis`
-7. `compile_task_spec`
+**Key outputs | 关键产物:**
+- `execution/codex_outputs/run_manifest.json` — All runs with extracted metrics
+- `execution/codex_outputs/claim_alignment.json` — Claims mapped to metrics
+- `execution/phase2_state.json` — Orchestrator state
 
-重要输出包括：
+### Phase 3 — Verification & Reporting | 验证与报告
 
-- `fingerprint/fingerprint.json`
-- `fingerprint/claims_ir.json`
-- `task/repo_analysis.json`
-- `task/task_spec.json`
-- `task/metric_contract.json`
+Compares execution results against paper claims and produces the audit report.
 
-### Phase 2
+将执行结果与论文声明进行比对，生成审计报告。
 
-#### English
+| Step | Agent | Description |
+|------|-------|-------------|
+| 12 | `ObserveMetricsAgent` | Extracts metrics from run manifest + stdout logs |
+| 13 | `AlignEvidenceAgent` | Aligns claims to metrics; gates by `repo_coverage` |
+| 14 | `VerifyClaimsAgent` | LLM-driven verdicts: SUPPORTED / NOT_SUPPORTED / INCONCLUSIVE |
+| 15 | `AuditReportAgent` | LLM generates full report with 0-10 reproducibility score |
 
-Phase 2 executes the repository in a runtime backend.
+**Verdict logic | 判定逻辑:**
+- `repo_coverage = "not_found"` → claim is `INCONCLUSIVE` (experiment not in repo)
+- Config claims → `INCONCLUSIVE` (need code evidence, not metric matching)
+- Result claims with matched metrics → tolerance check: `|reproduced - target| ≤ max(abs_eps, rel_eps × |target|)`
 
-Two implementations exist today:
-
-- `legacy` style
-  - default path
-  - multi-stage
-  - heavier local orchestration
-  - produces legacy outputs such as `run_manifest.json` and `claim_alignment.json`
-- `new` style
-  - selected via `P2C_PHASE2_STYLE=new`
-  - single `codex exec`
-  - much thinner local orchestration
-  - primary fact artifact is `execution_summary.json`
-
-#### 中文
-
-Phase 2 负责在运行时后端中执行目标仓库。
-
-目前存在两套实现：
-
-- `legacy` 风格
-  - 默认路径
-  - 多阶段执行
-  - 本地编排逻辑较重
-  - 会产出 `run_manifest.json`、`claim_alignment.json` 等旧风格文件
-- `new` 风格
-  - 通过 `P2C_PHASE2_STYLE=new` 启用
-  - 单次 `codex exec`
-  - 本地编排更薄
-  - 核心事实文件是 `execution_summary.json`
-
-### Phase 3
-
-#### English
-
-Phase 3 observes metrics, aligns evidence, verifies claims, and writes a report.
-
-Current Phase 3 still assumes legacy Phase 2 outputs.
-
-#### 中文
-
-Phase 3 负责观察指标、对齐证据、验证 claim，并生成报告。
-
-当前 Phase 3 仍然假设上游使用的是 legacy Phase 2 输出。
+**Key outputs | 关键产物:**
+- `results/verdict.json` — Per-claim verdicts with `experiments_summary`
+- `results/report.md` — Full audit report (Executive Summary, Scoring Breakdown, Gaps)
 
 ---
 
-## 4. Phase 2 Styles: Legacy vs New
+## Usage | 使用方法
 
-### English
-
-`legacy` Phase 2:
-
-- Files:
-  - [`prepare_sandbox.py`](/mnt/e/DeepAudit_0.1/p2c/agents/phase2/prepare_sandbox.py)
-  - [`run_codex_exec.py`](/mnt/e/DeepAudit_0.1/p2c/agents/phase2/run_codex_exec.py)
-  - [`collect_codex_outputs.py`](/mnt/e/DeepAudit_0.1/p2c/agents/phase2/collect_codex_outputs.py)
-- Behavior:
-  - multi-stage discovery / execution / repair
-  - expects many intermediate artifacts
-  - still tied to legacy manifest-style outputs
-
-`new` Phase 2:
-
-- Files:
-  - [`prepare_sandbox_newstyle.py`](/mnt/e/DeepAudit_0.1/p2c/agents/phase2/prepare_sandbox_newstyle.py)
-  - [`run_codex_exec_newstyle.py`](/mnt/e/DeepAudit_0.1/p2c/agents/phase2/run_codex_exec_newstyle.py)
-  - [`collect_codex_outputs_newstyle.py`](/mnt/e/DeepAudit_0.1/p2c/agents/phase2/collect_codex_outputs_newstyle.py)
-  - [`codex_prompt_templates_newstyle.py`](/mnt/e/DeepAudit_0.1/p2c/agents/phase2/codex_prompt_templates_newstyle.py)
-- Behavior:
-  - one Codex session
-  - task spec is the main explicit input
-  - summary-driven result collection
-  - designed to reduce local over-control
-
-Routing is controlled in [`graph.py`](/mnt/e/DeepAudit_0.1/p2c/graph.py).
-
-### 中文
-
-`legacy` Phase 2：
-
-- 文件：
-  - [prepare_sandbox.py](/mnt/e/DeepAudit_0.1/p2c/agents/phase2/prepare_sandbox.py)
-  - [run_codex_exec.py](/mnt/e/DeepAudit_0.1/p2c/agents/phase2/run_codex_exec.py)
-  - [collect_codex_outputs.py](/mnt/e/DeepAudit_0.1/p2c/agents/phase2/collect_codex_outputs.py)
-- 行为：
-  - discovery / execution / repair 多阶段
-  - 需要很多中间产物
-  - 仍然绑定 legacy 的 manifest 风格输出
-
-`new` Phase 2：
-
-- 文件：
-  - [prepare_sandbox_newstyle.py](/mnt/e/DeepAudit_0.1/p2c/agents/phase2/prepare_sandbox_newstyle.py)
-  - [run_codex_exec_newstyle.py](/mnt/e/DeepAudit_0.1/p2c/agents/phase2/run_codex_exec_newstyle.py)
-  - [collect_codex_outputs_newstyle.py](/mnt/e/DeepAudit_0.1/p2c/agents/phase2/collect_codex_outputs_newstyle.py)
-  - [codex_prompt_templates_newstyle.py](/mnt/e/DeepAudit_0.1/p2c/agents/phase2/codex_prompt_templates_newstyle.py)
-- 行为：
-  - 单次 Codex 会话
-  - `task_spec` 是主要显式输入
-  - 以 summary 为中心做结果收集
-  - 目标是减少本地过度编排
-
-路由逻辑在 [graph.py](/mnt/e/DeepAudit_0.1/p2c/graph.py) 中。
-
----
-
-## 5. Runtime Backends
-
-### English
-
-Supported backends:
-
-- `e2b` (default)
-- `local`
-
-Runtime factory:
-
-- [`factory.py`](/mnt/e/DeepAudit_0.1/p2c/runtime/factory.py)
-
-E2B runtime:
-
-- [`e2b_runtime.py`](/mnt/e/DeepAudit_0.1/p2c/runtime/e2b_runtime.py)
-
-Current default E2B template:
-
-- `openai-codex`
-
-Optional explicit template override:
-
-- `P2C_E2B_TEMPLATE=<template_name>`
-
-### 中文
-
-支持的运行时后端：
-
-- `e2b`（默认）
-- `local`
-
-运行时工厂：
-
-- [factory.py](/mnt/e/DeepAudit_0.1/p2c/runtime/factory.py)
-
-E2B 运行时实现：
-
-- [e2b_runtime.py](/mnt/e/DeepAudit_0.1/p2c/runtime/e2b_runtime.py)
-
-当前默认 E2B 模板：
-
-- `openai-codex`
-
-如需显式覆盖模板：
-
-- `P2C_E2B_TEMPLATE=<template_name>`
-
----
-
-## 6. Environment Variables
-
-### English
-
-Common variables:
-
-- `OPENAI_API_KEY`: required for LLM calls and Codex inside sandbox
-- `OPENAI_MODEL`: model for the local paper-processing LLM client, default `gpt-5.1`
-- `OPENAI_BASE_URL`: optional OpenAI-compatible base URL
-- `E2B_API_KEY`: required when using `P2C_RUNTIME_BACKEND=e2b`
-- `P2C_RUNTIME_BACKEND`: `e2b` or `local`, default `e2b`
-- `P2C_PHASE2_STYLE`: `legacy` or `new`, default `legacy`
-- `P2C_CODEX_MODEL`: Codex CLI model, default `gpt-5.1`
-- `P2C_E2B_TEMPLATE`: optional explicit E2B template name
-
-### 中文
-
-常用环境变量：
-
-- `OPENAI_API_KEY`：本地 LLM 调用以及沙盒内 Codex 都需要
-- `OPENAI_MODEL`：本地论文处理 LLM 模型，默认 `gpt-5.1`
-- `OPENAI_BASE_URL`：可选的 OpenAI 兼容接口地址
-- `E2B_API_KEY`：使用 `P2C_RUNTIME_BACKEND=e2b` 时需要
-- `P2C_RUNTIME_BACKEND`：`e2b` 或 `local`，默认 `e2b`
-- `P2C_PHASE2_STYLE`：`legacy` 或 `new`，默认 `legacy`
-- `P2C_CODEX_MODEL`：Codex CLI 使用的模型，默认 `gpt-5.1`
-- `P2C_E2B_TEMPLATE`：可选的 E2B 模板名覆盖
-
----
-
-## 7. Installation
-
-### English
-
-This repository currently does not include a pinned top-level environment file for the whole orchestrator itself. At minimum you need:
+### Prerequisites | 前置要求
 
 - Python 3.10+
-- `pydantic`
-- `pytest` for tests
-- E2B SDK for sandbox runs
+- conda or miniconda (for Phase 2 environment isolation)
+- OpenAI API key (for LLM calls)
+- Codex CLI (optional, for Phase 2 recovery mode)
 
-Typical minimal setup:
+### Run | 运行
 
 ```bash
-python3 -m pip install -U pydantic pytest e2b tomli
+# Set API key | 设置 API Key
+export OPENAI_API_KEY="sk-..."
+
+# Phase 1: Extract claims from paper | 从论文提取声明
+python -m p2c.main --phase 1 \
+  --paper_md paper.md \
+  --paper_md_out paper_processed.md \
+  --repo_dir ./target_repo \
+  --run_id my_audit_001
+
+# Phase 2: Execute repository code | 执行仓库代码
+python -m p2c.main --phase 2 \
+  --paper_md paper.md \
+  --paper_md_out paper_processed.md \
+  --repo_dir ./target_repo \
+  --run_id my_audit_001 \
+  --budget_minutes 30
+
+# Phase 3: Verify and generate report | 验证并生成报告
+python -m p2c.main --phase 3 \
+  --paper_md paper.md \
+  --paper_md_out paper_processed.md \
+  --repo_dir ./target_repo \
+  --run_id my_audit_001
 ```
 
-### 中文
+### CLI Arguments | 命令行参数
 
-当前仓库还没有为“整个 orchestrator 自身”提供一份固定顶层环境文件。最少需要：
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `--phase` | Yes | Phase to run: `1`, `2`, or `3` |
+| `--paper_md` | Yes | Input paper markdown path |
+| `--paper_md_out` | Yes | Output processed paper path |
+| `--repo_dir` | Yes | Path to repository under audit |
+| `--run_id` | Yes | Unique run identifier |
+| `--artifacts_dir` | No | Artifacts directory (default: `./artifacts`) |
+| `--budget_minutes` | No | Phase 2 time budget (default: `30`) |
+| `--max_self_heal_iters` | No | Max replanning iterations (default: `6`) |
 
-- Python 3.10+
-- `pydantic`
-- 运行测试用的 `pytest`
-- 沙盒运行所需的 E2B SDK
+---
 
-最小安装示例：
+## Environment Variables | 环境变量
 
-```bash
-python3 -m pip install -U pydantic pytest e2b tomli
+### LLM Configuration | LLM 配置
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OPENAI_API_KEY` | — | Required. OpenAI API key |
+| `OPENAI_MODEL` | `gpt-5.4` | LLM model for all agents |
+| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | API endpoint |
+
+### Phase 2 Execution | Phase 2 执行配置
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `P2C_CODEX_BIN` | auto-detect | Path to Codex CLI binary |
+| `P2C_CODEX_MODEL` | `gpt-5.4` | Model for Codex recovery |
+| `P2C_MAX_REPLAN` | `3` | Max replan attempts |
+| `P2C_LAYERED_INSTALL` | `1` | Enable layered dependency install |
+| `P2C_KEEP_CONDA_ENV` | — | Set to keep env after run |
+| `P2C_VENV_ROOT` | `/tmp` | Root for venv fallback |
+
+---
+
+## Artifact Structure | 产物结构
+
+```
+artifacts/<run_id>/
+├── fingerprint/
+│   ├── fingerprint.json          # Raw paper fingerprint
+│   ├── guide_sentences.json      # Sentence-level extraction
+│   ├── atomic_criteria.json      # Atomic claims from LLM
+│   ├── filter_selected.json      # Filtered claims
+│   └── claims_ir.json            # ★ Experiments + claims (Phase 1 final)
+├── task/
+│   ├── repo_analysis.json        # Repo entrypoints & deps
+│   ├── task_spec.json            # Task specification
+│   └── metric_contract.json      # Metric extraction regexes
+├── execution/
+│   ├── execution_plan.json       # LLM-generated execution plan
+│   ├── env_setup_result.json     # Environment setup status
+│   ├── phase2_state.json         # Orchestrator state
+│   ├── env_lock/pip_freeze.txt   # Installed packages snapshot
+│   └── codex_outputs/
+│       ├── run_manifest.json     # ★ All runs with metrics (Phase 2 final)
+│       ├── claim_alignment.json  # Claims → metrics mapping
+│       └── step_*_stdout.log     # Per-step execution logs
+└── results/
+    ├── metrics.json              # Extracted metrics
+    ├── parsed_evidence.json      # Claims matched to evidence
+    ├── evaluability.json         # Evaluability assessment
+    ├── verdict.json              # ★ Per-claim verdicts (Phase 3 final)
+    └── report.md                 # ★ Full audit report with score
 ```
 
 ---
 
-## 8. How To Run
+## Key Design Decisions | 关键设计决策
 
-### Phase 1
+### Experiment-level claim grouping | 实验级声明分组
 
-#### English
+Claims are grouped by distinct experiments (e.g., "balanced 1:1 evaluation" vs "grouped imbalance evaluation"). Each experiment has a `repo_coverage` field (`implemented` / `partial` / `not_found`) that gates Phase 3 evaluation — claims from unimplemented experiments are marked `INCONCLUSIVE`, not compared against unrelated metrics.
 
-```bash
-python -m p2c.main \
-  --phase 1 \
-  --paper_md "/abs/path/paper.md" \
-  --paper_md_out "/abs/path/output/paper.md" \
-  --repo_dir "/abs/path/Target" \
-  --run_id demo_run \
-  --artifacts_dir "/abs/path/artifacts" \
-  --budget_minutes 60
-```
+声明按不同实验分组（如"均衡 1:1 评估"与"分组不平衡评估"）。每个实验有 `repo_coverage` 字段，Phase 3 据此决策：未实现实验的声明标记为 `INCONCLUSIVE`，不与无关指标比对。
 
-#### 中文
+### Unique metric naming | 唯一指标命名
 
-```bash
-python -m p2c.main \
-  --phase 1 \
-  --paper_md "/abs/path/paper.md" \
-  --paper_md_out "/abs/path/output/paper.md" \
-  --repo_dir "/abs/path/Target" \
-  --run_id demo_run \
-  --artifacts_dir "/abs/path/artifacts" \
-  --budget_minutes 60
-```
+The LLM is instructed to generate specific, unique metric names (e.g., `class_1_precision`, `weighted_f1`) rather than bare names like `precision`. This prevents ambiguity when multiple claims reference the same metric type across different experiments or classes.
 
-### Phase 2 Legacy
+LLM 被要求生成具体、唯一的指标名（如 `class_1_precision`、`weighted_f1`），而非裸名 `precision`，避免跨实验/类别的指标混淆。
 
-#### English
+### Hybrid execution (Direct + Codex) | 混合执行
 
-```bash
-python -m p2c.main \
-  --phase 2 \
-  --paper_md "/abs/path/output/paper.md" \
-  --paper_md_out "/abs/path/output/paper.md" \
-  --repo_dir "/abs/path/Target" \
-  --run_id demo_run \
-  --artifacts_dir "/abs/path/artifacts" \
-  --budget_minutes 60
-```
+Phase 2 first runs commands directly via `conda run` (guaranteeing correct environment), then falls back to Codex CLI only when direct execution fails. This avoids the environment isolation issue where Codex's internal shell doesn't inherit the conda env's PATH.
 
-#### 中文
+Phase 2 先通过 `conda run` 直接执行命令（保证环境正确），仅当直接执行失败时才回退到 Codex CLI，避免 Codex 内部 shell 无法继承 conda 环境 PATH 的隔离问题。
 
-```bash
-python -m p2c.main \
-  --phase 2 \
-  --paper_md "/abs/path/output/paper.md" \
-  --paper_md_out "/abs/path/output/paper.md" \
-  --repo_dir "/abs/path/Target" \
-  --run_id demo_run \
-  --artifacts_dir "/abs/path/artifacts" \
-  --budget_minutes 60
-```
+### Setup steps skip metric extraction | Setup 步骤跳过指标提取
 
-### Phase 2 New Style
+Steps marked `is_setup=True` (e.g., source code inspection, data validation) do not undergo metric extraction. This prevents false-positive regex matches on source code literals like `"precision": 0.4`.
 
-#### English
-
-```bash
-P2C_PHASE2_STYLE=new python -m p2c.main \
-  --phase 2 \
-  --paper_md "/abs/path/output/paper.md" \
-  --paper_md_out "/abs/path/output/paper.md" \
-  --repo_dir "/abs/path/Target" \
-  --run_id demo_run \
-  --artifacts_dir "/abs/path/artifacts" \
-  --budget_minutes 60
-```
-
-#### 中文
-
-```bash
-P2C_PHASE2_STYLE=new python -m p2c.main \
-  --phase 2 \
-  --paper_md "/abs/path/output/paper.md" \
-  --paper_md_out "/abs/path/output/paper.md" \
-  --repo_dir "/abs/path/Target" \
-  --run_id demo_run \
-  --artifacts_dir "/abs/path/artifacts" \
-  --budget_minutes 60
-```
-
-### Phase 3
-
-#### English
-
-Run Phase 3 only after a legacy-style Phase 2 run has produced the required files.
-
-```bash
-python -m p2c.main \
-  --phase 3 \
-  --paper_md "/abs/path/output/paper.md" \
-  --paper_md_out "/abs/path/output/paper.md" \
-  --repo_dir "/abs/path/Target" \
-  --run_id demo_run \
-  --artifacts_dir "/abs/path/artifacts" \
-  --budget_minutes 60
-```
-
-#### 中文
-
-只有在 legacy 风格的 Phase 2 已经产出所需文件后，才能运行 Phase 3。
-
-```bash
-python -m p2c.main \
-  --phase 3 \
-  --paper_md "/abs/path/output/paper.md" \
-  --paper_md_out "/abs/path/output/paper.md" \
-  --repo_dir "/abs/path/Target" \
-  --run_id demo_run \
-  --artifacts_dir "/abs/path/artifacts" \
-  --budget_minutes 60
-```
+标记为 `is_setup=True` 的步骤（如源码查看、数据验证）不进行指标提取，防止对源码中 `"precision": 0.4` 等字面量的正则误匹配。
 
 ---
 
-## 9. Artifact Layout
+## Report Scoring | 报告评分
 
-### English
+The final audit report scores reproducibility on 5 dimensions (0–2 points each, 10 total):
 
-Per-run outputs live under:
+最终审计报告从 5 个维度评分（每项 0-2 分，总分 10 分）：
 
-- `artifacts/<run_id>/`
-
-Important subpaths:
-
-- `fingerprint/`: extracted claim and paper artifacts
-- `task/`: repository analysis and execution task spec
-- `execution/`: runtime logs and Codex outputs
-- `results/`: metrics, verdicts, and final report
-
-Examples:
-
-- `artifacts/<run_id>/task/task_spec.json`
-- `artifacts/<run_id>/execution/codex_outputs/execution_summary.json`
-- `artifacts/<run_id>/results/verdict.json`
-- `artifacts/<run_id>/results/report.md`
-
-### 中文
-
-每次运行的输出位于：
-
-- `artifacts/<run_id>/`
-
-重要子目录：
-
-- `fingerprint/`：论文与 claim 抽取产物
-- `task/`：仓库分析与执行任务定义
-- `execution/`：运行时日志和 Codex 输出
-- `results/`：指标、结论与最终报告
-
-例如：
-
-- `artifacts/<run_id>/task/task_spec.json`
-- `artifacts/<run_id>/execution/codex_outputs/execution_summary.json`
-- `artifacts/<run_id>/results/verdict.json`
-- `artifacts/<run_id>/results/report.md`
+| Dimension | Description |
+|-----------|-------------|
+| **Code Completeness** | Does the repo implement all paper experiments? |
+| **Execution Success** | Did all steps run without errors? |
+| **Result Accuracy** | Do reproduced metrics match paper claims? |
+| **Documentation** | Is the paper-to-code mapping clear? |
+| **Data Availability** | Is training/test data accessible? |
 
 ---
 
-## 10. Testing
-
-### English
-
-Targeted tests currently available:
-
-- [`tests/test_phase2_e2b_first.py`](/mnt/e/DeepAudit_0.1/tests/test_phase2_e2b_first.py)
-- [`tests/test_phase2_newstyle.py`](/mnt/e/DeepAudit_0.1/tests/test_phase2_newstyle.py)
-
-Run the new-style tests:
+## Tests | 测试
 
 ```bash
-python3 -m pytest tests/test_phase2_newstyle.py -q -s
+python -m pytest tests/ -v
 ```
 
-Run the narrower phase2 regression tests:
-
-```bash
-python3 -m pytest tests/test_phase2_e2b_first.py -q -s
-```
-
-### 中文
-
-当前可用的定向测试主要有：
-
-- [tests/test_phase2_e2b_first.py](/mnt/e/DeepAudit_0.1/tests/test_phase2_e2b_first.py)
-- [tests/test_phase2_newstyle.py](/mnt/e/DeepAudit_0.1/tests/test_phase2_newstyle.py)
-
-运行 newstyle 测试：
-
-```bash
-python3 -m pytest tests/test_phase2_newstyle.py -q -s
-```
-
-运行 phase2 的定向回归测试：
-
-```bash
-python3 -m pytest tests/test_phase2_e2b_first.py -q -s
-```
+| Test File | Coverage |
+|-----------|----------|
+| `test_claim_context_pipeline.py` | Claim grouping, alignment, disambiguation, verdict |
+| `test_phase1_repo_analysis.py` | Entrypoint detection, notebook handling |
+| `test_phase2_fixes.py` | Env setup, metric extraction, Codex binary resolution |
+| `test_table_extraction.py` | Table parsing, plausibility checks |
 
 ---
 
-## 11. Current Known Issues / Unresolved Problems
+## License | 许可证
 
-### English
+This project is for research purposes.
 
-This section describes the current known problems as of the repository state today.
-
-1. Phase 3 is still legacy-coupled.
-   - [`main.py`](/mnt/e/DeepAudit_0.1/p2c/main.py) and Phase 3 prerequisites still require:
-     - `execution/codex_outputs/run_manifest.json`
-     - `execution/codex_outputs/claim_alignment.json`
-   - As a result, the new-style Phase 2 is not yet a drop-in replacement for Phase 3.
-
-2. Legacy Phase 2 and new Phase 2 coexist, but the artifact contract is not unified.
-   - Legacy flow expects many intermediate files.
-   - New flow treats `execution_summary.json` as the primary source of truth.
-   - The repository currently supports both, but not with a single clean contract.
-
-3. `ArtifactManager` still creates many legacy placeholders.
-   - [`io_artifacts.py`](/mnt/e/DeepAudit_0.1/p2c/io_artifacts.py) initializes old files even when the new-style phase2 path is used.
-   - This is compatible, but it makes the artifact tree noisy and conceptually inconsistent.
-
-4. The top-level environment setup is still incomplete.
-   - There is no canonical root `requirements.txt` or `pyproject.toml` for the orchestrator itself.
-   - Installation is currently based on inferred minimal dependencies.
-
-5. E2B runtime support is practical but not yet fully normalized.
-   - Default template is `openai-codex`.
-   - Extra tools such as `Rscript` may require runtime bootstrap or a custom template.
-   - This means some repositories still hit environment-dependent behavior.
-
-6. Legacy Phase 2 remains prone to over-control.
-   - It still uses a heavier local orchestration style and multiple artifact expectations.
-   - The new-style path was added specifically to experiment with a thinner contract.
-
-7. Sandbox code modifications by Codex are still possible.
-   - The current prompt allows repository execution and debugging.
-   - Depending on the task and failure mode, Codex may modify files in the sandbox while trying to make the repo runnable.
-   - This behavior is visible in execution logs and may not be desirable for every audit mode.
-
-8. Documentation and workflow are still evolving.
-   - This README describes the current repository state, not a frozen stable release.
-
-### 中文
-
-本节描述的是当前仓库状态下尚未解决的问题。
-
-1. Phase 3 仍然绑定 legacy 输出。
-   - [main.py](/mnt/e/DeepAudit_0.1/p2c/main.py) 以及 Phase 3 前置检查仍然要求：
-     - `execution/codex_outputs/run_manifest.json`
-     - `execution/codex_outputs/claim_alignment.json`
-   - 因此，newstyle Phase 2 目前还不能无缝替代 Phase 3 的上游。
-
-2. legacy Phase 2 与 new Phase 2 并存，但产物契约还没有统一。
-   - legacy 流程依赖很多中间文件。
-   - newstyle 流程把 `execution_summary.json` 当作主要真相源。
-   - 当前仓库同时支持两者，但还不是一个统一、干净的接口。
-
-3. `ArtifactManager` 仍然会创建大量 legacy 占位文件。
-   - [io_artifacts.py](/mnt/e/DeepAudit_0.1/p2c/io_artifacts.py) 即使在使用 newstyle phase2 时，也会初始化旧文件。
-   - 这在兼容性上没有问题，但会让产物树显得嘈杂，概念上也不完全一致。
-
-4. 顶层环境配置仍不完整。
-   - orchestrator 自身还没有一份规范的根级 `requirements.txt` 或 `pyproject.toml`。
-   - 当前安装方式仍然依赖“最小依赖推断”。
-
-5. E2B 运行时支持可用，但还没有完全标准化。
-   - 默认模板是 `openai-codex`。
-   - 像 `Rscript` 这样的额外工具，可能仍然需要运行时 bootstrap 或自定义模板。
-   - 因此某些仓库仍然会受到环境差异影响。
-
-6. legacy Phase 2 仍然容易“本地编排过重”。
-   - 它仍然保留了较重的本地控制逻辑和多种旧产物要求。
-   - newstyle 路径正是为了试验更薄的契约而新增的。
-
-7. Codex 仍可能在 sandbox 中修改代码。
-   - 当前提示词允许它为执行和调试做必要尝试。
-   - 在某些任务和失败场景下，Codex 可能会在 sandbox 中修改仓库文件，以尝试让项目运行起来。
-   - 这种行为可以在执行日志中看到，但对某些审计模式来说并不理想。
-
-8. 文档与工作流仍在演进中。
-   - 本 README 描述的是“当前仓库状态”，不是一个完全冻结的稳定版本。
-
----
-
-## 12. Recommended Next Steps
-
-### English
-
-Recommended engineering cleanup:
-
-1. Decide whether new-style Phase 2 should become the default.
-2. If yes, refactor Phase 3 to consume `execution_summary.json` instead of legacy-only artifacts.
-3. Add a root environment file for the orchestrator.
-4. Reduce `ArtifactManager` placeholder noise for new-style runs.
-5. Add end-to-end tests covering:
-   - Phase 1 -> Phase 2 new
-   - Phase 2 new -> Phase 3 compatibility or explicit incompatibility handling
-
-### 中文
-
-推荐的后续工程化动作：
-
-1. 明确决定是否让 newstyle Phase 2 成为默认路径。
-2. 如果是，就把 Phase 3 改成消费 `execution_summary.json`，而不是只认 legacy 产物。
-3. 为 orchestrator 本身补一份根级环境文件。
-4. 减少 newstyle 运行时 `ArtifactManager` 的 legacy 占位噪声。
-5. 增加端到端测试，覆盖：
-   - Phase 1 -> Phase 2 new
-   - Phase 2 new -> Phase 3 兼容或显式不兼容处理
-
----
-
-## 13. Status Summary
-
-### English
-
-Current status in one sentence:
-
-This repository is functional for Phase 1, has both legacy and experimental new-style Phase 2 implementations, and still requires additional unification work before the full pipeline is cleanly consistent end to end.
-
-### 中文
-
-用一句话概括当前状态：
-
-这个仓库目前的 Phase 1 是可运行的，Phase 2 同时存在 legacy 和实验性的 newstyle 两套实现，但在全链路一致性方面仍然需要进一步收敛和统一。
+本项目仅供研究用途。
