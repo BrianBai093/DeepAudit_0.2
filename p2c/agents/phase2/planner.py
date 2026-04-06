@@ -117,6 +117,15 @@ class PlannerAgent(BaseAgent):
         data["plan_version"] = plan_version
         data["total_budget_sec"] = budget_sec
 
+        # Drop expected_results entries the LLM failed to map to a metric
+        # (metric_name is required by the ExpectedResult schema).
+        raw_expected = data.get("expected_results") or []
+        if isinstance(raw_expected, list):
+            data["expected_results"] = [
+                item for item in raw_expected
+                if isinstance(item, dict) and isinstance(item.get("metric_name"), str) and item.get("metric_name").strip()
+            ]
+
         # Validate & persist
         plan = ExecutionPlan(**data)
         self._sanitize_plan(plan, repo_dir, repo_analysis=repo_analysis, task_spec=task_spec)
