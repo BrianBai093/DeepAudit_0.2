@@ -1,13 +1,53 @@
-"""CodexExecutorAgent — hybrid local execution plus Codex recovery."""
+"""CodexExecutorAgent — Claude Code Agent SDK as primary execution engine.
+
+v0.5: Every execution step is handled by Claude Code via the Agent SDK.
+Claude Code's ``Bash`` tool inherits the host process environment,
+eliminating the PATH-reset problem that plagued Codex CLI.  The agent
+can self-heal failures, install missing packages, and iterate — all
+within a single SDK session per step.
+
+Architecture (autoresearch-inspired):
+  1. Build a task prompt describing the step + expected metrics.
+  2. Invoke ``claude-agent-sdk.query()`` — Claude Code reads files, runs
+     commands via its Bash tool, inspects errors, and retries.
+  3. Collect all Bash stdout/stderr + assistant text → extract metrics.
+  4. No separate "direct execution" layer — Claude Code IS the executor.
+"""
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import os
 import shlex
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+try:
+    from claude_agent_sdk import (  # type: ignore[import-untyped]
+        AssistantMessage,
+        ClaudeAgentOptions,
+        ResultMessage,
+        UserMessage,
+        query,
+    )
+    _SDK_AVAILABLE = True
+except ImportError:
+    _SDK_AVAILABLE = False
+    # Placeholder types so the module can be imported without the SDK
+    # (e.g. during tests or static analysis).  Runtime calls to
+    # _run_claude() will fail fast with a clear error message.
+    AssistantMessage = type("AssistantMessage", (), {})  # type: ignore[misc,assignment]
+    ClaudeAgentOptions = type("ClaudeAgentOptions", (), {})  # type: ignore[misc,assignment]
+    ResultMessage = type("ResultMessage", (), {})  # type: ignore[misc,assignment]
+    UserMessage = type("UserMessage", (), {})  # type: ignore[misc,assignment]
+
+    async def query(**kwargs):  # type: ignore[misc]
+        raise RuntimeError("claude-agent-sdk is not installed")
+        yield  # noqa: make it an async generator
 
 from p2c.agents.base import BaseAgent
 from p2c.agents.phase2.local_prompt_templates import (
@@ -32,11 +72,36 @@ from p2c.schemas import (
     StepFailure,
 )
 
-DEFAULT_CODEX_MODEL = "gpt-5.4"
+logger = logging.getLogger(__name__)
+
+DEFAULT_CLAUDE_MODEL = "claude-sonnet-4-20250514"
+
+# ---------------------------------------------------------------------------
+# Keys forwarded from the host environment into the Claude Code session.
+# ---------------------------------------------------------------------------
+_FORWARD_ENV_KEYS = (
+    "OPENAI_API_KEY", "ANTHROPIC_API_KEY",
+    "HOME", "USER", "PATH", "LANG", "SHELL",
+    "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY",
+    "http_proxy", "https_proxy", "no_proxy",
+    "CONDA_EXE", "CONDA_PREFIX",
+)
+
+
+@dataclass
+class ClaudeResult:
+    """Structured result from a Claude Code agent session.
+
+    Mirrors ``subprocess.CompletedProcess[str]`` so downstream consumers
+    (metric extraction, failure classification) work unchanged.
+    """
+    stdout: str
+    stderr: str
+    returncode: int
 
 
 class CodexExecutorAgent(BaseAgent):
-    """Execute plan steps with hybrid local-first execution plus Codex recovery."""
+    """Execute plan steps via Claude Code Agent SDK (primary execution engine)."""
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(name="codex_executor", *args, **kwargs)
@@ -66,11 +131,7 @@ class CodexExecutorAgent(BaseAgent):
         any_completed_step = False
         t_start = time.time()
 
-        # Execution journal — accumulates results across steps so each
-        # subsequent step can see what happened before (inter-step feedback).
         execution_journal: list[dict[str, Any]] = []
-
-        # Topological sort (simple: respect depends_on ordering)
         ordered_steps = self._topo_sort(plan.execution_steps)
 
         for step in ordered_steps:
@@ -80,9 +141,8 @@ class CodexExecutorAgent(BaseAgent):
                 break
 
             step_remaining = min(step.timeout_sec, remaining_sec - elapsed)
-            self.log("PROGRESS", f"step {step.step_id}: {step.description[:80]}")
+            self.log("PROGRESS", f"step {step.step_id} (Claude Code): {step.description[:80]}")
 
-            # Build compressed prior-step context for the prompt
             prior_context = self._summarize_journal(execution_journal)
 
             run_result = self._execute_step(
@@ -95,7 +155,6 @@ class CodexExecutorAgent(BaseAgent):
                 prior_step_results=prior_context,
             )
 
-            # Append to journal BEFORE processing next step
             execution_journal.append({
                 "step_id": step.step_id,
                 "description": step.description[:120],
@@ -123,7 +182,6 @@ class CodexExecutorAgent(BaseAgent):
                     stdout_tail=run_result.get("stdout_tail", "")[-2000:],
                     stderr_tail=run_result.get("stderr_tail", "")[-2000:],
                     traceback=run_result.get("traceback"),
-                    # v2 taxonomy fields for repair routing
                     failure_code=run_result.get("failure_code"),
                     failure_layer=run_result.get("failure_layer"),
                     repair_strategy=run_result.get("repair_strategy"),
@@ -135,8 +193,7 @@ class CodexExecutorAgent(BaseAgent):
                     self.log("PROGRESS", f"fast-fail on {step.step_id}, stopping")
                     break
 
-        # Build Phase 3 outputs
-        manifest = build_run_manifest(all_runs, reason_codes=["HYBRID_LOCAL_EXEC"])
+        manifest = build_run_manifest(all_runs, reason_codes=["CLAUDE_CODE_EXEC"])
         alignment = build_claim_alignment(
             claims_ir,
             all_metrics,
@@ -217,10 +274,10 @@ class CodexExecutorAgent(BaseAgent):
             outputs_dir=outputs_dir,
         )
 
-        self.log("PROGRESS", "starting autonomous exploration mode...")
+        self.log("PROGRESS", "starting autonomous exploration mode (Claude Code)...")
         timeout = max(300, int(remaining_sec))
         t0 = time.time()
-        proc = self._run_codex(env_mgr, prompt, repo_dir, timeout_sec=timeout)
+        proc = self._run_claude(env_mgr, prompt, repo_dir, timeout_sec=timeout)
         runtime = time.time() - t0
 
         stdout = proc.stdout or ""
@@ -231,14 +288,14 @@ class CodexExecutorAgent(BaseAgent):
         # Try file-based extraction first
         metrics = extract_metrics_from_file(f"{outputs_dir}/autonomous_results.json")
         # Merge stdout-based
-        stdout_metrics = extract_metrics_from_stdout(stdout, contract, command="codex autonomous exploration")
+        stdout_metrics = extract_metrics_from_stdout(stdout, contract, command="claude autonomous exploration")
         for k, v in stdout_metrics.items():
             if k not in metrics:
                 metrics[k] = v
 
         run_entry = {
             "step_id": "autonomous",
-            "command": "codex autonomous exploration",
+            "command": "claude autonomous exploration",
             "cwd": repo_dir,
             "exit_code": proc.returncode,
             "runtime_sec": runtime,
@@ -268,7 +325,7 @@ class CodexExecutorAgent(BaseAgent):
         }
 
     # ------------------------------------------------------------------
-    # Internal: execute a single step
+    # Internal: execute a single step via Claude Code (primary executor)
     # ------------------------------------------------------------------
 
     def _execute_step(
@@ -290,111 +347,45 @@ class CodexExecutorAgent(BaseAgent):
         step_result_path.unlink(missing_ok=True)
 
         started = time.time()
-        attempt_records: list[dict[str, Any]] = []
-        stdout_parts: list[str] = []
-        stderr_parts: list[str] = []
-        last_proc: Any = None
-        last_command = step.command
 
-        planned_commands = [step.command, *step.fallback_commands]
-        for index, command in enumerate(planned_commands, start=1):
-            remaining = max(1, timeout_sec - int(time.time() - started))
-            attempt_started = time.time()
-            executed_command = self._prepare_command_for_execution(command)
-            proc = env_mgr.run_in_env(executed_command, cwd=cwd, timeout_sec=remaining)
-            attempt_runtime = time.time() - attempt_started
-            label = "direct:primary" if index == 1 else f"direct:fallback_{index - 1}"
-            self._append_attempt_output(stdout_parts, label, executed_command, proc.stdout or "")
-            self._append_attempt_output(stderr_parts, label, executed_command, proc.stderr or "")
-            attempt_records.append({
-                "mode": label,
-                "command": command,
-                "executed_command": executed_command,
-                "exit_code": proc.returncode,
-                "runtime_sec": attempt_runtime,
-                "attempt_index": index,
-                "stdout": proc.stdout or "",
-                "stderr": proc.stderr or "",
-            })
-            last_proc = proc
-            last_command = command
-            if proc.returncode == 0:
-                return self._finalize_step_result(
-                    step=step,
-                    contract=contract,
-                    step_result_relative=step_result_relative,
-                    default_command=command,
-                    proc=proc,
-                    runtime_sec=time.time() - started,
-                    stdout_text="".join(stdout_parts),
-                    stderr_text="".join(stderr_parts),
-                    attempt_records=attempt_records,
-                    execution_mode="direct",
-                    effective_cwd=step.cwd,
-                )
+        # Build prompt — Claude Code will execute, self-heal, and iterate.
+        prompt = build_step_execution_prompt(
+            repo_dir=repo_dir,
+            step_description=step.description,
+            step_command=step.command,
+            expected_metrics=step.expected_metrics,
+            metric_parsers=parsers,
+            outputs_dir=outputs_dir,
+            step_id=step.step_id,
+            failure_context=None,  # no prior failure — Claude Code is primary
+            prior_step_results=prior_step_results,
+        )
 
-        remaining = timeout_sec - int(time.time() - started)
-        if step.retry_on_failure and remaining > 0 and last_proc is not None:
-            failure_context = self._build_failure_context(
-                attempt_records=attempt_records,
-                stdout_text="".join(stdout_parts),
-                stderr_text="".join(stderr_parts),
-            )
-            prompt = build_step_execution_prompt(
-                repo_dir=repo_dir,
-                step_description=step.description,
-                step_command=step.command,
-                expected_metrics=step.expected_metrics,
-                metric_parsers=parsers,
-                outputs_dir=outputs_dir,
-                step_id=step.step_id,
-                failure_context=failure_context,
-                prior_step_results=prior_step_results,
-            )
-            self.log("PROGRESS", f"step {step.step_id}: direct execution failed, invoking Codex recovery")
-            attempt_started = time.time()
-            proc = self._run_codex(env_mgr, prompt, cwd, timeout_sec=max(1, remaining))
-            attempt_runtime = time.time() - attempt_started
-            self._append_attempt_output(stdout_parts, "codex:recovery", last_command, proc.stdout or "")
-            self._append_attempt_output(stderr_parts, "codex:recovery", last_command, proc.stderr or "")
-            attempt_records.append({
-                "mode": "codex:recovery",
-                "command": last_command,
-                "executed_command": last_command,
-                "exit_code": proc.returncode,
-                "runtime_sec": attempt_runtime,
-                "attempt_index": len(attempt_records) + 1,
-                "stdout": proc.stdout or "",
-                "stderr": proc.stderr or "",
-            })
-            return self._finalize_step_result(
-                step=step,
-                contract=contract,
-                step_result_relative=step_result_relative,
-                default_command=last_command,
-                proc=proc,
-                runtime_sec=time.time() - started,
-                stdout_text="".join(stdout_parts),
-                stderr_text="".join(stderr_parts),
-                attempt_records=attempt_records,
-                execution_mode="codex_recovery",
-                effective_cwd=step.cwd,
-            )
+        proc = self._run_claude(env_mgr, prompt, cwd, timeout_sec=timeout_sec)
+        runtime_sec = time.time() - started
 
-        if last_proc is None:
-            raise RuntimeError(f"step {step.step_id} produced no execution attempts")
+        attempt_records = [{
+            "mode": "claude:primary",
+            "command": step.command,
+            "executed_command": step.command,
+            "exit_code": proc.returncode,
+            "runtime_sec": runtime_sec,
+            "attempt_index": 1,
+            "stdout": proc.stdout or "",
+            "stderr": proc.stderr or "",
+        }]
 
         return self._finalize_step_result(
             step=step,
             contract=contract,
             step_result_relative=step_result_relative,
-            default_command=last_command,
-            proc=last_proc,
-            runtime_sec=time.time() - started,
-            stdout_text="".join(stdout_parts),
-            stderr_text="".join(stderr_parts),
+            default_command=step.command,
+            proc=proc,
+            runtime_sec=runtime_sec,
+            stdout_text=proc.stdout or "",
+            stderr_text=proc.stderr or "",
             attempt_records=attempt_records,
-            execution_mode="direct_failed",
+            execution_mode="claude_primary",
             effective_cwd=step.cwd,
         )
 
@@ -526,43 +517,20 @@ class CodexExecutorAgent(BaseAgent):
             "attempted_commands": attempt_records,
         }
 
-    @staticmethod
-    def _split_assignments(tokens: list[str]) -> tuple[list[str], list[str]]:
-        assignments: list[str] = []
-        remaining = list(tokens)
-        while remaining and "=" in remaining[0] and not remaining[0].startswith("-"):
-            name, _, value = remaining[0].partition("=")
-            if name.isidentifier() and value:
-                assignments.append(remaining.pop(0))
-                continue
-            break
-        return assignments, remaining
-
-    @classmethod
-    def _prepare_command_for_execution(cls, command: str) -> str:
-        try:
-            tokens = shlex.split(command)
-        except ValueError:
-            return command
-        assignments, remaining = cls._split_assignments(tokens)
-        if not remaining:
-            return command
-        head = remaining[0]
-        if head in {"bash", "sh"} and len(remaining) >= 2 and remaining[1].endswith(".sh"):
-            return shlex.join([*assignments, "bash", "-euo", "pipefail", *remaining[1:]])
-        if (head.startswith("./") or head.startswith("../")) and head.endswith(".sh"):
-            return shlex.join([*assignments, "bash", "-euo", "pipefail", *remaining])
-        if cls._is_shell_compound_command(command):
-            return f"set -euo pipefail; {command}"
-        return command
-
     @classmethod
     def _is_shell_step(cls, command: str) -> bool:
         try:
             tokens = shlex.split(command)
         except ValueError:
             return False
-        _, remaining = cls._split_assignments(tokens)
+        # Skip leading VAR=value assignments
+        remaining = list(tokens)
+        while remaining and "=" in remaining[0] and not remaining[0].startswith("-"):
+            name, _, value = remaining[0].partition("=")
+            if name.isidentifier() and value:
+                remaining = remaining[1:]
+                continue
+            break
         if not remaining:
             return False
         head = remaining[0]
@@ -692,21 +660,6 @@ class CodexExecutorAgent(BaseAgent):
         return not cls._commands_share_target(primary_command, effective_command)
 
     @staticmethod
-    def _build_failure_context(
-        *,
-        attempt_records: list[dict[str, Any]],
-        stdout_text: str,
-        stderr_text: str,
-    ) -> str:
-        summary = CodexExecutorAgent._build_attempt_notes(attempt_records)
-        parts = [summary]
-        if stdout_text:
-            parts.append("Stdout tail:\n" + stdout_text[-1500:])
-        if stderr_text:
-            parts.append("Stderr tail:\n" + stderr_text[-1500:])
-        return "\n\n".join(parts)
-
-    @staticmethod
     def _is_infrastructure_attempt(attempt: dict[str, Any]) -> bool:
         stdout = str(attempt.get("stdout") or "")
         stderr = str(attempt.get("stderr") or "")
@@ -718,8 +671,8 @@ class CodexExecutorAgent(BaseAgent):
             for pattern in (
                 "command not found",
                 "env: ‘node’",
-                "env: 'node'",
-                "codex",
+                "claude code agent error",
+                "claude-agent-sdk not installed",
                 "no such file or directory",
             )
         )
@@ -816,28 +769,115 @@ class CodexExecutorAgent(BaseAgent):
         return json.dumps(compressed + full_recent, indent=2, ensure_ascii=False, default=str)
 
     # ------------------------------------------------------------------
-    # Codex CLI invocation
+    # Claude Code Agent SDK invocation (primary execution engine)
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _run_codex(
+    def _run_claude(
         env_mgr: CondaEnvManager,
         prompt: str,
         cwd: str,
         timeout_sec: int = 600,
-    ) -> Any:
-        """Run ``codex exec --full-auto`` inside the managed environment."""
-        model = (os.getenv("P2C_CODEX_MODEL") or DEFAULT_CODEX_MODEL).strip()
-        codex_bin = (
-            os.getenv("P2C_CODEX_BIN")
-            or CondaEnvManager._resolve_codex_bin()
-            or "codex"
+    ) -> ClaudeResult:
+        """Run a Claude Code agent session via the Agent SDK.
+
+        This is the **primary** execution method for every step.  Claude
+        Code's ``Bash`` tool runs commands in the host shell, inheriting
+        the current PATH.  The system prompt instructs Claude to use
+        ``conda run -n <env>`` so the managed environment's Python and
+        packages are used.
+        """
+        model = (os.getenv("P2C_CLAUDE_MODEL") or DEFAULT_CLAUDE_MODEL).strip()
+        max_turns = max(10, min(50, timeout_sec // 20))
+        env_name = env_mgr.env_name
+
+        # System prompt: tell Claude Code how to activate the conda env.
+        system_prompt = (
+            f"You are executing code in a managed conda environment '{env_name}'.\n"
+            f"For ALL python/pip commands, prefix with: "
+            f"conda run --no-capture-output -n {env_name}\n"
+            f"Example: conda run --no-capture-output -n {env_name} python train.py\n"
+            "Do NOT create new conda/venv environments. One is already active.\n"
+            "Always use `python` (not `python3`) to run scripts."
         )
-        codex_cmd = (
-            f"{shlex.quote(codex_bin)} exec --full-auto"
-            f" -m {shlex.quote(model)} {shlex.quote(prompt)}"
-        )
-        return env_mgr.run_in_env(codex_cmd, cwd=cwd, timeout_sec=timeout_sec)
+
+        # Forward essential host env vars into the Claude Code session.
+        child_env = {
+            k: v for k, v in os.environ.items()
+            if k in _FORWARD_ENV_KEYS and v
+        }
+
+        async def _execute() -> ClaudeResult:
+            stdout_parts: list[str] = []
+            stderr_parts: list[str] = []
+            last_exit_code = 0
+
+            async for msg in query(
+                prompt=prompt,
+                options=ClaudeAgentOptions(
+                    cwd=cwd,
+                    allowed_tools=["Bash", "Read", "Glob", "Grep"],
+                    permission_mode="bypassPermissions",
+                    max_turns=max_turns,
+                    model=model,
+                    system_prompt=system_prompt,
+                    env=child_env,
+                ),
+            ):
+                # --- AssistantMessage: text blocks (may contain METRIC: lines)
+                if isinstance(msg, AssistantMessage):
+                    for block in getattr(msg, "content", []):
+                        if hasattr(block, "text"):
+                            stdout_parts.append(block.text)
+
+                # --- UserMessage: tool-result blocks (Bash stdout/stderr)
+                elif isinstance(msg, UserMessage):
+                    for block in getattr(msg, "content", []):
+                        content = getattr(block, "content", None)
+                        if isinstance(content, str):
+                            stdout_parts.append(content)
+                        elif isinstance(content, list):
+                            for item in content:
+                                if isinstance(item, dict) and item.get("type") == "text":
+                                    stdout_parts.append(item["text"])
+                        # Track error status from tool results
+                        if getattr(block, "is_error", False):
+                            stderr_parts.append(
+                                content if isinstance(content, str) else str(content)
+                            )
+                            last_exit_code = 1
+
+                # --- ResultMessage: final summary
+                elif isinstance(msg, ResultMessage):
+                    if getattr(msg, "result", None):
+                        stdout_parts.append(msg.result)
+                    subtype = getattr(msg, "subtype", "")
+                    if subtype and subtype != "success":
+                        last_exit_code = 1
+
+            return ClaudeResult(
+                stdout="\n".join(stdout_parts),
+                stderr="\n".join(stderr_parts),
+                returncode=last_exit_code,
+            )
+
+        try:
+            return asyncio.run(
+                asyncio.wait_for(_execute(), timeout=float(timeout_sec))
+            )
+        except asyncio.TimeoutError:
+            return ClaudeResult(
+                stdout="",
+                stderr=f"Claude Code agent timed out after {timeout_sec}s",
+                returncode=1,
+            )
+        except Exception as exc:
+            logger.exception("Claude Code agent error")
+            return ClaudeResult(
+                stdout="",
+                stderr=f"Claude Code agent error: {exc}",
+                returncode=1,
+            )
 
     # ------------------------------------------------------------------
     # Topological sort

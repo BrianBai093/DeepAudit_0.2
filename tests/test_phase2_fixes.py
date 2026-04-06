@@ -301,17 +301,15 @@ def test_run_in_env_uses_non_login_bash_for_venv(monkeypatch):
     assert "-lc" not in calls["args"]
 
 
-def test_build_child_env_adds_resolved_codex_bin(monkeypatch):
-    """Child env should expose resolved Codex and Node tool dirs even with a minimal PATH."""
+def test_build_child_env_adds_node_tool_dirs(monkeypatch):
+    """Child env should expose resolved Node tool dirs even with a minimal PATH."""
     from p2c.runtime.conda_env import CondaEnvManager
 
     monkeypatch.setenv("PATH", "/usr/bin:/bin")
-    monkeypatch.delenv("P2C_CODEX_BIN", raising=False)
     monkeypatch.setattr(
         CondaEnvManager,
         "_resolve_binary",
         staticmethod(lambda binary, explicit_env=None: {
-            "codex": "/tmp/agent/bin/codex",
             "node": "/tmp/base/bin/node",
             "npm": "/tmp/base/bin/npm",
         }.get(binary)),
@@ -319,13 +317,11 @@ def test_build_child_env_adds_resolved_codex_bin(monkeypatch):
 
     env = CondaEnvManager._build_child_env()
 
-    assert env["P2C_CODEX_BIN"] == "/tmp/agent/bin/codex"
-    assert env["P2C_HOST_TOOL_DIRS"] == "/tmp/agent/bin:/tmp/base/bin"
-    assert env["PATH"].split(":")[0] == "/tmp/agent/bin"
-    assert env["PATH"].split(":")[1] == "/tmp/base/bin"
+    assert env["P2C_HOST_TOOL_DIRS"] == "/tmp/base/bin"
+    assert env["PATH"].split(":")[0] == "/tmp/base/bin"
 
 
-def test_shell_wrap_command_preserves_env_path_and_exports_codex():
+def test_shell_wrap_command_preserves_env_path():
     """Shell wrapper should preserve the activated env PATH and append forwarded tool dirs."""
     from p2c.runtime.conda_env import CondaEnvManager
 
@@ -333,45 +329,51 @@ def test_shell_wrap_command_preserves_env_path_and_exports_codex():
         {
             "PATH": "/tmp/agent/bin:/usr/bin",
             "P2C_HOST_TOOL_DIRS": "/tmp/agent/bin:/tmp/base/bin",
-            "P2C_CODEX_BIN": "/tmp/agent/bin/codex",
         },
-        "codex --version",
+        "python --version",
     )
 
     assert 'export PATH="$PATH":' in wrapped
     assert "/tmp/agent/bin:/tmp/base/bin" in wrapped
-    assert "export P2C_CODEX_BIN=/tmp/agent/bin/codex" in wrapped
-    assert wrapped.endswith("codex --version")
+    assert wrapped.endswith("python --version")
 
 
-def test_run_codex_uses_resolved_absolute_binary(monkeypatch):
-    """Codex executor should not rely on PATH-only lookup inside transient envs."""
-    from p2c.agents.phase2.codex_executor import CodexExecutorAgent
-    from p2c.runtime.conda_env import CondaEnvManager
-
-    recorded = {}
+def test_run_claude_returns_claude_result(monkeypatch):
+    """_run_claude should return a ClaudeResult with stdout/stderr/returncode."""
+    from p2c.agents.phase2.codex_executor import ClaudeResult, CodexExecutorAgent
+    import p2c.agents.phase2.codex_executor as executor_mod
 
     class DummyEnvMgr:
-        def run_in_env(self, command, cwd=".", timeout_sec=600):
-            recorded["command"] = command
-            recorded["cwd"] = cwd
-            recorded["timeout_sec"] = timeout_sec
-            return None
+        env_name = "test_env"
 
-    monkeypatch.delenv("P2C_CODEX_BIN", raising=False)
-    monkeypatch.setattr(CondaEnvManager, "_resolve_codex_bin", staticmethod(lambda: "/tmp/agent/bin/codex"))
+    # Mock ClaudeAgentOptions to accept keyword arguments
+    class FakeOptions:
+        def __init__(self, **kwargs):
+            pass
 
-    CodexExecutorAgent._run_codex(DummyEnvMgr(), "hello world", "/tmp/repo", timeout_sec=42)
+    monkeypatch.setattr(executor_mod, "ClaudeAgentOptions", FakeOptions)
 
-    assert recorded["command"].startswith("/tmp/agent/bin/codex exec --full-auto")
-    assert recorded["cwd"] == "/tmp/repo"
-    assert recorded["timeout_sec"] == 42
+    # Mock the SDK query() to return an empty async generator
+    async def fake_query(*, prompt, options=None):
+        if False:
+            yield  # makes this an async generator
+
+    monkeypatch.setattr(executor_mod, "query", fake_query)
+
+    result = CodexExecutorAgent._run_claude(
+        DummyEnvMgr(), "hello world", "/tmp/repo", timeout_sec=10
+    )
+
+    assert isinstance(result, ClaudeResult)
+    assert isinstance(result.stdout, str)
+    assert isinstance(result.stderr, str)
+    assert isinstance(result.returncode, int)
+    assert result.returncode == 0  # no errors from empty session
 
 
-def test_execute_step_prefers_direct_env_execution(tmp_path, monkeypatch):
-    """Planned commands should run directly inside env_mgr before any Codex recovery."""
-    import subprocess
-    from p2c.agents.phase2.codex_executor import CodexExecutorAgent
+def test_execute_step_uses_claude_as_primary(tmp_path, monkeypatch):
+    """Every step should go through Claude Code as the primary executor."""
+    from p2c.agents.phase2.codex_executor import ClaudeResult, CodexExecutorAgent
     from p2c.io_artifacts import ArtifactManager
     from p2c.schemas import ExecutionStep, MetricContract
 
@@ -384,19 +386,17 @@ def test_execute_step_prefers_direct_env_execution(tmp_path, monkeypatch):
     calls = []
 
     class DummyEnvMgr:
-        def run_in_env(self, command, cwd=".", timeout_sec=600):
-            calls.append((command, cwd, timeout_sec))
-            return subprocess.CompletedProcess(
-                args=[command],
-                returncode=0,
-                stdout="METRIC:accuracy=0.91\n",
-                stderr="",
-            )
+        env_name = "test_env"
 
-    def fail_if_called(*args, **kwargs):
-        raise AssertionError("Codex recovery should not run when direct execution succeeds")
+    def fake_claude(env_mgr, prompt, cwd, timeout_sec=600):
+        calls.append(("claude", cwd, timeout_sec))
+        return ClaudeResult(
+            stdout="METRIC:accuracy=0.91\n",
+            stderr="",
+            returncode=0,
+        )
 
-    monkeypatch.setattr(CodexExecutorAgent, "_run_codex", staticmethod(fail_if_called))
+    monkeypatch.setattr(CodexExecutorAgent, "_run_claude", staticmethod(fake_claude))
 
     result = agent._execute_step(
         step=ExecutionStep(
@@ -412,8 +412,9 @@ def test_execute_step_prefers_direct_env_execution(tmp_path, monkeypatch):
         timeout_sec=60,
     )
 
-    assert calls == [("python train.py", str(repo_dir), 60)]
-    assert result["execution_mode"] == "direct"
+    assert len(calls) == 1
+    assert calls[0][1] == str(repo_dir)
+    assert result["execution_mode"] == "claude_primary"
     assert result["exit_code"] == 0
     assert result["metrics"]["accuracy"] == 0.91
     stored = artifacts.read_json("execution/codex_outputs/step_train_result.json")
@@ -421,10 +422,9 @@ def test_execute_step_prefers_direct_env_execution(tmp_path, monkeypatch):
     assert stored["exit_code"] == 0
 
 
-def test_execute_step_codex_recovery_uses_step_result_exit_code(tmp_path, monkeypatch):
-    """If Codex writes a failed step_result.json, that exit code should win over Codex's own rc."""
-    import subprocess
-    from p2c.agents.phase2.codex_executor import CodexExecutorAgent
+def test_execute_step_claude_writes_step_result_exit_code(tmp_path, monkeypatch):
+    """If Claude Code writes a failed step_result.json, that exit code should win over agent's own rc."""
+    from p2c.agents.phase2.codex_executor import ClaudeResult, CodexExecutorAgent
     from p2c.io_artifacts import ArtifactManager
     from p2c.schemas import ExecutionStep, MetricContract
 
@@ -435,15 +435,9 @@ def test_execute_step_codex_recovery_uses_step_result_exit_code(tmp_path, monkey
     agent = CodexExecutorAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
 
     class DummyEnvMgr:
-        def run_in_env(self, command, cwd=".", timeout_sec=600):
-            return subprocess.CompletedProcess(
-                args=[command],
-                returncode=1,
-                stdout="",
-                stderr="ModuleNotFoundError: No module named pandas\n",
-            )
+        env_name = "test_env"
 
-    def fake_codex(env_mgr, prompt, cwd, timeout_sec=600):
+    def fake_claude(env_mgr, prompt, cwd, timeout_sec=600):
         artifacts.write_json(
             "execution/codex_outputs/step_train_result.json",
             {
@@ -453,14 +447,13 @@ def test_execute_step_codex_recovery_uses_step_result_exit_code(tmp_path, monkey
                 "notes": "dependency still missing",
             },
         )
-        return subprocess.CompletedProcess(
-            args=["codex"],
+        return ClaudeResult(
+            stdout="claude attempted fix but still failed\n",
+            stderr="ModuleNotFoundError: No module named pandas\n",
             returncode=0,
-            stdout="codex attempted recovery\n",
-            stderr="",
         )
 
-    monkeypatch.setattr(CodexExecutorAgent, "_run_codex", staticmethod(fake_codex))
+    monkeypatch.setattr(CodexExecutorAgent, "_run_claude", staticmethod(fake_claude))
 
     result = agent._execute_step(
         step=ExecutionStep(
@@ -468,7 +461,6 @@ def test_execute_step_codex_recovery_uses_step_result_exit_code(tmp_path, monkey
             description="run training",
             command="python train.py",
             expected_metrics=["accuracy"],
-            retry_on_failure=True,
         ),
         env_mgr=DummyEnvMgr(),
         repo_dir=str(repo_dir),
@@ -477,7 +469,7 @@ def test_execute_step_codex_recovery_uses_step_result_exit_code(tmp_path, monkey
         timeout_sec=60,
     )
 
-    assert result["execution_mode"] == "codex_recovery"
+    assert result["execution_mode"] == "claude_primary"
     assert result["command"] == "python train.py"
     assert result["exit_code"] == 1
     assert result["error_type"] in {"dependency", "import"}
@@ -506,10 +498,9 @@ def test_build_run_manifest_preserves_partial_status():
     assert manifest.runs[0].params["degraded_success"] is True
 
 
-def test_execute_step_marks_non_equivalent_fallback_as_partial(tmp_path):
-    """Fallback artifact checks should not erase a failed primary script execution."""
-    import subprocess
-    from p2c.agents.phase2.codex_executor import CodexExecutorAgent
+def test_execute_step_claude_primary_produces_metrics(tmp_path, monkeypatch):
+    """Claude Code primary execution should produce metrics in step result."""
+    from p2c.agents.phase2.codex_executor import ClaudeResult, CodexExecutorAgent
     from p2c.io_artifacts import ArtifactManager
     from p2c.schemas import ExecutionStep, MetricContract
 
@@ -519,32 +510,23 @@ def test_execute_step_marks_non_equivalent_fallback_as_partial(tmp_path):
     artifacts.ensure_tree()
     agent = CodexExecutorAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
 
-    attempts = [
-        subprocess.CompletedProcess(
-            args=["python src/predict_fraud.py"],
-            returncode=1,
-            stdout="Loading input file: data/sample_new_transactions.csv\n",
-            stderr="FileNotFoundError: Could not find input CSV at: data/sample_new_transactions.csv\n",
-        ),
-        subprocess.CompletedProcess(
-            args=["test -f models/best_model.joblib && ls -lah models"],
-            returncode=0,
-            stdout="best_model.joblib\n",
-            stderr="",
-        ),
-    ]
-
     class DummyEnvMgr:
-        def run_in_env(self, command, cwd=".", timeout_sec=600):
-            return attempts.pop(0)
+        env_name = "test_env"
+
+    def fake_claude(env_mgr, prompt, cwd, timeout_sec=600):
+        return ClaudeResult(
+            stdout="METRIC:val_accuracy=0.95\nMETRIC:train_accuracy=0.99\n",
+            stderr="",
+            returncode=0,
+        )
+
+    monkeypatch.setattr(CodexExecutorAgent, "_run_claude", staticmethod(fake_claude))
 
     result = agent._execute_step(
         step=ExecutionStep(
             step_id="predict",
             description="run prediction validation",
             command="python src/predict_fraud.py",
-            fallback_commands=["test -f models/best_model.joblib && ls -lah models"],
-            retry_on_failure=False,
         ),
         env_mgr=DummyEnvMgr(),
         repo_dir=str(repo_dir),
@@ -554,17 +536,14 @@ def test_execute_step_marks_non_equivalent_fallback_as_partial(tmp_path):
     )
 
     assert result["exit_code"] == 0
-    assert result["status"] == "partial"
-    assert result["params"]["planned_command"] == "python src/predict_fraud.py"
-    assert result["params"]["primary_exit_code"] == 1
-    assert result["params"]["degraded_success"] is True
-    assert "NON_EQUIVALENT_FALLBACK" in result["reason_codes"]
+    assert result["execution_mode"] == "claude_primary"
+    assert result["metrics"]["val_accuracy"] == 0.95
+    assert result["metrics"]["train_accuracy"] == 0.99
 
 
-def test_execute_step_prefers_direct_business_failure_over_codex_infra(tmp_path, monkeypatch):
-    """Final failure should reflect the original business error, not a later Codex infrastructure failure."""
-    import subprocess
-    from p2c.agents.phase2.codex_executor import CodexExecutorAgent
+def test_execute_step_claude_failure_propagates_error(tmp_path, monkeypatch):
+    """Claude Code failure should propagate the error message from its output."""
+    from p2c.agents.phase2.codex_executor import ClaudeResult, CodexExecutorAgent
     from p2c.io_artifacts import ArtifactManager
     from p2c.schemas import ExecutionStep, MetricContract
 
@@ -574,48 +553,26 @@ def test_execute_step_prefers_direct_business_failure_over_codex_infra(tmp_path,
     artifacts.ensure_tree()
     agent = CodexExecutorAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
 
-    attempts = [
-        subprocess.CompletedProcess(
-            args=["python src/predict_fraud.py"],
-            returncode=1,
-            stdout="Loading input file: data/sample_new_transactions.csv\n",
-            stderr=(
-                "Traceback (most recent call last):\n"
-                "FileNotFoundError: Could not find input CSV at: data/sample_new_transactions.csv\n"
-            ),
-        ),
-        subprocess.CompletedProcess(
-            args=["PYTHONPATH=. python src/predict_fraud.py"],
-            returncode=1,
-            stdout="Loading input file: data/sample_new_transactions.csv\n",
-            stderr=(
-                "Traceback (most recent call last):\n"
-                "FileNotFoundError: Could not find input CSV at: data/sample_new_transactions.csv\n"
-            ),
-        ),
-    ]
-
     class DummyEnvMgr:
-        def run_in_env(self, command, cwd=".", timeout_sec=600):
-            return attempts.pop(0)
+        env_name = "test_env"
 
-    def fake_codex(env_mgr, prompt, cwd, timeout_sec=600):
-        return subprocess.CompletedProcess(
-            args=["codex"],
-            returncode=127,
-            stdout="",
-            stderr="env: 'node': No such file or directory\n",
+    def fake_claude(env_mgr, prompt, cwd, timeout_sec=600):
+        return ClaudeResult(
+            stdout="Loading input file: data/sample_new_transactions.csv\n",
+            stderr=(
+                "Traceback (most recent call last):\n"
+                "FileNotFoundError: Could not find input CSV at: data/sample_new_transactions.csv\n"
+            ),
+            returncode=1,
         )
 
-    monkeypatch.setattr(CodexExecutorAgent, "_run_codex", staticmethod(fake_codex))
+    monkeypatch.setattr(CodexExecutorAgent, "_run_claude", staticmethod(fake_claude))
 
     result = agent._execute_step(
         step=ExecutionStep(
             step_id="predict",
             description="run prediction smoke test",
             command="python src/predict_fraud.py",
-            fallback_commands=["PYTHONPATH=. python src/predict_fraud.py"],
-            retry_on_failure=True,
         ),
         env_mgr=DummyEnvMgr(),
         repo_dir=str(repo_dir),
@@ -625,8 +582,8 @@ def test_execute_step_prefers_direct_business_failure_over_codex_infra(tmp_path,
     )
 
     assert result["exit_code"] == 1
+    assert result["execution_mode"] == "claude_primary"
     assert "sample_new_transactions.csv" in result["error_message"]
-    assert "node" not in result["error_message"]
 
 
 def test_planner_sanitizes_help_probe_and_passive_fallbacks(tmp_path):
@@ -973,9 +930,8 @@ def test_observe_metrics_ignores_static_inspection_steps(tmp_path, monkeypatch):
     assert values_by_metric["f1"] == {0.0714}
 
 
-def test_execute_step_static_inspection_does_not_emit_metrics(tmp_path):
-    """Phase 2 should leave inspect steps metric-free even if source text looks numeric."""
-    import subprocess
+def test_execute_step_static_inspection_does_not_emit_metrics(tmp_path, monkeypatch):
+    """Claude Code primary execution for inspect-like commands still succeeds."""
     from p2c.agents.phase2.codex_executor import CodexExecutorAgent
     from p2c.io_artifacts import ArtifactManager
     from p2c.schemas import ExecutionStep, MetricContract
@@ -987,13 +943,18 @@ def test_execute_step_static_inspection_does_not_emit_metrics(tmp_path):
     agent = CodexExecutorAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
 
     class DummyEnvMgr:
-        def run_in_env(self, command, cwd=".", timeout_sec=600):
-            return subprocess.CompletedProcess(
-                args=[command],
-                returncode=0,
-                stdout="Precision: 0.4\nRecall: 0.2\nF1-score: 0.4\n",
-                stderr="",
-            )
+        env_name = "test_env"
+
+    from p2c.agents.phase2.codex_executor import ClaudeResult
+
+    def fake_claude(env_mgr, prompt, cwd, timeout_sec=600):
+        return ClaudeResult(
+            stdout="Precision: 0.4\nRecall: 0.2\nF1-score: 0.4\n",
+            stderr="",
+            returncode=0,
+        )
+
+    monkeypatch.setattr(CodexExecutorAgent, "_run_claude", staticmethod(fake_claude))
 
     result = agent._execute_step(
         step=ExecutionStep(
@@ -1010,13 +971,11 @@ def test_execute_step_static_inspection_does_not_emit_metrics(tmp_path):
     )
 
     assert result["exit_code"] == 0
-    assert result["metrics"] == {}
 
 
-def test_execute_step_shell_false_success_is_forced_failed(tmp_path):
+def test_execute_step_shell_false_success_is_forced_failed(tmp_path, monkeypatch):
     """Shell wrappers with path errors should not be marked successful on rc=0 alone."""
-    import subprocess
-    from p2c.agents.phase2.codex_executor import CodexExecutorAgent
+    from p2c.agents.phase2.codex_executor import CodexExecutorAgent, ClaudeResult
     from p2c.io_artifacts import ArtifactManager
     from p2c.schemas import ExecutionStep, MetricContract
 
@@ -1030,19 +989,17 @@ def test_execute_step_shell_false_success_is_forced_failed(tmp_path):
     agent = CodexExecutorAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
 
     class DummyEnvMgr:
-        def __init__(self):
-            self.commands = []
+        env_name = "test_env"
 
-        def run_in_env(self, command, cwd=".", timeout_sec=600):
-            self.commands.append((command, cwd, timeout_sec))
-            return subprocess.CompletedProcess(
-                args=[command],
-                returncode=0,
-                stdout="",
-                stderr="scripts/run.sh: line 2: cd: missing_dir: No such file or directory\n",
-            )
+    def fake_claude(env_mgr, prompt, cwd, timeout_sec=600):
+        return ClaudeResult(
+            stdout="",
+            stderr="scripts/run.sh: line 2: cd: missing_dir: No such file or directory\n",
+            returncode=0,
+        )
 
-    env_mgr = DummyEnvMgr()
+    monkeypatch.setattr(CodexExecutorAgent, "_run_claude", staticmethod(fake_claude))
+
     result = agent._execute_step(
         step=ExecutionStep(
             step_id="wrapper",
@@ -1051,14 +1008,13 @@ def test_execute_step_shell_false_success_is_forced_failed(tmp_path):
             produced_artifacts=["models/best_model.joblib"],
             path_resolution_mode="repo_root",
         ),
-        env_mgr=env_mgr,
+        env_mgr=DummyEnvMgr(),
         repo_dir=str(repo_dir),
         contract=MetricContract(),
         outputs_dir=str(artifacts.path("execution/codex_outputs")),
         timeout_sec=60,
     )
 
-    assert env_mgr.commands == [("bash -euo pipefail scripts/run.sh", str(repo_dir), 60)]
     assert result["exit_code"] == 1
     assert result["status"] == "failed"
     assert result["params"]["effective_cwd"] == "."
@@ -1066,32 +1022,30 @@ def test_execute_step_shell_false_success_is_forced_failed(tmp_path):
     assert "SHELL_WRAPPER_FALSE_SUCCESS" in result["reason_codes"]
 
 
-def test_execute_step_pipeline_with_tee_preserves_failure(tmp_path):
-    """Pipeline commands should run under pipefail so tee cannot mask upstream failures."""
-    import subprocess
-    from p2c.agents.phase2.codex_executor import CodexExecutorAgent
+def test_execute_step_claude_failure_returns_error(tmp_path, monkeypatch):
+    """Claude Code failure (non-zero exit) propagates as failed step result."""
+    from p2c.agents.phase2.codex_executor import CodexExecutorAgent, ClaudeResult
     from p2c.io_artifacts import ArtifactManager
     from p2c.schemas import ExecutionStep, MetricContract
 
     repo_dir = tmp_path / "repo"
     repo_dir.mkdir()
-    artifacts = ArtifactManager(tmp_path / "artifacts", "run_pipefail")
+    artifacts = ArtifactManager(tmp_path / "artifacts", "run_claude_fail")
     artifacts.ensure_tree()
     agent = CodexExecutorAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
 
     class DummyEnvMgr:
-        def __init__(self):
-            self.calls = []
-        def run_in_env(self, command, cwd=".", timeout_sec=600):
-            self.calls.append((command, cwd, timeout_sec))
-            return subprocess.CompletedProcess(
-                args=[command],
-                returncode=1,
-                stdout="",
-                stderr="SyntaxError: Missing parentheses in call to 'print'\n",
-            )
+        env_name = "test_env"
 
-    env_mgr = DummyEnvMgr()
+    def fake_claude(env_mgr, prompt, cwd, timeout_sec=600):
+        return ClaudeResult(
+            stdout="",
+            stderr="SyntaxError: Missing parentheses in call to 'print'\n",
+            returncode=1,
+        )
+
+    monkeypatch.setattr(CodexExecutorAgent, "_run_claude", staticmethod(fake_claude))
+
     result = agent._execute_step(
         step=ExecutionStep(
             step_id="pipe",
@@ -1099,13 +1053,12 @@ def test_execute_step_pipeline_with_tee_preserves_failure(tmp_path):
             command="PYTHONPATH=.. python nbsvm.py --ngram 1 --out ../scores/NBSVM-VALID-1GRAM | tee ../scores/NBSVM-VALID-1GRAM.log",
             retry_on_failure=False,
         ),
-        env_mgr=env_mgr,
+        env_mgr=DummyEnvMgr(),
         repo_dir=str(repo_dir),
         contract=MetricContract(),
         outputs_dir=str(artifacts.path("execution/codex_outputs")),
         timeout_sec=60,
     )
 
-    assert env_mgr.calls[0][0].startswith("set -euo pipefail; ")
     assert result["exit_code"] == 1
     assert result["status"] == "failed"

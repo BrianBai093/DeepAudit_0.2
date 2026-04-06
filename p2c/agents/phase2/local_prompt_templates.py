@@ -1,4 +1,4 @@
-"""Prompt templates for local Codex execution in Phase 2."""
+"""Prompt templates for Phase 2 execution (Claude Code Agent SDK recovery)."""
 
 from __future__ import annotations
 
@@ -140,7 +140,7 @@ Guidelines:
 
 
 # ---------------------------------------------------------------------------
-# Codex executor prompts (Mode A — plan-directed, per-step)
+# Claude Code recovery prompts (Mode A — plan-directed, per-step)
 # ---------------------------------------------------------------------------
 
 def build_step_execution_prompt(
@@ -187,7 +187,7 @@ Do recovery work only: diagnose the failure, apply the smallest fix, and retry.
     return dedent(f"""\
 You are executing code in a research repository to reproduce results from a paper.
 Working directory: {repo_dir}
-The conda/venv environment is already activated.
+A conda environment is available — use `conda run` as instructed in the system prompt.
 {context_section}
 {failure_section}
 ## Current Task
@@ -230,7 +230,7 @@ result — typically the validation or test metric, NOT the training metric.
 
 
 # ---------------------------------------------------------------------------
-# Codex executor prompts (Mode B — autonomous exploration fallback)
+# Claude Code autonomous exploration prompts (Mode B — fallback)
 # ---------------------------------------------------------------------------
 
 def build_autonomous_exploration_prompt(
@@ -246,7 +246,7 @@ Previous execution plans have failed. You now have full autonomy to explore and 
 
 ## Repository Directory
 {repo_dir}
-The conda/venv environment is already activated.
+A conda environment is available — use `conda run` as instructed in the system prompt.
 
 ## Previous Failure History
 ```json

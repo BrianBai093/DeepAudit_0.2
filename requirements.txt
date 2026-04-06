@@ -1,0 +1,8 @@
+# DeepAudit v0.5 dependencies
+# ---------------------------
+# Core
+pydantic>=2.0
+openai>=1.0
+
+# Phase 2: Claude Code Agent SDK (recovery + autonomous exploration)
+claude-agent-sdk>=0.1.0

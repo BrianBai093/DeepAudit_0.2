@@ -133,10 +133,6 @@ class CondaEnvManager:
                 return str(path)
         return None
 
-    @staticmethod
-    def _resolve_codex_bin() -> str | None:
-        return CondaEnvManager._resolve_binary("codex", explicit_env="P2C_CODEX_BIN")
-
     # ------------------------------------------------------------------
     # Create
     # ------------------------------------------------------------------
@@ -230,15 +226,12 @@ class CondaEnvManager:
 
         ``mamba run`` may overwrite forwarded tool directories while activating
         the target env. Re-appending only the host tool dirs keeps Conda's own
-        interpreter on PATH while still exposing Codex/Node binaries.
+        interpreter on PATH while still exposing Node binaries.
         """
         exports: list[str] = []
         tool_dirs = env.get("P2C_HOST_TOOL_DIRS")
         if tool_dirs:
             exports.append(f'export PATH="$PATH":{shlex.quote(tool_dirs)}')
-        value = env.get("P2C_CODEX_BIN")
-        if value:
-            exports.append(f"export P2C_CODEX_BIN={shlex.quote(value)}")
         if not exports:
             return command
         return "; ".join([*exports, command])
@@ -248,7 +241,7 @@ class CondaEnvManager:
         """Build environment dict for child processes.
 
         Ensures the child inherits:
-        - Full host PATH (so ``codex``, ``node``, ``npm`` are findable)
+        - Full host PATH (so ``node``, ``npm`` are findable)
         - API keys (OPENAI_API_KEY, ANTHROPIC_API_KEY, etc.)
         - Proxy / network settings (HTTP_PROXY, HTTPS_PROXY, etc.)
         - HOME, USER, LANG for proper locale
@@ -261,17 +254,12 @@ class CondaEnvManager:
             "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY",
             "http_proxy", "https_proxy", "no_proxy",
             "NODE_PATH", "NVM_DIR", "NPM_CONFIG_PREFIX",
-            "CODEX_HOME", "P2C_CODEX_BIN",
         ]
         for key in _FORWARD_KEYS:
             val = os.environ.get(key)
             if val:
                 env[key] = val
         injected_dirs: list[str] = []
-        codex_bin = CondaEnvManager._resolve_codex_bin()
-        if codex_bin:
-            env["P2C_CODEX_BIN"] = codex_bin
-            injected_dirs.append(str(Path(codex_bin).parent))
         for binary in ("node", "npm"):
             resolved = CondaEnvManager._resolve_binary(binary)
             if resolved:
