@@ -24,3 +24,6 @@ venv/
 # Local scratch files
 *.tmp
 *.swp
+
+/output
+/Target
