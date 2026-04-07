@@ -452,7 +452,7 @@ class ExecutionStep(BaseModel):
     description: str
     command: str
     cwd: str = "."
-    timeout_sec: int = 600
+    timeout_sec: int = 7200  # default 2h; long ML training steps may override higher
     depends_on: list[str] = Field(default_factory=list)
     expected_metrics: list[str] = Field(default_factory=list)
     is_setup: bool = False
@@ -496,7 +496,7 @@ class ExecutionPlan(BaseModel):
     compatibility_issues: list[CompatibilityIssue] = Field(default_factory=list)
     env_name: str
     codex_autonomous_fallback: bool = True
-    total_budget_sec: int = 1800
+    total_budget_sec: int = 10800  # default 3h; override via --budget_minutes
     reason_codes: list[str] = Field(default_factory=list)
     notes: str | None = None
 
@@ -559,7 +559,7 @@ class Phase2State(BaseModel):
     ] = "planning"
     attempt: int = 0
     max_attempts: int = 3
-    total_budget_sec: int = 1800
+    total_budget_sec: int = 10800  # default 3h
     elapsed_sec: float = 0.0
     plan: ExecutionPlan | None = None
     env_result: EnvSetupResult | None = None

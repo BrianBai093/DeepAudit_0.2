@@ -97,7 +97,7 @@ Return a JSON object with this exact schema:
       "description": "<what this step does>",
       "command": "<shell command to run>",
       "cwd": "<relative to repo root, default '.'>",
-      "timeout_sec": <int, default 600>,
+      "timeout_sec": <int seconds, see guideline 7>,
       "depends_on": ["<step_ids>"],
       "expected_metrics": ["<metric names this step should produce>"],
       "is_setup": <bool, true for data download/preprocessing>,
@@ -130,7 +130,12 @@ Guidelines:
 4. Include ALL transitive dependencies; prefer pip_dependencies for PyPI packages.
 5. For PyTorch/CUDA repos, use the pytorch conda channel with appropriate CUDA version.
 6. Each execution step's command must be a single shell command runnable in bash.
-7. Set realistic timeout_sec (data download: 300-900s, training: 600-3600s, eval: 120-600s).
+7. Set realistic timeout_sec per step based on expected runtime:
+   - data download/preprocessing: 600-1800s
+   - short training (small models, few epochs): 1800-3600s
+   - full training (CNN/Transformer, many epochs): 7200-21600s (2-6 hours)
+   - evaluation/inference: 300-1200s
+   Prefer generous values — underestimating causes mid-training kills.
 8. Map every code-verifiable claim from claims_ir to an expected_result entry.
 9. IMPORTANT: In commands, always use `python` (not `python3`) — `python3` may resolve to the system interpreter rather than the conda/venv environment's Python.
 10. When tensorflow/torch is a pip dependency, put numpy in pip_dependencies too (not conda) to avoid C ABI mismatches.

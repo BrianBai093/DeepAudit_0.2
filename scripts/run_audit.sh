@@ -19,7 +19,7 @@ PAPER_MD="${PROJECT_ROOT}/Target/paper/full.md"
 PAPER_MD_OUT="${PROJECT_ROOT}/output/paper.md"
 REPO_DIR="${PROJECT_ROOT}/Target/code"
 ARTIFACTS_DIR="${PROJECT_ROOT}/artifacts"
-BUDGET_MINUTES=60
+BUDGET_MINUTES="${BUDGET_MINUTES:-180}"  # default 3h, override with env var
 # -------------------------------------------------
 
 if [[ $# -lt 1 ]]; then
