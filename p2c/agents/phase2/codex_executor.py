@@ -94,10 +94,15 @@ class ClaudeResult:
 
     Mirrors ``subprocess.CompletedProcess[str]`` so downstream consumers
     (metric extraction, failure classification) work unchanged.
+
+    ``narrative`` carries Claude's own assistant text (reasoning, status
+    commentary) on a separate channel so it does not contaminate stdout
+    used for metric extraction.
     """
     stdout: str
     stderr: str
     returncode: int
+    narrative: str = ""
 
 
 class CodexExecutorAgent(BaseAgent):
@@ -284,6 +289,12 @@ class CodexExecutorAgent(BaseAgent):
         stderr = proc.stderr or ""
         self.artifacts.write_text("execution/codex_outputs/autonomous_stdout.log", stdout)
         self.artifacts.write_text("execution/codex_outputs/autonomous_stderr.log", stderr)
+        autonomous_narrative = getattr(proc, "narrative", "") or ""
+        if autonomous_narrative:
+            self.artifacts.write_text(
+                "execution/codex_outputs/autonomous_claude_narrative.log",
+                autonomous_narrative,
+            )
 
         # Try file-based extraction first
         metrics = extract_metrics_from_file(f"{outputs_dir}/autonomous_results.json")
@@ -476,6 +487,12 @@ class CodexExecutorAgent(BaseAgent):
         )
         self.artifacts.write_text(f"execution/codex_outputs/step_{step.step_id}_stdout.log", stdout_text)
         self.artifacts.write_text(f"execution/codex_outputs/step_{step.step_id}_stderr.log", stderr_text)
+        narrative_text = getattr(proc, "narrative", "") or ""
+        if narrative_text:
+            self.artifacts.write_text(
+                f"execution/codex_outputs/step_{step.step_id}_claude_narrative.log",
+                narrative_text,
+            )
 
         classify_stdout = selected_stdout or stdout_text
         classify_stderr = selected_stderr or stderr_text
@@ -798,7 +815,21 @@ class CodexExecutorAgent(BaseAgent):
             f"conda run --no-capture-output -n {env_name}\n"
             f"Example: conda run --no-capture-output -n {env_name} python train.py\n"
             "Do NOT create new conda/venv environments. One is already active.\n"
-            "Always use `python` (not `python3`) to run scripts."
+            "Always use `python` (not `python3`) to run scripts.\n"
+            "\n"
+            "EXECUTION DISCIPLINE (must follow):\n"
+            "1. Run every command in the FOREGROUND. Do NOT use background mode "
+            "(no `&`, no `nohup`, no `run_in_background=true`). Wait for each "
+            "command to finish before issuing the next one.\n"
+            "2. Run each script EXACTLY ONCE. Do not relaunch a long-running "
+            "training script just because you have not seen output yet — be "
+            "patient and wait for it to complete.\n"
+            "3. Do not modify, patch, rewrite, or wrap repository source files. "
+            "Use the file as-is. If a script needs an argument, pass it on the "
+            "command line; do not edit the script.\n"
+            "4. Keep your assistant-text commentary minimal. Do not narrate "
+            "every step. Status checklists, ✅ summaries, and progress updates "
+            "are unnecessary."
         )
 
         # Forward essential host env vars into the Claude Code session.
@@ -810,6 +841,7 @@ class CodexExecutorAgent(BaseAgent):
         async def _execute() -> ClaudeResult:
             stdout_parts: list[str] = []
             stderr_parts: list[str] = []
+            narrative_parts: list[str] = []
             last_exit_code = 0
 
             async for msg in query(
@@ -824,13 +856,15 @@ class CodexExecutorAgent(BaseAgent):
                     env=child_env,
                 ),
             ):
-                # --- AssistantMessage: text blocks (may contain METRIC: lines)
+                # --- AssistantMessage: Claude's own text (reasoning, status).
+                # Routed to narrative channel ONLY so it never contaminates
+                # the stdout used for metric extraction.
                 if isinstance(msg, AssistantMessage):
                     for block in getattr(msg, "content", []):
                         if hasattr(block, "text"):
-                            stdout_parts.append(block.text)
+                            narrative_parts.append(block.text)
 
-                # --- UserMessage: tool-result blocks (Bash stdout/stderr)
+                # --- UserMessage: tool-result blocks (real Bash stdout/stderr)
                 elif isinstance(msg, UserMessage):
                     for block in getattr(msg, "content", []):
                         content = getattr(block, "content", None)
@@ -847,10 +881,10 @@ class CodexExecutorAgent(BaseAgent):
                             )
                             last_exit_code = 1
 
-                # --- ResultMessage: final summary
+                # --- ResultMessage: final summary — narrative, not stdout.
                 elif isinstance(msg, ResultMessage):
                     if getattr(msg, "result", None):
-                        stdout_parts.append(msg.result)
+                        narrative_parts.append(msg.result)
                     subtype = getattr(msg, "subtype", "")
                     if subtype and subtype != "success":
                         last_exit_code = 1
@@ -859,6 +893,7 @@ class CodexExecutorAgent(BaseAgent):
                 stdout="\n".join(stdout_parts),
                 stderr="\n".join(stderr_parts),
                 returncode=last_exit_code,
+                narrative="\n".join(narrative_parts),
             )
 
         try:
