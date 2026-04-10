@@ -6,3 +6,6 @@ openai>=1.0
 
 # Phase 2: Claude Code Agent SDK (recovery + autonomous exploration)
 claude-agent-sdk>=0.1.0
+
+# RAG: code embedding + vector search
+numpy>=1.24

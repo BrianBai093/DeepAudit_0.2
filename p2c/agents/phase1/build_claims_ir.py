@@ -184,9 +184,24 @@ class BuildClaimsIRAgent(BaseAgent):
         fingerprint: dict,
         repo_analysis: dict | None,
         base_claims: list[ClaimItem],
+        code_index: object | None = None,
     ) -> ClaimsIR | None:
         """Use LLM to identify experiments, group claims, and assess repo coverage."""
         user_prompt = _build_experiment_user_prompt(fingerprint, repo_analysis)
+
+        # Append RAG-retrieved code context if available
+        if code_index is not None:
+            try:
+                from p2c.rag.query import retrieve_for_claims
+                claim_dicts = [
+                    {"predicate": c.fact, "metric": getattr(c, "metric", None)}
+                    for c in base_claims
+                ]
+                rag_context = retrieve_for_claims(code_index, claim_dicts, top_k=8, max_chars=8000)
+                if rag_context:
+                    user_prompt += "\n\n" + rag_context
+            except Exception:  # noqa: BLE001
+                pass  # graceful degradation
 
         schema = {
             "type": "object",
@@ -486,7 +501,8 @@ class BuildClaimsIRAgent(BaseAgent):
             pass
 
         # Primary path: LLM-based experiment identification
-        claims_ir = self._build_claims_ir_via_llm(fingerprint, repo_analysis, claims_from_fp)
+        code_index = ctx.get("_code_index")
+        claims_ir = self._build_claims_ir_via_llm(fingerprint, repo_analysis, claims_from_fp, code_index=code_index)
 
         if claims_ir is None:
             # Fallback: deterministic extraction

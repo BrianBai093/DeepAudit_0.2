@@ -90,6 +90,25 @@ class PlannerAgent(BaseAgent):
                 indent=2, ensure_ascii=False,
             )
 
+        # RAG: retrieve relevant code context for claims
+        rag_context = ""
+        code_index = ctx.get("_code_index")
+        if code_index is None:
+            try:
+                from p2c.rag.index import CodeIndex
+                index_data = self.artifacts.read_json("task/code_index.json")
+                if index_data and "chunks" in index_data:
+                    code_index = CodeIndex.deserialize(index_data)
+            except Exception:  # noqa: BLE001
+                pass
+        if code_index is not None:
+            try:
+                from p2c.rag.query import retrieve_for_claims
+                claims_list = claims_ir.get("claims", []) if isinstance(claims_ir, dict) else []
+                rag_context = retrieve_for_claims(code_index, claims_list, top_k=15, max_chars=12000)
+            except Exception:  # noqa: BLE001
+                pass
+
         user_prompt = build_planner_user_prompt(
             claims_ir_json=json.dumps(claims_ir, indent=2, ensure_ascii=False),
             task_spec_json=json.dumps(task_spec, indent=2, ensure_ascii=False),
@@ -101,6 +120,7 @@ class PlannerAgent(BaseAgent):
             failure_context=failure_ctx,
             env_name=env_name,
             budget_sec=budget_sec,
+            rag_context=rag_context,
         )
 
         data, err = self.safe_chat_json(

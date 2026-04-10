@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+from pathlib import Path
 from typing import Any
 
 from p2c.agents.phase1.build_claims_ir import BuildClaimsIRAgent
@@ -25,6 +27,18 @@ def run_phase_1(ctx: dict[str, Any], agents: dict[str, Any]) -> None:
     agents["extract_fingerprint_atomic"].run(ctx)
     agents["extract_fingerprint_filter"].run(ctx)
     agents["repo_analysis"].run(ctx)
+
+    # Build RAG code index (graceful degradation on failure)
+    try:
+        from p2c.rag.builder import build_code_index
+        ctx["_code_index"] = build_code_index(
+            Path(ctx["repo_dir"]),
+            agents["repo_analysis"].artifacts,
+        )
+    except Exception:  # noqa: BLE001
+        logging.getLogger(__name__).debug("RAG index build skipped or failed")
+        ctx["_code_index"] = None
+
     agents["build_claims_ir"].run(ctx)
     agents["compile_task_spec"].run(ctx)
 

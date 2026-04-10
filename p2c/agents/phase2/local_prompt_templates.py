@@ -31,6 +31,7 @@ def build_planner_user_prompt(
     failure_context: str | None = None,
     env_name: str,
     budget_sec: int,
+    rag_context: str = "",
 ) -> str:
     dep_section = "\n".join(
         f"### {name}\n```\n{content}\n```" for name, content in dependency_files.items()
@@ -43,6 +44,7 @@ def build_planner_user_prompt(
 {failure_context}
 ```
 """
+    rag_section = f"\n{rag_context}\n" if rag_context else ""
 
     return dedent(f"""\
 ## Paper Claims to Reproduce
@@ -77,6 +79,7 @@ def build_planner_user_prompt(
 ```
 
 {dep_section}
+{rag_section}
 {failure_section}
 
 ## Output Requirements
