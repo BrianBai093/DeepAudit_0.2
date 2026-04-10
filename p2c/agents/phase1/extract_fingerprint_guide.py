@@ -7,68 +7,6 @@ from pathlib import Path
 from p2c.agents.base import BaseAgent
 from p2c.agents.phase1.fingerprint_prompt_templates import GUIDE_SYSTEM_PROMPT, GUIDE_USER_PROMPT_TEMPLATE
 
-METRIC_WORDS = [
-    "accuracy",
-    "f1",
-    "auc",
-    "bleu",
-    "loss",
-    "precision",
-    "recall",
-    "top-1",
-    "top-5",
-]
-
-HYPERPARAM_WORDS = [
-    "learning rate",
-    "lr",
-    "batch",
-    "epoch",
-    "optimizer",
-    "dropout",
-    "weight decay",
-    "seed",
-]
-
-ARCH_WORDS = [
-    "layer",
-    "transformer",
-    "resnet",
-    "lstm",
-    "cnn",
-    "svm",
-    "backbone",
-    "head",
-    "embedding",
-]
-
-ALGO_WORDS = [
-    "loss",
-    "objective",
-    "cross-entropy",
-    "algorithm",
-    "federated",
-    "aggregation",
-    "gradient",
-]
-
-DATASET_HINTS = [
-    "dataset",
-    "split",
-    "train",
-    "test",
-    "validation",
-    "preprocess",
-    "normalization",
-    "augmentation",
-    "tokenization",
-    "cifar",
-    "imagenet",
-    "mnist",
-    "uci",
-]
-
-NUMERIC_RE = re.compile(r"\b\d+(?:\.\d+)?\b")
 TABLE_BLOCK_RE = re.compile(r"<table\b.*?</table>", flags=re.I | re.S)
 TABLE_CAPTION_RE = re.compile(r"table\s+[ivxlcdm\d]+[^\n]*", flags=re.I)
 
@@ -148,39 +86,6 @@ class ExtractFingerprintGuideAgent(BaseAgent):
 
         return units
 
-    @staticmethod
-    def _is_executable_unit(unit: dict) -> bool:
-        unit_type = str(unit.get("type") or "")
-        text = str(unit.get("text") or "")
-        lower = text.lower()
-
-        if unit_type == "table_block":
-            return True
-
-        has_number = bool(NUMERIC_RE.search(lower))
-        has_metric = any(k in lower for k in METRIC_WORDS)
-        has_hparam = any(k in lower for k in HYPERPARAM_WORDS)
-        has_arch = any(k in lower for k in ARCH_WORDS)
-        has_algo = any(k in lower for k in ALGO_WORDS)
-        has_dataset = any(k in lower for k in DATASET_HINTS)
-
-        if has_metric and has_number:
-            return True
-        if has_hparam:
-            return True
-        if has_arch and (has_number or "model" in lower):
-            return True
-        if has_algo and (has_number or "loss" in lower or "optimizer" in lower):
-            return True
-        if has_dataset and ("split" in lower or "train" in lower or "test" in lower or "validation" in lower):
-            return True
-
-        # Keep explicit dataset names for reproducibility config extraction.
-        if has_dataset and ("dataset" in lower or "benchmark" in lower):
-            return True
-
-        return False
-
     def execute(self, ctx: dict) -> dict:
         paper_md_out = Path(ctx["paper_md_out"])
         text = paper_md_out.read_text(encoding="utf-8", errors="ignore")
@@ -204,40 +109,25 @@ class ExtractFingerprintGuideAgent(BaseAgent):
                     if 0 <= local_idx < len(chunk):
                         selected_unit_ids.add(str(chunk[local_idx]["unit_id"]))
             else:
-                for u in chunk:
-                    if self._is_executable_unit(u):
-                        selected_unit_ids.add(str(u["unit_id"]))
-                reason_codes.append("GUIDE_HEURISTIC_FALLBACK")
+                reason_codes.append("GUIDE_SELECTION_EMPTY")
 
             if llm_err:
                 reason_codes.append("LLM_UNAVAILABLE")
 
-        # Force table recall and then pre-filter to remove background noise.
+        # Always retain table units because they can be parsed deterministically downstream.
         for u in units:
             if u.get("type") == "table_block":
                 selected_unit_ids.add(str(u["unit_id"]))
         if any(u.get("type") == "table_block" for u in units):
             reason_codes.append("TABLE_FORCE_RECALL")
 
-        prefiltered: list[str] = []
-        dropped = 0
         unit_map = {str(u["unit_id"]): u for u in units}
-        for uid in sorted(selected_unit_ids):
-            unit = unit_map.get(uid)
-            if not unit:
-                continue
-            if self._is_executable_unit(unit):
-                prefiltered.append(uid)
-            else:
-                dropped += 1
-
-        if dropped:
-            reason_codes.append("GUIDE_PREFILTER_DROPPED")
-        if not prefiltered:
+        selected = [uid for uid in sorted(selected_unit_ids) if uid in unit_map]
+        if not selected:
             reason_codes.append("NO_GUIDE_UNITS_FOUND")
 
         selected_sentence_indices: set[int] = set()
-        for uid in prefiltered:
+        for uid in selected:
             for idx in unit_map[uid].get("origin_indices", []):
                 if isinstance(idx, int):
                     selected_sentence_indices.add(idx)
@@ -247,7 +137,7 @@ class ExtractFingerprintGuideAgent(BaseAgent):
             "sentences": sentences,
             "unit_count": len(units),
             "units": units,
-            "selected_unit_ids": prefiltered,
+            "selected_unit_ids": selected,
             "selected_sentence_indices": sorted(selected_sentence_indices),
             "reason_codes": sorted(set(reason_codes)),
         }

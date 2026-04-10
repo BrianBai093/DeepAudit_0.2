@@ -8,7 +8,6 @@ from pathlib import Path
 from p2c.graph import build_agents, run_phase_1, run_phase_2, run_phase_3
 from p2c.io_artifacts import ArtifactManager
 from p2c.llm.client import LLMClient
-from p2c.runtime.factory import close_runtime
 from p2c.schemas import VerdictDoc
 from p2c.utils.console import format_log
 
@@ -82,7 +81,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--repo_dir", required=True)
     parser.add_argument("--run_id", required=True)
     parser.add_argument("--artifacts_dir", default="./artifacts")
-    parser.add_argument("--budget_minutes", type=int, default=60)
+    parser.add_argument("--budget_minutes", type=int, default=30)
     parser.add_argument("--max_self_heal_iters", type=int, default=6)
     return parser.parse_args()
 
@@ -101,7 +100,6 @@ def main() -> None:
         "artifacts_dir": str(Path(args.artifacts_dir)),
         "budget_minutes": args.budget_minutes,
         "max_self_heal_iters": args.max_self_heal_iters,
-        "phase2_style": os.getenv("P2C_PHASE2_STYLE", "legacy"),
     }
 
     log_global(artifacts, "START", "0/3", f"phase={args.phase} run_id={args.run_id}")
@@ -117,10 +115,8 @@ def main() -> None:
             write_inconclusive_verdict(artifacts, "PHASE_1_ONLY")
 
         elif args.phase == 2:
-            try:
-                run_phase_2(ctx, agents)
-            finally:
-                close_runtime(ctx, artifacts)
+            log_global(artifacts, "PROGRESS", "2/3", "running phase 2 local execution")
+            run_phase_2(ctx, agents)
             write_inconclusive_verdict(artifacts, "PHASE_2_ONLY")
 
         elif args.phase == 3:
@@ -132,7 +128,9 @@ def main() -> None:
         write_inconclusive_verdict(artifacts, f"PIPELINE_ERROR:{e}")
         raise
 
-    artifacts.write_text("execution/context.json", json.dumps(ctx, ensure_ascii=False, indent=2))
+    # Strip internal Phase 2 objects before serializing context
+    serializable_ctx = {k: v for k, v in ctx.items() if not k.startswith("_p2_")}
+    artifacts.write_text("execution/context.json", json.dumps(serializable_ctx, ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

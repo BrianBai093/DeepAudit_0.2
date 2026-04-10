@@ -1,6 +1,0 @@
-#!/usr/bin/env sh
-set -eu
-if python3 -m pip --version >/dev/null 2>&1; then
-  exec python3 -m pip "$@"
-fi
-exec pip3 "$@"

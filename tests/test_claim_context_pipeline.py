@@ -1,0 +1,537 @@
+"""Tests for the claim context preservation pipeline (Phase 1 → Phase 2 → Phase 3).
+
+Validates that:
+1. Phase 1 carries table_anchor from fingerprint into claims_ir conditions
+2. Phase 2 marks ambiguous claims as 'partial' instead of blindly 'yes'
+3. Phase 3 align_evidence disambiguates same-named metrics using target proximity
+4. Phase 3 verify_claims returns INCONCLUSIVE for unaligned ambiguous claims
+"""
+
+from __future__ import annotations
+
+
+def test_run_phase_1_executes_repo_analysis_before_build_claims_ir():
+    """Phase 1 should build repo_analysis before claims_ir so repo coverage postprocessing can run."""
+    from p2c.graph import run_phase_1
+
+    order = []
+
+    class DummyAgent:
+        def __init__(self, name: str):
+            self.name = name
+
+        def run(self, ctx):
+            order.append(self.name)
+
+    agents = {
+        "ingest_paper": DummyAgent("ingest_paper"),
+        "extract_fingerprint_guide": DummyAgent("extract_fingerprint_guide"),
+        "extract_fingerprint_atomic": DummyAgent("extract_fingerprint_atomic"),
+        "extract_fingerprint_filter": DummyAgent("extract_fingerprint_filter"),
+        "repo_analysis": DummyAgent("repo_analysis"),
+        "build_claims_ir": DummyAgent("build_claims_ir"),
+        "compile_task_spec": DummyAgent("compile_task_spec"),
+    }
+
+    run_phase_1({}, agents)
+
+    assert order == [
+        "ingest_paper",
+        "extract_fingerprint_guide",
+        "extract_fingerprint_atomic",
+        "extract_fingerprint_filter",
+        "repo_analysis",
+        "build_claims_ir",
+        "compile_task_spec",
+    ]
+
+
+# ---- Phase 1: table_anchor propagation ----
+
+def test_build_claims_ir_preserves_table_anchor():
+    """visual_anchor from fingerprint should appear as table_anchor in conditions."""
+    from p2c.agents.phase1.build_claims_ir import BuildClaimsIRAgent
+
+    fingerprint = {
+        "claims": [
+            {
+                "id": "claim_09",
+                "claim_type": "result",
+                "fact": "accuracy = 0.9685",
+                "scope": "from classification report in paper",
+                "evidence_anchors": {
+                    "text_anchor": "atomic_criteria[8]",
+                    "visual_anchor": "Table 1",
+                    "visual_data": {},
+                },
+                "reason_codes": ["TABLE_EXPANDED", "CLF_REPORT"],
+            },
+            {
+                "id": "claim_10",
+                "claim_type": "result",
+                "fact": "accuracy = 0.7617",
+                "scope": "from classification report in paper",
+                "evidence_anchors": {
+                    "text_anchor": "atomic_criteria[9]",
+                    "visual_anchor": "Table 2",
+                },
+                "reason_codes": ["TABLE_EXPANDED", "CLF_REPORT"],
+            },
+        ],
+        "reason_codes": [],
+    }
+
+    agent = BuildClaimsIRAgent.__new__(BuildClaimsIRAgent)
+    claims, _ = agent._claims_from_fingerprint(fingerprint)
+
+    assert len(claims) == 2
+    assert claims[0].conditions.get("table_anchor") == "Table 1"
+    assert claims[1].conditions.get("table_anchor") == "Table 2"
+    # scope should still be there
+    assert claims[0].conditions.get("scope") == "from classification report in paper"
+
+
+def test_build_claims_ir_no_anchor_no_crash():
+    """Claims without visual_anchor should not have table_anchor in conditions."""
+    from p2c.agents.phase1.build_claims_ir import BuildClaimsIRAgent
+
+    fingerprint = {
+        "claims": [
+            {
+                "id": "claim_05",
+                "claim_type": "result",
+                "fact": "accuracy > 99%",
+                "scope": "MNIST dataset",
+                "evidence_anchors": {
+                    "text_anchor": "atomic_criteria[4]",
+                    "visual_anchor": None,
+                },
+                "reason_codes": [],
+            },
+        ],
+        "reason_codes": [],
+    }
+
+    agent = BuildClaimsIRAgent.__new__(BuildClaimsIRAgent)
+    claims, _ = agent._claims_from_fingerprint(fingerprint)
+
+    assert len(claims) == 1
+    assert "table_anchor" not in claims[0].conditions
+    assert claims[0].conditions.get("scope") == "MNIST dataset"
+
+
+def test_build_claims_ir_prompt_uses_entrypoint_candidates():
+    """Repo analysis with entrypoint_candidates should appear in the experiment prompt."""
+    from p2c.agents.phase1.build_claims_ir import _build_experiment_user_prompt
+
+    prompt = _build_experiment_user_prompt(
+        {
+            "claims": [
+                {
+                    "id": "claim_01",
+                    "claim_type": "result",
+                    "fact": "precision = 0.72",
+                    "scope": "fraud evaluation",
+                    "evidence_anchors": {"visual_anchor": "Table 1"},
+                    "reason_codes": [],
+                }
+            ]
+        },
+        {
+            "entrypoint_candidates": [
+                {
+                    "path": "src/train_fraud_model.py",
+                    "command": "python src/train_fraud_model.py",
+                    "confidence": 0.96,
+                }
+            ],
+            "dependency_profiles": [
+                {"profile_id": "python-requirements:requirements.txt", "manifest_paths": ["requirements.txt"]}
+            ],
+        },
+    )
+
+    assert "src/train_fraud_model.py" in prompt
+    assert "entrypoints" not in prompt.lower() or "Entrypoint: src/train_fraud_model.py" in prompt
+
+
+def test_build_claims_ir_llm_merge_preserves_fingerprint_claim_identity():
+    """LLM metadata should enrich fingerprint claims without renumbering or rewriting them."""
+    from p2c.agents.phase1.build_claims_ir import BuildClaimsIRAgent
+
+    fingerprint = {
+        "claims": [
+            {
+                "id": "claim_01",
+                "claim_type": "result",
+                "fact": "class 1 precision = 0.72",
+                "scope": "paper table",
+                "evidence_anchors": {"text_anchor": "atomic_criteria[0]", "visual_anchor": "Table 1"},
+                "reason_codes": [],
+            },
+            {
+                "id": "claim_02",
+                "claim_type": "config",
+                "fact": "training:test split = 70:30",
+                "scope": "paper setup",
+                "evidence_anchors": {"text_anchor": "atomic_criteria[1]"},
+                "reason_codes": [],
+            },
+        ],
+        "reason_codes": [],
+    }
+    agent = BuildClaimsIRAgent.__new__(BuildClaimsIRAgent)
+    base_claims, _ = agent._claims_from_fingerprint(fingerprint)
+    agent.safe_chat_json = lambda schema, system, user: (
+        {
+            "experiments": [
+                {
+                    "experiment_id": "exp_01",
+                    "name": "fraud evaluation",
+                    "description": "main fraud run",
+                    "dataset": None,
+                    "table_anchor": "Table 1",
+                    "claim_ids": ["claim_01", "claim_02"],
+                    "repo_coverage": "implemented",
+                    "repo_entrypoint": "src/train_fraud_model.py",
+                    "notes": "matched to train script",
+                }
+            ],
+            "claims": [
+                {
+                    "claim_id": "claim_01",
+                    "type": "result",
+                    "predicate": "rewritten by llm and should be ignored",
+                    "metric": "precision",
+                    "target": 0.72,
+                    "experiment_id": "exp_01",
+                    "table_anchor": "Table 1",
+                    "scope": "fraud evaluation",
+                    "is_primary": True,
+                    "reason": "primary result",
+                },
+                {
+                    "claim_id": "claim_02",
+                    "type": "config",
+                    "predicate": "also ignored",
+                    "metric": None,
+                    "target": None,
+                    "experiment_id": "exp_01",
+                    "table_anchor": None,
+                    "scope": "configuration",
+                    "is_primary": False,
+                    "reason": "config result",
+                },
+            ],
+        },
+        None,
+    )
+
+    claims_ir = agent._build_claims_ir_via_llm(
+        fingerprint=fingerprint,
+        repo_analysis={
+            "entrypoint_candidates": [
+                {"path": "src/train_fraud_model.py", "command": "python src/train_fraud_model.py", "confidence": 0.96}
+            ]
+        },
+        base_claims=base_claims,
+    )
+
+    assert [claim.claim_id for claim in claims_ir.claims] == ["claim_01", "claim_02"]
+    assert claims_ir.claims[0].predicate == "class 1 precision = 0.72"
+    assert claims_ir.claims[1].predicate == "training:test split = 70:30"
+    assert claims_ir.claims[0].conditions.get("experiment_id") == "exp_01"
+    assert claims_ir.claims[0].conditions.get("is_primary") is True
+    assert claims_ir.experiments[0].repo_coverage == "implemented"
+
+
+def test_build_claims_ir_postprocesses_repo_coverage_false_negative():
+    """LLM repo_coverage=false negative should be corrected when repo entrypoints exist."""
+    from p2c.agents.phase1.build_claims_ir import BuildClaimsIRAgent
+
+    fingerprint = {
+        "claims": [
+            {
+                "id": "claim_01",
+                "claim_type": "result",
+                "fact": "precision = 0.72",
+                "scope": "paper table",
+                "evidence_anchors": {"text_anchor": "atomic_criteria[0]"},
+                "reason_codes": [],
+            }
+        ],
+        "reason_codes": [],
+    }
+    agent = BuildClaimsIRAgent.__new__(BuildClaimsIRAgent)
+    base_claims, _ = agent._claims_from_fingerprint(fingerprint)
+    agent.safe_chat_json = lambda schema, system, user: (
+        {
+            "experiments": [
+                {
+                    "experiment_id": "exp_01",
+                    "name": "fraud evaluation",
+                    "description": "main fraud run",
+                    "dataset": None,
+                    "table_anchor": None,
+                    "claim_ids": ["claim_01"],
+                    "repo_coverage": "not_found",
+                    "repo_entrypoint": None,
+                    "notes": "No repository analysis content identifying runnable scripts was provided.",
+                }
+            ],
+            "claims": [
+                {
+                    "claim_id": "claim_01",
+                    "type": "result",
+                    "predicate": "precision = 0.72",
+                    "metric": "precision",
+                    "target": 0.72,
+                    "experiment_id": "exp_01",
+                    "scope": "paper table",
+                    "is_primary": True,
+                    "reason": "main result",
+                }
+            ],
+        },
+        None,
+    )
+
+    claims_ir = agent._build_claims_ir_via_llm(
+        fingerprint=fingerprint,
+        repo_analysis={
+            "primary_entrypoint_id": "python-file:src/train_fraud_model.py",
+            "entrypoint_candidates": [
+                {
+                    "entrypoint_id": "python-file:src/train_fraud_model.py",
+                    "path": "src/train_fraud_model.py",
+                    "command": "python src/train_fraud_model.py",
+                    "confidence": 0.96,
+                }
+            ],
+        },
+        base_claims=base_claims,
+    )
+
+    assert claims_ir.experiments[0].repo_coverage == "partial"
+    assert claims_ir.experiments[0].repo_entrypoint == "src/train_fraud_model.py"
+    assert "partially aligned" in (claims_ir.experiments[0].notes or "")
+    assert "REPO_COVERAGE_POSTPROCESSED" in claims_ir.reason_codes
+
+
+# ---- Phase 2: conservative claim_alignment ----
+
+def test_claim_alignment_marks_ambiguous_as_partial():
+    """When 3 claims all want 'accuracy' but only one value exists, mark partial."""
+    from p2c.agents.phase2.result_extraction import build_claim_alignment
+    from p2c.schemas import ClaimItem, ClaimsIR
+
+    claims_ir = ClaimsIR(claims=[
+        ClaimItem(claim_id="c1", type="result", predicate="acc=0.97", metric="accuracy", target=0.9685),
+        ClaimItem(claim_id="c2", type="result", predicate="acc=0.76", metric="accuracy", target=0.7617),
+        ClaimItem(claim_id="c3", type="result", predicate="acc=0.84", metric="accuracy", target=0.84),
+    ])
+    collected = {"accuracy": 0.9882}
+
+    doc = build_claim_alignment(claims_ir, collected)
+
+    for item in doc.claims:
+        assert item.evaluable == "partial", f"{item.claim_id} should be partial, got {item.evaluable}"
+        assert "deferred to Phase 3" in (item.reason or "")
+
+
+def test_claim_alignment_unique_metric_stays_yes():
+    """A single claim for a metric should remain evaluable='yes'."""
+    from p2c.agents.phase2.result_extraction import build_claim_alignment
+    from p2c.schemas import ClaimItem, ClaimsIR
+
+    claims_ir = ClaimsIR(claims=[
+        ClaimItem(claim_id="c1", type="result", predicate="loss=0.15", metric="loss", target=0.15),
+        ClaimItem(claim_id="c2", type="config", predicate="epochs=100"),
+    ])
+    collected = {"loss": 0.1523}
+
+    doc = build_claim_alignment(claims_ir, collected)
+
+    loss_item = next(i for i in doc.claims if i.claim_id == "c1")
+    config_item = next(i for i in doc.claims if i.claim_id == "c2")
+    assert loss_item.evaluable == "yes"
+    assert config_item.evaluable == "no"  # no metric for config
+
+
+# ---- Phase 3: align_evidence disambiguation ----
+
+def test_align_evidence_disambiguates_by_target():
+    """When 3 claims want 'accuracy' with different targets, match by proximity."""
+    from p2c.agents.phase3.align_evidence import AlignEvidenceAgent
+    from p2c.schemas import MetricRecord
+
+    records = [
+        MetricRecord(metric_name="accuracy", value=0.9882, source="run1"),
+        MetricRecord(metric_name="accuracy", value=0.9972, source="run2"),
+    ]
+
+    # Claim with target close to 0.9882 should match
+    matched = AlignEvidenceAgent._match_records(
+        claim={"predicate": "accuracy = 0.9685", "metric": "accuracy"},
+        metric_name="accuracy",
+        target=0.9685,
+        conditions={"table_anchor": "Table 1"},
+        records=records,
+        is_ambiguous=True,
+    )
+    # Should get the closest value(s) to 0.9685
+    assert len(matched) >= 1
+    values = [r.value for r in matched]
+    assert 0.9882 in values  # closest to 0.9685
+
+    # Claim with target=0.7617 — far from both records
+    matched_far = AlignEvidenceAgent._match_records(
+        claim={"predicate": "accuracy = 0.7617", "metric": "accuracy"},
+        metric_name="accuracy",
+        target=0.7617,
+        conditions={"table_anchor": "Table 2"},
+        records=records,
+        is_ambiguous=True,
+    )
+    # Should return nothing — no record is close to 0.7617
+    assert len(matched_far) == 0, (
+        f"Should not match any record for target=0.7617 (got {[r.value for r in matched_far]})"
+    )
+
+
+def test_align_evidence_non_ambiguous_returns_all():
+    """When only 1 claim uses a metric, all matching records should be returned."""
+    from p2c.agents.phase3.align_evidence import AlignEvidenceAgent
+    from p2c.schemas import MetricRecord
+
+    records = [
+        MetricRecord(metric_name="loss", value=0.15, source="run1"),
+        MetricRecord(metric_name="loss", value=0.12, source="run2"),
+    ]
+
+    matched = AlignEvidenceAgent._match_records(
+        claim={"predicate": "loss = 0.15", "metric": "loss"},
+        metric_name="loss",
+        target=0.15,
+        conditions={},
+        records=records,
+        is_ambiguous=False,
+    )
+    assert len(matched) == 2  # all records returned
+
+
+def test_align_evidence_prefers_class_specific_metrics():
+    """Per-class predicates should bind to class-specific metric names before generic ones."""
+    from p2c.agents.phase3.align_evidence import AlignEvidenceAgent
+    from p2c.schemas import MetricRecord
+
+    records = [
+        MetricRecord(metric_name="class_1_precision", value=0.0372, source="run_manifest"),
+        MetricRecord(metric_name="weighted_precision", value=0.9982, source="run_manifest"),
+        MetricRecord(metric_name="precision", value=0.037159372419488024, source="summary"),
+    ]
+
+    matched = AlignEvidenceAgent._match_records(
+        claim={"predicate": "1 precision = 0.99", "metric": "precision"},
+        metric_name="precision",
+        target=0.99,
+        conditions={},
+        records=records,
+        is_ambiguous=True,
+    )
+
+    assert [row.metric_name for row in matched] == ["class_1_precision"]
+
+
+def test_align_evidence_avg_total_falls_back_to_weighted():
+    """avg/total predicates should prefer avg_total metrics, then fall back to weighted metrics."""
+    from p2c.agents.phase3.align_evidence import AlignEvidenceAgent
+    from p2c.schemas import MetricRecord
+
+    records = [
+        MetricRecord(metric_name="weighted_precision", value=0.9982, source="run_manifest"),
+        MetricRecord(metric_name="precision", value=0.037159372419488024, source="summary"),
+    ]
+
+    matched = AlignEvidenceAgent._match_records(
+        claim={"predicate": "avg / total precision = 0.99", "metric": "precision"},
+        metric_name="precision",
+        target=0.99,
+        conditions={},
+        records=records,
+        is_ambiguous=True,
+    )
+
+    assert [row.metric_name for row in matched] == ["weighted_precision"]
+
+
+# ---- Phase 3: verify_claims with missing_reason ----
+
+def test_verify_inconclusive_for_ambiguous_unaligned():
+    """Claims that can't be aligned should get INCONCLUSIVE with ALIGNMENT_AMBIGUOUS."""
+    from p2c.agents.phase3.verify_claims import _fallback_evaluate as evaluate_claim
+
+    claim = {
+        "claim_id": "claim_10",
+        "type": "result",
+        "metric": "accuracy",
+        "target": 0.7617,
+        "tolerance_policy": {"abs_eps": 0.005, "rel_eps": 0.02},
+    }
+
+    verdict = evaluate_claim(
+        claim,
+        matched_records=[],
+        missing_reason="Metric 'accuracy' was collected but could not be aligned to this specific claim (Table 2)",
+    )
+
+    assert verdict.status == "INCONCLUSIVE"
+    assert "ALIGNMENT_AMBIGUOUS" in verdict.reason_codes
+
+
+def test_verify_supported_when_matched():
+    """A properly matched claim should still get SUPPORTED/NOT_SUPPORTED."""
+    from p2c.agents.phase3.verify_claims import _fallback_evaluate as evaluate_claim
+    from p2c.schemas import MetricRecord
+
+    claim = {
+        "claim_id": "claim_09",
+        "type": "result",
+        "metric": "accuracy",
+        "target": 0.9685,
+        "tolerance_policy": {"abs_eps": 0.005, "rel_eps": 0.02},
+    }
+
+    verdict = evaluate_claim(
+        claim,
+        matched_records=[MetricRecord(metric_name="accuracy", value=0.9882, source="run1")],
+    )
+
+    # 0.9882 vs 0.9685 = diff 0.0197, threshold = max(0.005, 0.02*0.9685) = 0.0194
+    # 0.0197 > 0.0194 → NOT_SUPPORTED (just barely)
+    assert verdict.status == "NOT_SUPPORTED"
+    assert verdict.compared_value == 0.9882
+    assert verdict.target_value == 0.9685
+
+
+def test_verify_supported_status_and_detail_stay_consistent():
+    """Deterministic verdicts should not contradict their own tolerance reasoning."""
+    from p2c.agents.phase3.verify_claims import _fallback_evaluate as evaluate_claim
+    from p2c.schemas import MetricRecord
+
+    claim = {
+        "claim_id": "claim_12",
+        "type": "result",
+        "metric": "f1",
+        "target": 1.0,
+        "tolerance_policy": {"abs_eps": 0.02, "rel_eps": 0.02},
+    }
+
+    verdict = evaluate_claim(
+        claim,
+        matched_records=[MetricRecord(metric_name="class_0_f1", value=0.9817, source="run_manifest")],
+    )
+
+    assert verdict.status == "SUPPORTED"
+    assert "WITHIN_TOLERANCE" in verdict.reason_codes
+    assert "within tolerance" in verdict.detail

@@ -10,6 +10,7 @@ from typing import Any
 from p2c.schemas import VerdictDoc
 
 REQUIRED_FILES = [
+    # Phase 1 — fingerprint
     "fingerprint/fingerprint.json",
     "fingerprint/guide_sentences.json",
     "fingerprint/atomic_criteria.json",
@@ -17,33 +18,21 @@ REQUIRED_FILES = [
     "fingerprint/filter_clusters.json",
     "fingerprint/filter_selected.json",
     "fingerprint/claims_ir.json",
+    # Phase 1 — task compilation
     "task/repo_analysis.json",
     "task/task_spec.json",
     "task/metric_contract.json",
+    # Phase 2 — local execution
     "execution/run.log",
-    "execution/commands.jsonl",
-    "execution/patch.diff",
+    "execution/execution_plan.json",
+    "execution/env_setup_result.json",
+    "execution/execution_failures.json",
+    "execution/phase2_state.json",
     "execution/codex_outputs/run_manifest.json",
-    "execution/codex_outputs/codex_worklog.jsonl",
-    "execution/codex_outputs/patches.diff",
     "execution/codex_outputs/claim_alignment.json",
-    "execution/codex_outputs/execution_summary.json",
     "execution/codex_outputs/codex_exec.log",
-    "execution/codex_outputs/dependency_solver.json",
-    "execution/codex_outputs/toolchain_probe.json",
-    "execution/codex_outputs/pip_install.log",
-    "execution/codex_outputs/capability_probe.json",
-    "execution/codex_outputs/dependency_bootstrap.log",
-    "execution/codex_outputs/codex_failure.json",
-    "execution/codex_outputs/codex_main.log",
-    "execution/codex_outputs/codex_repair.log",
-    "execution/codex_outputs/task_run_results.json",
-    "execution/codex_outputs/codex_exec.stream.log",
-    "execution/repo_state.json",
-    "execution/codex_failure.json",
-    "execution/system_info.json",
     "execution/env_lock/pip_freeze.txt",
-    "execution/data_manifest.json",
+    # Phase 3 — verification
     "results/metrics.json",
     "results/parsed_evidence.json",
     "results/evaluability.json",
@@ -67,116 +56,45 @@ class ArtifactManager:
             if path.exists():
                 continue
             if path.suffix == ".json":
-                if rel.endswith("verdict.json"):
-                    payload = VerdictDoc(
-                        status="INCONCLUSIVE",
-                        reason_codes=["INITIALIZED_PLACEHOLDER"],
-                        summary="Pipeline not complete yet.",
-                    ).model_dump()
-                elif rel.endswith("metrics.json"):
-                    payload = {"records": [], "reason_codes": ["INITIALIZED_PLACEHOLDER"]}
-                elif rel.endswith("parsed_evidence.json"):
-                    payload = {"claim_evidence": [], "reason_codes": ["INITIALIZED_PLACEHOLDER"]}
-                elif rel.endswith("run_manifest.json"):
-                    payload = {"runs": [], "reason_codes": ["INITIALIZED_PLACEHOLDER"]}
-                elif rel.endswith("claim_alignment.json"):
-                    payload = {"claims": [], "reason_codes": ["INITIALIZED_PLACEHOLDER"]}
-                elif rel.endswith("execution_summary.json"):
-                    payload = {
-                        "project_type": "unknown",
-                        "dependency_steps": [],
-                        "commands_run": [],
-                        "success_basis": "none",
-                        "execution_succeeded": False,
-                        "attempt_count": 0,
-                        "task_results": [],
-                        "remaining_blockers": [],
-                        "reason_codes": ["INITIALIZED_PLACEHOLDER"],
-                    }
-                elif rel.endswith("codex_failure.json"):
-                    payload = {
-                        "stage": "postcheck",
-                        "last_command": "",
-                        "exit_code": 0,
-                        "stdout_tail": "",
-                        "stderr_tail": "",
-                        "codex_exec_log_tail": "",
-                        "pip_log_tail": "",
-                        "capability_snapshot": {},
-                        "dependency_bootstrap_trace": [],
-                        "reason_codes": ["INITIALIZED_PLACEHOLDER"],
-                    }
-                elif rel.endswith("capability_probe.json"):
-                    payload = {
-                        "python_ok": False,
-                        "python_version": "",
-                        "pip_available": False,
-                        "ensurepip_available": False,
-                        "required_modules_available": {},
-                        "reason_codes": ["INITIALIZED_PLACEHOLDER"],
-                    }
-                elif rel.endswith("dependency_solver.json"):
-                    payload = {
-                        "steps": [],
-                        "status": "not_run",
-                        "reason_codes": ["INITIALIZED_PLACEHOLDER"],
-                    }
-                elif rel.endswith("toolchain_probe.json"):
-                    payload = {
-                        "paths": {},
-                        "versions": {},
-                        "path_prefix": "",
-                        "reason_codes": ["INITIALIZED_PLACEHOLDER"],
-                    }
-                elif rel.endswith("task_run_results.json"):
-                    payload = {"runs": [], "reason_codes": ["INITIALIZED_PLACEHOLDER"]}
-                elif rel.endswith("evaluability.json"):
-                    payload = {"entries": [], "reason_codes": ["INITIALIZED_PLACEHOLDER"]}
-                elif rel.endswith("evaluability_verdict.json"):
-                    payload = {
-                        "status": "NOT_EVALUABLE",
-                        "claim_rows": [],
-                        "reason_codes": ["INITIALIZED_PLACEHOLDER"],
-                        "summary": "Pipeline not complete yet.",
-                    }
-                elif rel.endswith("task_spec.json"):
-                    payload = {
-                        "tasks": [],
-                        "constraints": {},
-                        "entrypoints": [],
-                        "metric_observers": [],
-                        "run_matrix": [],
-                        "selection_notes": [],
-                        "reason_codes": ["INITIALIZED_PLACEHOLDER"],
-                    }
-                elif rel.endswith("repo_analysis.json"):
-                    payload = {
-                        "ecosystems": [],
-                        "dependency_profiles": [],
-                        "entrypoint_candidates": [],
-                        "primary_entrypoint_id": None,
-                        "reason_codes": ["INITIALIZED_PLACEHOLDER"],
-                    }
-                elif rel.endswith("metric_contract.json"):
-                    payload = {
-                        "required_metrics": [],
-                        "parsers": [],
-                        "normalization": {},
-                        "reason_codes": ["INITIALIZED_PLACEHOLDER"],
-                    }
-                elif rel.endswith("repo_state.json"):
-                    payload = {
-                        "head": None,
-                        "branch": None,
-                        "diff_summary": None,
-                        "submodules": [],
-                        "reason_codes": ["INITIALIZED_PLACEHOLDER", "NO_GIT_METADATA"],
-                    }
-                else:
-                    payload = {"reason_codes": ["INITIALIZED_PLACEHOLDER"]}
+                payload = self._default_json_payload(rel)
                 path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
             else:
                 path.write_text("", encoding="utf-8")
+
+    @staticmethod
+    def _default_json_payload(rel: str) -> Any:
+        """Return a sensible placeholder JSON payload for a given artifact path."""
+        _P = "INITIALIZED_PLACEHOLDER"
+        _MAP: dict[str, Any] = {
+            "verdict.json": {"status": "INCONCLUSIVE", "claim_verdicts": [],
+                             "reason_codes": [_P], "summary": "Pipeline not complete yet."},
+            "metrics.json": {"records": [], "reason_codes": [_P]},
+            "parsed_evidence.json": {"claim_evidence": [], "reason_codes": [_P]},
+            "run_manifest.json": {"runs": [], "reason_codes": [_P]},
+            "claim_alignment.json": {"claims": [], "reason_codes": [_P]},
+            "evaluability.json": {"entries": [], "reason_codes": [_P]},
+            "evaluability_verdict.json": {"status": "NOT_EVALUABLE", "claim_rows": [],
+                                          "reason_codes": [_P], "summary": "Pipeline not complete yet."},
+            "task_spec.json": {"tasks": [], "constraints": {}, "entrypoints": [],
+                               "metric_observers": [], "run_matrix": [], "selection_notes": [],
+                               "reason_codes": [_P]},
+            "repo_analysis.json": {"ecosystems": [], "dependency_profiles": [],
+                                   "entrypoint_candidates": [], "primary_entrypoint_id": None,
+                                   "reason_codes": [_P]},
+            "metric_contract.json": {"required_metrics": [], "parsers": [], "normalization": {},
+                                     "reason_codes": [_P]},
+            "execution_plan.json": {"plan_id": "", "execution_steps": [], "env_name": "",
+                                    "reason_codes": [_P]},
+            "env_setup_result.json": {"env_name": "", "validation_passed": False,
+                                      "reason_codes": [_P]},
+            "execution_failures.json": [],
+            "phase2_state.json": {"status": "planning", "attempt": 0, "failures": [],
+                                  "reason_codes": [_P]},
+        }
+        for suffix, payload in _MAP.items():
+            if rel.endswith(suffix):
+                return payload
+        return {"reason_codes": [_P]}
 
     def path(self, relative: str) -> Path:
         return self.run_root / relative

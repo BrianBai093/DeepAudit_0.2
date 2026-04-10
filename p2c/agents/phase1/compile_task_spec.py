@@ -25,7 +25,7 @@ SYSTEM_PROMPT = (
 USER_PROMPT_TEMPLATE = (
     "Inputs: fingerprint/claims_ir.json + repo_dir scan\n"
     "Outputs: task/task_spec.json and task/metric_contract.json\n"
-    "Constraints: keep tasks <= 5, include at least one metric observer."
+    "Constraints: prefer wrapper-first workflow coverage and include at least one metric observer."
 )
 
 
@@ -112,9 +112,116 @@ class CompileTaskSpecAgent(BaseAgent):
                     hyperparams=hyperparams,
                     confidence=ep.confidence,
                     evidence=ep.evidence,
+                    path_resolution_mode=ep.path_resolution_mode,
+                    derived_from_wrapper=ep.derived_from_wrapper,
+                    reason_codes=ep.reason_codes,
                 )
             )
         return items
+
+    @staticmethod
+    def _select_entrypoints(candidates: list[Entrypoint], primary_id: str) -> list[Entrypoint]:
+        selected: list[Entrypoint] = []
+        seen: set[str] = set()
+
+        def add(candidate: Entrypoint) -> None:
+            candidate_id = str(candidate.entrypoint_id or candidate.path)
+            if candidate_id in seen:
+                return
+            seen.add(candidate_id)
+            selected.append(candidate)
+
+        if primary_id:
+            for candidate in candidates:
+                if str(candidate.entrypoint_id or "") == primary_id:
+                    add(candidate)
+                    break
+
+        primary_wrapper = selected[0].path if selected and "README_WORKFLOW_PRIMARY" in selected[0].reason_codes else None
+        for candidate in candidates:
+            if "README_WORKFLOW_PRIMARY" in candidate.reason_codes:
+                add(candidate)
+        if primary_wrapper:
+            for candidate in candidates:
+                if candidate.derived_from_wrapper == primary_wrapper:
+                    add(candidate)
+
+        for candidate in candidates:
+            if candidate.runtime in {"python", "shell", "make"}:
+                add(candidate)
+            if len(selected) >= 12:
+                break
+        return selected
+
+    @staticmethod
+    def _default_metric_patterns() -> dict[str, list[str]]:
+        return {
+            "accuracy": [
+                r"accuracy[^0-9]*(\d+(?:\.\d+)?)%",
+                r"accuracy[^0-9]*(0\.\d+|1\.0+)",
+            ],
+            "precision": [
+                r"(?im)^\s*precision\s*[:=]\s*(0?\.\d+|1(?:\.0+)?)",
+                r"['\"]precision['\"]\s*:\s*(0?\.\d+|1(?:\.0+)?)",
+            ],
+            "recall": [
+                r"(?im)^\s*recall\s*[:=]\s*(0?\.\d+|1(?:\.0+)?)",
+                r"['\"]recall['\"]\s*:\s*(0?\.\d+|1(?:\.0+)?)",
+            ],
+            "f1": [
+                r"(?im)^\s*f1(?:-score)?\s*[:=]\s*(0?\.\d+|1(?:\.0+)?)",
+                r"['\"]f1['\"]\s*:\s*(0?\.\d+|1(?:\.0+)?)",
+            ],
+            "roc_auc": [
+                r"(?im)^\s*roc[-_ ]auc\s*[:=]\s*(0?\.\d+|1(?:\.0+)?)\s*$",
+                r"['\"]roc_auc['\"]\s*:\s*(0?\.\d+|1(?:\.0+)?)",
+            ],
+            "pr_auc": [
+                r"(?im)^\s*pr[-_ ]auc\s*[:=]\s*(0?\.\d+|1(?:\.0+)?)\s*$",
+                r"['\"]pr_auc['\"]\s*:\s*(0?\.\d+|1(?:\.0+)?)",
+            ],
+        }
+
+    @classmethod
+    def _metric_observers_for(cls, required_metrics: list[str]) -> list[MetricObserver]:
+        core_metrics = {"accuracy", "precision", "recall", "f1", "roc_auc", "pr_auc"}
+        patterns = cls._default_metric_patterns()
+        observers: list[MetricObserver] = []
+        for metric_name in sorted(core_metrics.union(required_metrics)):
+            for idx, pattern in enumerate(patterns.get(metric_name, []), start=1):
+                observers.append(
+                    MetricObserver(
+                        name=f"{metric_name}_pattern_{idx}",
+                        kind="stdout_regex",
+                        pattern=pattern,
+                    )
+                )
+        return observers
+
+    @classmethod
+    def _metric_parsers_for(cls, required_metrics: list[str]) -> list[MetricParser]:
+        core_metrics = {"accuracy", "precision", "recall", "f1", "roc_auc", "pr_auc"}
+        patterns = cls._default_metric_patterns()
+        parsers: list[MetricParser] = []
+        for metric_name in sorted(core_metrics.union(required_metrics)):
+            for idx, pattern in enumerate(patterns.get(metric_name, []), start=1):
+                parsers.append(
+                    MetricParser(
+                        name=f"{metric_name}_pattern_{idx}",
+                        regex=pattern,
+                        metric_name=metric_name,
+                    )
+                )
+        return parsers
+
+    @staticmethod
+    def _metric_normalization(required_metrics: list[str]) -> dict[str, dict[str, object]]:
+        normalized = {"accuracy", "precision", "recall", "f1", "roc_auc", "pr_auc"}
+        normalized.update(required_metrics)
+        return {
+            metric_name: {"percent_to_decimal": True, "clip": [0, 1]}
+            for metric_name in sorted(normalized)
+        }
 
     def execute(self, ctx: dict) -> dict:
         repo_dir = Path(ctx["repo_dir"])
@@ -126,15 +233,7 @@ class CompileTaskSpecAgent(BaseAgent):
         repo_analysis = self._load_repo_analysis(self.artifacts, repo_dir)
         candidates = [Entrypoint(**row) if isinstance(row, dict) else row for row in repo_analysis.entrypoint_candidates]
         primary_id = str(repo_analysis.primary_entrypoint_id or "")
-        selected: list[Entrypoint] = []
-        if primary_id:
-            selected.extend([e for e in candidates if str(e.entrypoint_id or "") == primary_id][:1])
-        for candidate in candidates:
-            if len(selected) >= 5:
-                break
-            if any(str(x.entrypoint_id or "") == str(candidate.entrypoint_id or "") for x in selected):
-                continue
-            selected.append(candidate)
+        selected = self._select_entrypoints(candidates, primary_id)
 
         reason_codes = list(repo_analysis.reason_codes)
         if selected:
@@ -143,11 +242,6 @@ class CompileTaskSpecAgent(BaseAgent):
                 reason_codes.append("ENTRYPOINT_SELECTED_BACKUP")
         else:
             reason_codes.append("REPO_ANALYSIS_NO_EXECUTABLE_CANDIDATE")
-
-        observers = [
-            MetricObserver(name="accuracy_percent", kind="stdout_regex", pattern=r"accuracy[^0-9]*(\d+(?:\.\d+)?)%"),
-            MetricObserver(name="accuracy_decimal", kind="stdout_regex", pattern=r"accuracy[^0-9]*(0\.\d+|1\.0+)"),
-        ]
 
         budget_minutes = int(ctx.get("budget_minutes", 60))
         run_matrix = [
@@ -162,6 +256,7 @@ class CompileTaskSpecAgent(BaseAgent):
             reason_codes.append("NO_ENTRYPOINT_FOUND")
 
         required_metrics = self._collect_required_metrics(verifiable_claims)
+        observers = self._metric_observers_for(required_metrics)
         hyperparams = self._extract_hyperparams(verifiable_claims)
         tasks = self._to_task_items(
             selected,
@@ -194,16 +289,8 @@ class CompileTaskSpecAgent(BaseAgent):
 
         metric_contract = MetricContract(
             required_metrics=required_metrics,
-            parsers=[
-                MetricParser(name="acc_percent", regex=r"accuracy[^0-9]*(\d+(?:\.\d+)?)%", metric_name="accuracy"),
-                MetricParser(name="acc_decimal", regex=r"accuracy[^0-9]*(0\.\d+|1\.0+)", metric_name="accuracy"),
-            ],
-            normalization={
-                "accuracy": {
-                    "percent_to_decimal": True,
-                    "clip": [0, 1],
-                }
-            },
+            parsers=self._metric_parsers_for(required_metrics),
+            normalization=self._metric_normalization(required_metrics),
             reason_codes=[] if selected else ["REPO_ANALYSIS_NO_EXECUTABLE_CANDIDATE"],
         )
 
@@ -215,8 +302,6 @@ class CompileTaskSpecAgent(BaseAgent):
         for e in output.task_spec.entrypoints:
             if not (repo_dir / e.path).exists():
                 raise ValueError(f"Entrypoint does not exist: {e.path}")
-        if len(output.task_spec.entrypoints) > 5:
-            raise ValueError("Too many entrypoints")
 
         return {
             "task_spec": output.task_spec.model_dump(),
