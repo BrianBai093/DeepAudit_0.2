@@ -47,12 +47,18 @@ def run_phase_1(ctx: dict[str, Any], agents: dict[str, Any]) -> None:
     # Build RAG code index (graceful degradation on failure)
     try:
         from p2c.rag.builder import build_code_index
+        _log = logging.getLogger(__name__)
+        _log.info("RAG: building code index for %s", ctx["repo_dir"])
         ctx["_code_index"] = build_code_index(
             Path(ctx["repo_dir"]),
             agents["repo_analysis"].artifacts,
         )
-    except Exception:  # noqa: BLE001
-        logging.getLogger(__name__).debug("RAG index build skipped or failed")
+        if ctx["_code_index"] is None:
+            _log.info("RAG: index not built (small repo or embedding unavailable)")
+        else:
+            _log.info("RAG: index built successfully")
+    except Exception as exc:  # noqa: BLE001
+        logging.getLogger(__name__).warning("RAG index build failed: %s", exc)
         ctx["_code_index"] = None
 
     agents["build_claims_ir"].run(ctx)

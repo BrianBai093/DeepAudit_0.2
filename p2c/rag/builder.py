@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_RAG_FILE_COUNT_THRESHOLD = 20
+_RAG_FILE_COUNT_THRESHOLD = 5
 
 
 def build_code_index(
