@@ -78,6 +78,28 @@ class BaseAgent(ABC):
             self.log("PROGRESS", f"LLM unavailable: {e}")
             return None, str(e)
 
+    def safe_chat_vision(
+        self, system: str, user_text: str, images: list[str], detail: str = "high",
+    ) -> tuple[str | None, str | None]:
+        try:
+            text = self.llm.chat_vision(system=system, user_text=user_text, images=images, detail=detail)
+            return text, None
+        except LLMClientError as e:
+            self.log("PROGRESS", f"Vision LLM unavailable: {e}")
+            return None, str(e)
+
+    def safe_chat_vision_json(
+        self, schema: dict, system: str, user_text: str, images: list[str], detail: str = "high",
+    ) -> tuple[dict | None, str | None]:
+        try:
+            data = self.llm.chat_vision_json(
+                schema=schema, system=system, user_text=user_text, images=images, detail=detail,
+            )
+            return data, None
+        except LLMClientError as e:
+            self.log("PROGRESS", f"Vision LLM unavailable: {e}")
+            return None, str(e)
+
     @abstractmethod
     def execute(self, ctx: dict[str, Any]) -> dict[str, Any]:
         raise NotImplementedError

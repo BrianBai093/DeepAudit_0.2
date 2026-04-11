@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import json
-import subprocess
-import sys
 from pathlib import Path
 
 from p2c.agents.base import BaseAgent
@@ -10,64 +8,55 @@ from p2c.agents.base import BaseAgent
 SYSTEM_PROMPT = """\
 You are a senior ML reproducibility auditor writing the final assessment report.
 
-You will receive ALL artifacts from a paper reproduction pipeline:
-- Paper claims extracted from the paper (with experiment context)
-- Repository analysis (what code/notebooks exist)
-- Execution results (what ran, what metrics were produced)
-- Claim verdicts (which claims were supported/not supported/inconclusive)
-- Experiment coverage (which paper experiments are in the repo, which are missing)
+You will receive ALL artifacts from a paper reproduction pipeline including a pre-computed \
+reproducibility score (0-100) with four dimensions and a gap diagnosis taxonomy.
 
-Write a comprehensive reproducibility audit report in Markdown. The report MUST include:
+Write a CONCISE reproducibility audit report in Markdown. Follow the structure EXACTLY:
 
-## Structure
+## Report Structure (STRICT — follow this order and format)
 
-### 1. Executive Summary
-- One-paragraph overview: what paper, what repo, what was the outcome
-- **Reproducibility Score: X/10** (integer, based on criteria below)
+### 1. Score Card (tables only, NO prose)
 
-### 2. Experiment Coverage
-- Table listing each experiment from the paper
-- For each: is it implemented in the repo? Was it executed? Result?
-- Highlight missing experiments that the paper describes but the repo lacks
+| Dimension | Score | Weight | Weighted | Key Evidence |
+|-----------|-------|--------|----------|--------------|
+| Environment | X/100 | 25% | ... | one-line evidence |
+| Data Availability | X/100 | 25% | ... | one-line evidence |
+| Execution Success | X/100 | 20% | ... | one-line evidence |
+| Claim Match | X/100 | 30% | ... | one-line evidence |
+| **Total** | | | **X/100** | |
 
-### 3. Result Verification
-- For each result claim that could be verified:
-  - Paper claimed value vs reproduced value
-  - Within tolerance? Yes/No
-  - Brief analysis of any discrepancy
-- For claims that could NOT be verified: explain why
+**ECR (Executable-Claim Reproducible)**: ✅ True / ❌ False — one-line reason
 
-### 4. Configuration & Environment
-- Were the reported configurations (dataset sizes, hyperparameters, etc.) \
-consistent with what the code actually uses?
-- Any environment issues encountered during execution?
+### 2. Verdict Dashboard (table only, NO prose)
 
-### 5. Gaps & Concerns
-- Missing experiments, unreproducible claims, code quality issues
-- Anything suspicious or concerning about reproducibility
+| Claim ID | Paper Value | Reproduced | Δ | Status |
+|----------|-------------|------------|---|--------|
+Use ✅ for SUPPORTED, ❌ for NOT_SUPPORTED, ⚠️ for INCONCLUSIVE.
 
-### 6. Scoring Breakdown
-Explain the score using these criteria (each 0-2 points):
-1. **Code Completeness** (0-2): Does the repo contain code for all paper experiments?
-2. **Execution Success** (0-2): Did the code run without major issues?
-3. **Result Accuracy** (0-2): Do reproduced results match paper claims?
-4. **Documentation** (0-2): Is the repo well-documented for reproduction?
-5. **Data Availability** (0-2): Are datasets accessible and properly referenced?
+### 3. Reproduced Figures
+For each reproduced figure: embed ![caption](path) and add ONE sentence comparison note.
+If no figures were generated, write "No figures reproduced."
+
+### 4. Gap Diagnosis (table only)
+
+| # | Category | Severity | Affected Claims | Description |
+|---|----------|----------|-----------------|-------------|
+Categories MUST be from: DATA_MISSING, PREPROCESS_UNSPECIFIED, CHECKPOINT_MISSING, \
+ENVIRONMENT_UNDERDEFINED, ENTRYPOINT_UNCLEAR, NONDETERMINISM, COMPUTE_INFEASIBLE, RESULT_MISMATCH.
+
+### 5. Experiment Coverage (table only)
+
+| Experiment | Implemented? | Executed? | Result |
+|------------|-------------|-----------|--------|
 
 ## Rules
-- Be factual. Only cite values that appear in the artifacts.
-- Do NOT fabricate metrics, file paths, or claim results.
-- Use specific numbers and evidence for every assertion.
-- If something is unclear, say so explicitly rather than guessing.
-- Distinguish clearly between:
-  1. repo not implemented,
-  2. repo executed but cannot be aligned to the paper's exact experiment,
-  3. repo executed and numerically disagrees with the paper.
-- Treat `status="partial"` execution steps as degraded success: the primary command failed and a fallback only partially validated the step.
-- If runnable entrypoints and successful execution evidence exist, do NOT describe the \
-  repository as missing implementation unless the artifacts clearly prove that absence.
-- If environment validation failed but failed_packages is empty and core steps ran, treat \
-  that as a validation warning or probe mismatch, not as a hard execution failure.
+- NO verbose paragraphs. Use tables and single-sentence bullets ONLY.
+- Max 2 sentences per section OUTSIDE of tables.
+- Every number MUST come from the provided artifacts.
+- Do NOT fabricate metrics, file paths, or results.
+- Do NOT repeat information across sections.
+- Distinguish: not implemented vs executed-but-misaligned vs numerically-disagrees.
+- Treat status="partial" as degraded success.
 - Write in clear, professional English.
 """
 
@@ -191,6 +180,34 @@ def _build_report_prompt(ctx: dict, artifacts) -> str:
     sections.append("\n# EVALUABILITY VERDICT")
     sections.append(json.dumps(eval_verdict, indent=2, ensure_ascii=False)[:2000])
 
+    # ── Reproducibility Score (0-100) ───────────────────────────
+    try:
+        score = artifacts.read_json("results/reproducibility_score.json")
+        sections.append("\n# REPRODUCIBILITY SCORE (0-100)")
+        sections.append(json.dumps(score, indent=2, ensure_ascii=False)[:4000])
+    except Exception:  # noqa: BLE001
+        pass
+
+    # ── Visual elements from PDF ────────────────────────────────
+    try:
+        ve = artifacts.read_json("fingerprint/visual_elements.json")
+        if ve.get("elements"):
+            sections.append("\n# VISUAL ELEMENTS FROM PAPER")
+            sections.append(json.dumps(ve, indent=2, ensure_ascii=False)[:3000])
+    except Exception:  # noqa: BLE001
+        pass
+
+    # ── Reproduced figures ──────────────────────────────────────
+    try:
+        figs = artifacts.read_json("results/reproduced_figures.json")
+        if figs.get("figures"):
+            sections.append("\n# REPRODUCED FIGURES")
+            for fig in figs["figures"]:
+                if fig.get("image_path"):
+                    sections.append(f"- {fig['element_id']}: ![{fig.get('comparison_notes', '')}]({fig['image_path']})")
+    except Exception:  # noqa: BLE001
+        pass
+
     # ── Context ──────────────────────────────────────────────────
     sections.append(f"\n# RUN CONTEXT")
     sections.append(f"- run_id: {ctx.get('run_id')}")
@@ -213,35 +230,10 @@ class AuditReportAgent(BaseAgent):
             self.log("PROGRESS", f"LLM unavailable ({llm_err}), generating fallback report")
             report_text = self._fallback_report(ctx)
 
-        # ── Post-process: PictureToWords ─────────────────────────
+        # ── Write report directly (no PictureToWords stripping on output) ──
         draft_path = self.artifacts.path("results/report.draft.md")
         draft_path.write_text(report_text, encoding="utf-8")
-
-        picture_script = Path.cwd() / "PictureToWords.py"
-        if picture_script.exists():
-            cmd = [
-                sys.executable,
-                str(picture_script),
-                "--input",
-                str(draft_path),
-                "--output",
-                str(self.artifacts.path("results/report.md")),
-            ]
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-            self.artifacts.append_text(
-                "execution/run.log",
-                f"\n$ {' '.join(cmd)}\n{proc.stdout}\n{proc.stderr}\n",
-            )
-            if proc.returncode != 0:
-                self.artifacts.write_text(
-                    "results/report.md",
-                    draft_path.read_text(encoding="utf-8"),
-                )
-        else:
-            self.artifacts.write_text(
-                "results/report.md",
-                draft_path.read_text(encoding="utf-8"),
-            )
+        self.artifacts.write_text("results/report.md", report_text)
 
         return {"report": "results/report.md"}
 

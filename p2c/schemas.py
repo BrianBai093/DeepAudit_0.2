@@ -432,6 +432,97 @@ class TaskCompileOutput(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Visual extraction schemas (Phase 1 PDF → figures/tables)
+# ---------------------------------------------------------------------------
+
+
+class VisualElement(BaseModel):
+    """A figure or table extracted from the paper PDF via vision API."""
+
+    element_id: str                                # e.g. "fig_1", "table_3"
+    element_type: Literal["figure", "table"]
+    page: int
+    caption: str = ""
+    chart_type: str | None = None                  # "bar", "line", "scatter", "heatmap", "table", "diagram"
+    axis_labels: dict[str, str] = Field(default_factory=dict)
+    legend_entries: list[str] = Field(default_factory=list)
+    data_series: list[dict[str, Any]] = Field(default_factory=list)
+    visual_anchor: str = ""                        # "Figure 1", "Table 3"
+    associated_claim_ids: list[str] = Field(default_factory=list)
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+class VisualElementsDoc(BaseModel):
+    """All visual elements extracted from the paper PDF."""
+
+    elements: list[VisualElement] = Field(default_factory=list)
+    page_count: int = 0
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+class ReproducedFigure(BaseModel):
+    """A figure reproduced from execution results in Phase 3."""
+
+    element_id: str
+    matplotlib_code: str = ""
+    image_path: str = ""                           # relative path to saved PNG
+    comparison_notes: str = ""
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+class ReproducedFiguresDoc(BaseModel):
+    figures: list[ReproducedFigure] = Field(default_factory=list)
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Reproducibility scoring schemas (Phase 3)
+# ---------------------------------------------------------------------------
+
+
+class DimensionScore(BaseModel):
+    """Single dimension score (0-100)."""
+
+    dimension: Literal["environment", "data_availability", "execution_success", "claim_match"]
+    score: int = Field(ge=0, le=100, default=0)
+    weight: float = 0.25
+    weighted_score: float = 0.0
+    evidence: list[str] = Field(default_factory=list)
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+class GapDiagnosis(BaseModel):
+    """Classified reproduction failure."""
+
+    gap_id: str
+    category: Literal[
+        "DATA_MISSING",
+        "PREPROCESS_UNSPECIFIED",
+        "CHECKPOINT_MISSING",
+        "ENVIRONMENT_UNDERDEFINED",
+        "ENTRYPOINT_UNCLEAR",
+        "NONDETERMINISM",
+        "COMPUTE_INFEASIBLE",
+        "RESULT_MISMATCH",
+    ]
+    claim_ids: list[str] = Field(default_factory=list)
+    description: str = ""
+    severity: Literal["critical", "major", "minor"] = "major"
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+class ReproducibilityScore(BaseModel):
+    """Complete reproducibility assessment with 0-100 weighted score."""
+
+    total_score: float = 0.0
+    dimensions: list[DimensionScore] = Field(default_factory=list)
+    ecr: bool = False                              # Executable-Claim Reproducible
+    ecr_reason: str = ""
+    gaps: list[GapDiagnosis] = Field(default_factory=list)
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
 # Phase 2 local execution schemas
 # ---------------------------------------------------------------------------
 

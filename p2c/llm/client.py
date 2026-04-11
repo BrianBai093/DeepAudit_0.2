@@ -70,7 +70,69 @@ class LLMClient:
                 raise LLMClientError("LLM did not return JSON")
             return json.loads(match.group(0))
 
-    def _post_json(self, payload: dict[str, Any]) -> dict[str, Any]:
+    def chat_vision(
+        self,
+        system: str,
+        user_text: str,
+        images: list[str],
+        detail: str = "high",
+    ) -> str:
+        """Multimodal chat with text + base64 image data URIs."""
+        content: list[dict[str, Any]] = [{"type": "text", "text": user_text}]
+        for img in images:
+            content.append({
+                "type": "image_url",
+                "image_url": {"url": img, "detail": detail},
+            })
+        payload = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": content},
+            ],
+        }
+        data = self._post_json(payload, timeout=180)
+        return self._extract_content(data)
+
+    def chat_vision_json(
+        self,
+        schema: dict[str, Any],
+        system: str,
+        user_text: str,
+        images: list[str],
+        detail: str = "high",
+    ) -> dict[str, Any]:
+        """Vision call that returns structured JSON."""
+        schema_text = json.dumps(schema, ensure_ascii=False)
+        strict_text = (
+            f"{user_text}\n\nReturn exactly one JSON object matching this schema guide: "
+            f"{schema_text}. Do not include markdown or commentary."
+        )
+        content: list[dict[str, Any]] = [{"type": "text", "text": strict_text}]
+        for img in images:
+            content.append({
+                "type": "image_url",
+                "image_url": {"url": img, "detail": detail},
+            })
+        payload = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": content},
+            ],
+            "response_format": {"type": "json_object"},
+        }
+        data = self._post_json(payload, timeout=180)
+        text = self._extract_content(data)
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            match = re.search(r"\{.*\}", text, flags=re.S)
+            if not match:
+                raise LLMClientError("Vision LLM did not return JSON")
+            return json.loads(match.group(0))
+
+    def _post_json(self, payload: dict[str, Any], timeout: int = 120) -> dict[str, Any]:
         if not self.api_key:
             raise LLMClientError("OPENAI_API_KEY is not set")
         # urllib/http headers are latin-1 encoded. Non-ASCII key/base_url values cause opaque
@@ -89,7 +151,7 @@ class LLMClient:
             },
         )
         try:
-            with urllib.request.urlopen(req, timeout=120) as resp:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
                 return json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
             details = e.read().decode("utf-8", errors="ignore")
