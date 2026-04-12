@@ -189,6 +189,10 @@ def extract_metric_records_from_stdout(
         r"\s*[:=]\s*([\d.eE+-]+)"
     )
     for match in labeled_pattern.finditer(stdout):
+        line_start = stdout.rfind("\n", 0, match.start()) + 1
+        line_prefix = stdout[line_start:match.start()].lower()
+        if re.search(r"(?:^|[^a-z0-9_])(train|training|val|valid|validation|eval|test)[_ ]*$", line_prefix):
+            continue
         add_record(match.group(1), match.group(2), "LABELED_METRIC")
 
     # Layer 5 — dictionary-style metric summaries (`{'precision': 0.1, 'f1': 0.2}`).

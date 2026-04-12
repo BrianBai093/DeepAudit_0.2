@@ -311,8 +311,8 @@ class ExtractFingerprintFilterAgent(BaseAgent):
                     tolerance=tolerance,
                     evidence_anchors=FingerprintEvidenceAnchors(
                         text_anchor=f"atomic_criteria[{crit_idx}]",
-                        visual_anchor=row.get("table_anchor") if row.get("source_type") == "table_metric" else None,
-                        visual_data={},
+                        visual_anchor=row.get("table_anchor") or None,
+                        visual_data=row.get("visual_data") if isinstance(row.get("visual_data"), dict) else {},
                     ),
                     reason_codes=[str(x) for x in row.get("reason_codes", [])],
                 )

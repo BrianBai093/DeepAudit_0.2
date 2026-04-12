@@ -61,6 +61,7 @@ from p2c.agents.phase2.result_extraction import (
     extract_metrics_from_file,
     extract_metrics_from_stdout,
     extract_traceback,
+    is_static_inspection_command,
 )
 from p2c.runtime.conda_env import CondaEnvManager
 from p2c.schemas import (
@@ -75,6 +76,22 @@ from p2c.schemas import (
 logger = logging.getLogger(__name__)
 
 DEFAULT_CLAUDE_MODEL = "claude-sonnet-4-20250514"
+_GENERIC_SCALAR_METRICS = {
+    "accuracy",
+    "auc",
+    "bleu",
+    "f1",
+    "loss",
+    "mae",
+    "mse",
+    "perplexity",
+    "pr_auc",
+    "precision",
+    "recall",
+    "rmse",
+    "roc_auc",
+    "rouge",
+}
 
 # ---------------------------------------------------------------------------
 # Keys forwarded from the host environment into the Claude Code session.
@@ -126,7 +143,7 @@ class CodexExecutorAgent(BaseAgent):
         claims_ir_data = self.artifacts.read_json("fingerprint/claims_ir.json")
         claims_ir = ClaimsIR(**claims_ir_data) if claims_ir_data.get("claims") else ClaimsIR()
 
-        outputs_dir = str(self.artifacts.path("execution/codex_outputs"))
+        outputs_dir = str(self.artifacts.path("execution/codex_outputs").resolve())
         Path(outputs_dir).mkdir(parents=True, exist_ok=True)
 
         all_runs: list[dict[str, Any]] = []
@@ -266,7 +283,7 @@ class CodexExecutorAgent(BaseAgent):
         claims_ir_data = self.artifacts.read_json("fingerprint/claims_ir.json")
         claims_ir = ClaimsIR(**claims_ir_data) if claims_ir_data.get("claims") else ClaimsIR()
 
-        outputs_dir = str(self.artifacts.path("execution/codex_outputs"))
+        outputs_dir = str(self.artifacts.path("execution/codex_outputs").resolve())
         expected_results = self.artifacts.read_json("execution/execution_plan.json").get("expected_results", [])
 
         prompt = build_autonomous_exploration_prompt(
@@ -416,11 +433,17 @@ class CodexExecutorAgent(BaseAgent):
         effective_cwd: str,
     ) -> dict[str, Any]:
         stored = self.artifacts.read_json(step_result_relative)
-        metrics = stored.get("metrics") if isinstance(stored.get("metrics"), dict) else {}
-        stdout_metrics = extract_metrics_from_stdout(stdout_text, contract, command=step.command)
-        for key, value in stdout_metrics.items():
-            if key not in metrics:
-                metrics[key] = value
+        stored_metrics = stored.get("metrics") if isinstance(stored.get("metrics"), dict) else {}
+        ignore_metrics = self._should_ignore_step_metrics(step)
+        if ignore_metrics:
+            metrics: dict[str, Any] = {}
+        else:
+            stdout_metrics = extract_metrics_from_stdout(stdout_text, contract, command=step.command)
+            stdout_metric_names = {str(name).lower() for name in stdout_metrics}
+            metrics = dict(stdout_metrics)
+            for key, value in stored_metrics.items():
+                if self._allow_stored_metric(str(key), stdout_metric_names):
+                    metrics[key] = value
 
         selected_attempt = self._find_attempt_for_stored_result(stored, attempt_records)
         effective_exit_code = proc.returncode
@@ -461,16 +484,26 @@ class CodexExecutorAgent(BaseAgent):
             "effective_cwd": effective_cwd,
             "path_resolution_mode": step.path_resolution_mode or "default",
             "derived_from_wrapper": step.derived_from_wrapper,
+            "planned_command": step.command,
+            "expected_metrics": list(step.expected_metrics),
+            "is_setup": step.is_setup,
         }
         run_reason_codes: list[str] = []
+        if ignore_metrics and stored_metrics:
+            run_reason_codes.append("METRICS_IGNORED_FOR_INSPECTION_STEP")
+        if effective_command.strip() != step.command.strip() and not self._commands_share_target(step.command, effective_command):
+            run_reason_codes.append("COMMAND_DRIFT")
         if degraded_success and primary_attempt is not None:
             run_params.update({
-                "planned_command": step.command,
                 "primary_exit_code": int(primary_attempt.get("exit_code", 1)),
                 "fallback_used": True,
                 "degraded_success": True,
             })
-            run_reason_codes = ["PRIMARY_FAILED_FALLBACK_SUCCEEDED", "NON_EQUIVALENT_FALLBACK"]
+            run_reason_codes = list(dict.fromkeys([
+                *run_reason_codes,
+                "PRIMARY_FAILED_FALLBACK_SUCCEEDED",
+                "NON_EQUIVALENT_FALLBACK",
+            ]))
         if forced_failure:
             run_status = "failed"
             run_reason_codes = list(dict.fromkeys([*run_reason_codes, "SHELL_WRAPPER_FALSE_SUCCESS", "PATH_RESOLUTION_FAILURE"]))
@@ -533,6 +566,26 @@ class CodexExecutorAgent(BaseAgent):
             "execution_mode": execution_mode,
             "attempted_commands": attempt_records,
         }
+
+    @staticmethod
+    def _should_ignore_step_metrics(step: ExecutionStep) -> bool:
+        """Metricless setup/inspection steps should not contribute result evidence."""
+        if step.expected_metrics or step.produced_artifacts:
+            return False
+        if step.is_setup:
+            return True
+        return is_static_inspection_command(step.command)
+
+    @staticmethod
+    def _allow_stored_metric(metric_name: str, observed_stdout_names: set[str]) -> bool:
+        lowered = metric_name.lower()
+        if lowered.endswith("_all"):
+            return False
+        if lowered in observed_stdout_names:
+            return False
+        if observed_stdout_names and lowered in _GENERIC_SCALAR_METRICS:
+            return False
+        return True
 
     @classmethod
     def _is_shell_step(cls, command: str) -> bool:
@@ -643,6 +696,7 @@ class CodexExecutorAgent(BaseAgent):
                 tokens = tokens[1:]
                 continue
             break
+        tokens = CodexExecutorAgent._strip_conda_run_tokens(tokens)
         if len(tokens) < 2 or tokens[0] != "python":
             return None
         script = tokens[1]
@@ -654,9 +708,47 @@ class CodexExecutorAgent(BaseAgent):
     def _commands_share_target(cls, primary_command: str, effective_command: str) -> bool:
         if primary_command.strip() == effective_command.strip():
             return True
+        primary_tokens = cls._command_tokens_without_conda(primary_command)
+        effective_tokens = cls._command_tokens_without_conda(effective_command)
+        if primary_tokens and primary_tokens == effective_tokens:
+            return True
         primary_script = cls._extract_python_script_target(primary_command)
         effective_script = cls._extract_python_script_target(effective_command)
         return primary_script is not None and primary_script == effective_script
+
+    @staticmethod
+    def _command_tokens_without_conda(command: str) -> list[str] | None:
+        try:
+            tokens = shlex.split(command)
+        except ValueError:
+            return None
+        while tokens and "=" in tokens[0] and not tokens[0].startswith("-"):
+            name, _, value = tokens[0].partition("=")
+            if name.isidentifier() and value:
+                tokens = tokens[1:]
+                continue
+            break
+        return CodexExecutorAgent._strip_conda_run_tokens(tokens)
+
+    @staticmethod
+    def _strip_conda_run_tokens(tokens: list[str]) -> list[str]:
+        if len(tokens) < 2 or tokens[0] != "conda" or tokens[1] != "run":
+            return tokens
+        i = 2
+        options_with_values = {"-n", "--name", "-p", "--prefix"}
+        while i < len(tokens):
+            token = tokens[i]
+            if token in options_with_values:
+                i += 2
+                continue
+            if token.startswith("--") and "=" in token:
+                i += 1
+                continue
+            if token.startswith("-"):
+                i += 1
+                continue
+            break
+        return tokens[i:]
 
     @classmethod
     def _is_degraded_success(

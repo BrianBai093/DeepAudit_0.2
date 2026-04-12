@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from p2c.agents.base import BaseAgent
+from p2c.agents.phase2.result_extraction import is_static_inspection_command
 
 SYSTEM_PROMPT = """\
 You are a senior ML reproducibility auditor writing the final assessment report.
@@ -29,9 +30,11 @@ Write a CONCISE reproducibility audit report in Markdown. Follow the structure E
 
 ### 2. Verdict Dashboard (table only, NO prose)
 
-| Claim ID | Paper Value | Reproduced | Δ | Status |
-|----------|-------------|------------|---|--------|
+| Claim | Paper Value | Reproduced | Δ | Status |
+|-------|-------------|------------|---|--------|
 Use ✅ for SUPPORTED, ❌ for NOT_SUPPORTED, ⚠️ for INCONCLUSIVE.
+The Claim cell MUST use the concrete claim text first, with the internal claim_id in parentheses.
+Example: "fraudulent:legit ratio = 1:1 (claim_01)".
 
 ### 3. Reproduced Figures
 For each reproduced figure: embed ![caption](path) and add ONE sentence comparison note.
@@ -55,10 +58,106 @@ ENVIRONMENT_UNDERDEFINED, ENTRYPOINT_UNCLEAR, NONDETERMINISM, COMPUTE_INFEASIBLE
 - Every number MUST come from the provided artifacts.
 - Do NOT fabricate metrics, file paths, or results.
 - Do NOT repeat information across sections.
+- Do NOT use bare claim IDs as the primary label; always show the concrete claim text first.
 - Distinguish: not implemented vs executed-but-misaligned vs numerically-disagrees.
 - Treat status="partial" as degraded success.
 - Write in clear, professional English.
 """
+
+
+def _claim_title(claim: dict, claim_id: str | None = None) -> str:
+    """Human-readable claim label for reports."""
+    predicate = str(claim.get("predicate") or "").strip()
+    if predicate:
+        return predicate
+    metric = str(claim.get("metric") or "").strip()
+    target = claim.get("target")
+    if metric and target is not None:
+        return f"{metric} = {target}"
+    if metric:
+        return metric
+    return str(claim_id or "unknown claim")
+
+
+def _claim_meta(claim: dict, claim_id: str | None = None) -> str:
+    """Compact traceability metadata after the readable claim title."""
+    parts = [str(claim_id)] if claim_id else []
+    ctype = str(claim.get("type") or "").strip()
+    if ctype:
+        parts.append(ctype)
+    conditions = claim.get("conditions", {})
+    if isinstance(conditions, dict):
+        experiment_id = str(conditions.get("experiment_id") or "").strip()
+        if experiment_id:
+            parts.append(experiment_id)
+        table_anchor = str(conditions.get("table_anchor") or "").strip()
+        if table_anchor:
+            parts.append(table_anchor)
+    return ", ".join(parts)
+
+
+def _claim_label(claim: dict, claim_id: str | None = None) -> str:
+    title = _claim_title(claim, claim_id)
+    meta = _claim_meta(claim, claim_id)
+    return f"{title} ({meta})" if meta else title
+
+
+def _report_image_path(image_path: str) -> str:
+    """Convert run-root-relative image paths for use from results/report.md."""
+    path = str(image_path or "").strip()
+    if path.startswith("results/"):
+        return path[len("results/"):]
+    return path
+
+
+def _plan_step_map(plan: dict) -> dict[str, dict]:
+    rows = plan.get("execution_steps", []) if isinstance(plan, dict) else []
+    if not isinstance(rows, list):
+        return {}
+    return {
+        str(row.get("step_id")): row
+        for row in rows
+        if isinstance(row, dict) and row.get("step_id")
+    }
+
+
+def _metricless_report_step(run: dict, planned_step: dict | None) -> bool:
+    """Return True for setup/static inspection runs whose metrics are untrusted."""
+    planned_step = planned_step or {}
+    expected = planned_step.get("expected_metrics") or []
+    produced = planned_step.get("produced_artifacts") or []
+    if expected or produced:
+        return False
+    if planned_step.get("is_setup"):
+        return True
+    planned_command = str(planned_step.get("command") or "")
+    if planned_command and is_static_inspection_command(planned_command):
+        return True
+    return is_static_inspection_command(str(run.get("command") or ""))
+
+
+def _run_metrics_for_report(run: dict, plan_steps: dict[str, dict]) -> dict:
+    """Filter manifest metrics before they are shown to the report LLM."""
+    metrics = run.get("metrics", {})
+    if not isinstance(metrics, dict):
+        return {}
+    planned_step = plan_steps.get(str(run.get("run_id") or ""))
+    if _metricless_report_step(run, planned_step):
+        return {}
+    return metrics
+
+
+def _failure_rows_for_report(payload) -> list:
+    """Normalize execution_failures.json across list/current/legacy shapes."""
+    if isinstance(payload, list):
+        return [row for row in payload if isinstance(row, dict)]
+    if isinstance(payload, dict):
+        rows = payload.get("failures", [])
+        if isinstance(rows, list):
+            return [row for row in rows if isinstance(row, dict)]
+        if payload.get("step_failures"):
+            return [payload]
+    return []
 
 
 def _build_report_prompt(ctx: dict, artifacts) -> str:
@@ -95,8 +194,10 @@ def _build_report_prompt(ctx: dict, artifacts) -> str:
         pass
 
     # ── Execution plan ───────────────────────────────────────────
+    plan_steps: dict[str, dict] = {}
     try:
         plan = artifacts.read_json("execution/execution_plan.json")
+        plan_steps = _plan_step_map(plan)
         sections.append("\n# EXECUTION PLAN")
         # Only include key fields to save tokens
         plan_summary = {
@@ -126,18 +227,25 @@ def _build_report_prompt(ctx: dict, artifacts) -> str:
             sections.append(f"- reason_codes: {json.dumps(run.get('reason_codes', []), ensure_ascii=False)}")
         if run.get("status") == "partial":
             sections.append("- partial_execution_note: primary command failed; fallback only validated artifacts or a reduced objective")
-        sections.append(f"- metrics: {json.dumps(run.get('metrics', {}))}")
+        metricless_step = _metricless_report_step(run, plan_steps.get(str(run.get("run_id") or "")))
+        filtered_metrics = _run_metrics_for_report(run, plan_steps)
+        sections.append(f"- metrics: {json.dumps(filtered_metrics)}")
+        if run.get("metrics") and not filtered_metrics:
+            sections.append("- metrics_note: omitted because this step was planned as setup/static inspection with no expected metrics")
         # Include stdout tail for context (truncated)
         stdout = run.get("stdout_tail", "")
-        if stdout:
+        if stdout and not metricless_step:
             sections.append(f"- stdout_tail (last 500 chars): {stdout[-500:]}")
+        elif stdout and metricless_step:
+            sections.append("- stdout_tail_note: omitted because this step was planned as setup/static inspection")
 
     # ── Execution failures ───────────────────────────────────────
     try:
         failures = artifacts.read_json("execution/execution_failures.json")
-        if failures.get("failures"):
+        failure_rows = _failure_rows_for_report(failures)
+        if failure_rows:
             sections.append("\n# EXECUTION FAILURES")
-            sections.append(json.dumps(failures, indent=2, ensure_ascii=False)[:2000])
+            sections.append(json.dumps(failure_rows, indent=2, ensure_ascii=False)[:2000])
     except Exception:  # noqa: BLE001
         pass
 
@@ -204,7 +312,10 @@ def _build_report_prompt(ctx: dict, artifacts) -> str:
             sections.append("\n# REPRODUCED FIGURES")
             for fig in figs["figures"]:
                 if fig.get("image_path"):
-                    sections.append(f"- {fig['element_id']}: ![{fig.get('comparison_notes', '')}]({fig['image_path']})")
+                    sections.append(
+                        f"- {fig['element_id']}: "
+                        f"![{fig.get('comparison_notes', '')}]({_report_image_path(fig['image_path'])})"
+                    )
     except Exception:  # noqa: BLE001
         pass
 
@@ -244,6 +355,9 @@ class AuditReportAgent(BaseAgent):
         metrics = self.artifacts.read_json("results/metrics.json")
         claims_doc = self.artifacts.read_json("fingerprint/claims_ir.json")
         manifest = self.artifacts.read_json("execution/codex_outputs/run_manifest.json")
+        plan = self.artifacts.read_json("execution/execution_plan.json")
+        plan_steps = _plan_step_map(plan)
+        reproduced_figures = self.artifacts.read_json("results/reproduced_figures.json")
 
         lines = [
             "# Reproducibility Audit Report",
@@ -258,18 +372,42 @@ class AuditReportAgent(BaseAgent):
             "",
             "*Note: LLM was unavailable. This is a simplified deterministic report.*",
             "",
-            "## Claim Verdicts",
+            "## Reproduced Figures",
             "",
         ]
+
+        figures = [
+            fig for fig in reproduced_figures.get("figures", [])
+            if fig.get("image_path")
+        ]
+        if figures:
+            for fig in figures:
+                image_path = _report_image_path(fig.get("image_path", ""))
+                caption = fig.get("comparison_notes") or fig.get("element_id") or "reproduced figure"
+                lines.append(f"![{caption}]({image_path})")
+                lines.append("")
+                lines.append(
+                    f"- {fig.get('element_id')}: {caption}"
+                )
+                lines.append("")
+        else:
+            lines.extend(["No figures reproduced.", ""])
+
+        lines.extend([
+            "## Claim Verdicts",
+            "",
+        ])
 
         for cv in verdict.get("claim_verdicts", []):
             claim = next(
                 (c for c in claims_doc.get("claims", []) if c.get("claim_id") == cv.get("claim_id")),
                 {},
             )
+            claim_id = cv.get("claim_id")
             lines.append(
-                f"- **{cv.get('claim_id')}** [{cv.get('status')}]: "
-                f"{claim.get('predicate', 'N/A')} — {cv.get('detail', '')}"
+                f"- **{_claim_title(claim, claim_id)}** "
+                f"(`{_claim_meta(claim, claim_id)}`) [{cv.get('status')}]: "
+                f"{cv.get('detail', '')}"
             )
             if cv.get("compared_value") is not None:
                 lines.append(
@@ -283,10 +421,18 @@ class AuditReportAgent(BaseAgent):
             "",
         ])
         for run in manifest.get("runs", []):
+            run_id = str(run.get("run_id") or "")
+            planned_step = plan_steps.get(run_id, {})
+            planned_command = str(planned_step.get("command") or "").strip()
+            effective_command = str(run.get("command", "")).strip()
             lines.append(
-                f"- **{run.get('run_id')}** [{run.get('status', 'unknown')}]: "
-                f"command=`{run.get('command', '')}` exit_code={run.get('exit_code')}"
+                f"- **{run_id}** [{run.get('status', 'unknown')}]: "
+                f"exit_code={run.get('exit_code')}"
             )
+            if planned_command:
+                lines.append(f"  - Planned: `{planned_command}`")
+            if effective_command and effective_command != planned_command:
+                lines.append(f"  - Effective: `{effective_command}`")
             if run.get("status") == "partial":
                 lines.append("  - primary command failed; fallback only validated artifacts or a reduced objective")
             if run.get("params"):

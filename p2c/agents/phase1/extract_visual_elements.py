@@ -72,6 +72,53 @@ _EXTRACT_SCHEMA: dict[str, Any] = {
 }
 
 
+def resolve_existing_pdf_path(raw_pdf_path: str | Path, ctx: dict[str, Any]) -> tuple[Path, Path | None]:
+    """Resolve a possibly stale PDF path to an existing paper PDF.
+
+    MinerU-style paper folders often contain UUID-prefixed ``*_origin.pdf`` files.
+    A rerun can leave ``--paper_pdf`` pointing at an older UUID while the current
+    folder has exactly the PDF we need under a different UUID.
+    """
+    requested = Path(raw_pdf_path).expanduser()
+    if requested.exists():
+        return requested, requested
+
+    candidates: list[Path] = []
+
+    def add_candidate(path: Path) -> None:
+        path = path.expanduser()
+        if path not in candidates:
+            candidates.append(path)
+
+    def add_pdf_candidates(directory: Path) -> None:
+        if not directory.exists() or not directory.is_dir():
+            return
+        for pattern in ("*_origin.pdf", "*.pdf"):
+            for path in sorted(directory.glob(pattern)):
+                add_candidate(path)
+
+    if requested.parent != Path("."):
+        add_pdf_candidates(requested.parent)
+
+    for key in ("paper_md_out", "paper_md"):
+        raw = ctx.get(key)
+        if not raw:
+            continue
+        paper_path = Path(str(raw)).expanduser()
+        add_pdf_candidates(paper_path.parent)
+        add_candidate(paper_path.parent.parent / "paper.pdf")
+
+    repo_dir = ctx.get("repo_dir")
+    if repo_dir:
+        add_candidate(Path(str(repo_dir)).expanduser().parent / "paper.pdf")
+
+    for candidate in candidates:
+        if candidate.exists() and candidate.is_file():
+            return requested, candidate
+
+    return requested, None
+
+
 class ExtractVisualElementsAgent(BaseAgent):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(name="extract_visual_elements", *args, **kwargs)
@@ -84,12 +131,16 @@ class ExtractVisualElementsAgent(BaseAgent):
             self.artifacts.write_json("fingerprint/visual_elements.json", doc.model_dump())
             return {"visual_elements": doc.model_dump()}
 
-        pdf_path = Path(pdf_path)
-        if not pdf_path.exists():
-            self.log("PROGRESS", f"PDF not found: {pdf_path}")
+        requested_pdf_path, resolved_pdf_path = resolve_existing_pdf_path(pdf_path, ctx)
+        if not resolved_pdf_path:
+            self.log("PROGRESS", f"PDF not found: {requested_pdf_path}")
             doc = VisualElementsDoc(reason_codes=["PDF_NOT_FOUND"])
             self.artifacts.write_json("fingerprint/visual_elements.json", doc.model_dump())
             return {"visual_elements": doc.model_dump()}
+        pdf_path = resolved_pdf_path
+        if pdf_path != requested_pdf_path:
+            ctx["paper_pdf"] = str(pdf_path)
+            self.log("PROGRESS", f"PDF not found: {requested_pdf_path}; using fallback PDF: {pdf_path}")
 
         # Render PDF pages
         try:

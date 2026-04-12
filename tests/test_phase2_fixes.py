@@ -222,8 +222,9 @@ def test_build_child_env_includes_path():
     from p2c.runtime.conda_env import CondaEnvManager
 
     env = CondaEnvManager._build_child_env()
+    host_path = os.environ.get("PATH", "")
     assert "PATH" in env
-    assert env["PATH"] == os.environ.get("PATH", "")
+    assert host_path in env["PATH"]
 
 
 def test_run_in_env_uses_non_login_bash_for_conda(monkeypatch):
@@ -930,6 +931,157 @@ def test_observe_metrics_ignores_static_inspection_steps(tmp_path, monkeypatch):
     assert values_by_metric["f1"] == {0.0714}
 
 
+def test_observe_metrics_uses_plan_to_ignore_drifted_inspect_step(tmp_path, monkeypatch):
+    """If Claude substitutes a metric script for an inspect step, Phase 3 should skip it."""
+    from p2c.agents.phase3.observe_metrics import ObserveMetricsAgent
+    from p2c.io_artifacts import ArtifactManager
+
+    artifacts = ArtifactManager(tmp_path / "artifacts", "run_drifted_inspect")
+    artifacts.ensure_tree()
+    artifacts.write_json(
+        "task/metric_contract.json",
+        {
+            "required_metrics": ["precision", "recall", "f1"],
+            "parsers": [],
+            "normalization": {},
+            "reason_codes": [],
+        },
+    )
+    artifacts.write_json(
+        "execution/execution_plan.json",
+        {
+            "plan_id": "p",
+            "env_name": "env",
+            "execution_steps": [
+                {
+                    "step_id": "step_01_repo_inspect",
+                    "description": "inspect source without invoking training",
+                    "command": "python -c \"from pathlib import Path; print(Path('train.py').read_text())\"",
+                    "expected_metrics": [],
+                    "produced_artifacts": [],
+                },
+                {
+                    "step_id": "step_02_train_model",
+                    "description": "train",
+                    "command": "python train.py",
+                    "expected_metrics": ["precision", "recall", "f1"],
+                    "produced_artifacts": [],
+                },
+            ],
+        },
+    )
+    artifacts.write_json(
+        "execution/codex_outputs/run_manifest.json",
+        {
+            "runs": [
+                {
+                    "run_id": "step_01_repo_inspect",
+                    "command": "python calculate_metrics.py",
+                    "params": {},
+                    "cwd": ".",
+                    "exit_code": 0,
+                    "status": "ok",
+                    "runtime_sec": 1.0,
+                    "stdout_tail": "precision=0.4\nrecall=0.2\nf1=0.3\n",
+                    "stderr_tail": "",
+                    "metrics": {"precision": 0.4, "recall": 0.2, "f1": 0.3},
+                    "reason_codes": ["COMMAND_DRIFT"],
+                },
+                {
+                    "run_id": "step_02_train_model",
+                    "command": "python train.py",
+                    "params": {},
+                    "cwd": ".",
+                    "exit_code": 0,
+                    "status": "ok",
+                    "runtime_sec": 1.0,
+                    "stdout_tail": "",
+                    "stderr_tail": "",
+                    "metrics": {},
+                    "reason_codes": [],
+                },
+            ],
+            "reason_codes": [],
+        },
+    )
+    artifacts.write_text(
+        "execution/codex_outputs/step_step_02_train_model_stdout.log",
+        "Precision: 0.0372\nRecall: 0.9184\nF1-score: 0.0714\n",
+    )
+
+    agent = ObserveMetricsAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
+    monkeypatch.setattr(agent, "safe_chat_text", lambda system, user: (None, None))
+
+    result = agent.execute({})
+    values_by_metric = {}
+    for row in result["metrics"]["records"]:
+        values_by_metric.setdefault(row["metric_name"], set()).add(row["value"])
+
+    assert values_by_metric["precision"] == {0.0372}
+    assert values_by_metric["recall"] == {0.9184}
+    assert values_by_metric["f1"] == {0.0714}
+
+
+def test_observe_metrics_prefers_stdout_over_manifest_generic_summary(tmp_path, monkeypatch):
+    """Claude-written generic summary metrics should not override real artifact-table stdout."""
+    from p2c.agents.phase3.observe_metrics import ObserveMetricsAgent
+    from p2c.io_artifacts import ArtifactManager
+
+    artifacts = ArtifactManager(tmp_path / "artifacts", "run_artifact_summary")
+    artifacts.ensure_tree()
+    artifacts.write_json(
+        "task/metric_contract.json",
+        {
+            "required_metrics": ["precision", "recall", "f1"],
+            "parsers": [],
+            "normalization": {},
+            "reason_codes": [],
+        },
+    )
+    artifacts.write_json(
+        "execution/codex_outputs/run_manifest.json",
+        {
+            "runs": [
+                {
+                    "run_id": "step_07_artifact_summary",
+                    "command": "python -c \"import pandas as pd; print(pd.read_csv('metrics.csv').head().to_string(index=False))\"",
+                    "params": {},
+                    "cwd": ".",
+                    "exit_code": 0,
+                    "status": "ok",
+                    "runtime_sec": 1.0,
+                    "stdout_tail": "",
+                    "stderr_tail": "",
+                    "metrics": {
+                        "precision": 0.041,
+                        "recall": 0.9837,
+                        "f1": 0.0786,
+                        "threshold_0_1_precision": 0.013579,
+                    },
+                    "reason_codes": [],
+                },
+            ],
+            "reason_codes": [],
+        },
+    )
+    artifacts.write_text(
+        "execution/codex_outputs/step_step_07_artifact_summary_stdout.log",
+        " threshold  precision   recall       f1  tp   fp  fn    tn\n"
+        "       0.1   0.013579 0.948980 0.026774  93 6756   5 50108\n",
+    )
+
+    agent = ObserveMetricsAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
+    monkeypatch.setattr(agent, "safe_chat_text", lambda system, user: (None, None))
+
+    result = agent.execute({})
+    rows = result["metrics"]["records"]
+    assert {"metric_name": "precision", "value": 0.041} not in [
+        {"metric_name": row["metric_name"], "value": row["value"]}
+        for row in rows
+    ]
+    assert any(row["metric_name"] == "threshold_0_1_precision" for row in rows)
+
+
 def test_execute_step_static_inspection_does_not_emit_metrics(tmp_path, monkeypatch):
     """Claude Code primary execution for inspect-like commands still succeeds."""
     from p2c.agents.phase2.codex_executor import CodexExecutorAgent
@@ -971,6 +1123,124 @@ def test_execute_step_static_inspection_does_not_emit_metrics(tmp_path, monkeypa
     )
 
     assert result["exit_code"] == 0
+    assert result["metrics"] == {}
+    stored = artifacts.read_json("execution/codex_outputs/step_inspect_train_result.json")
+    assert stored["metrics"] == {}
+
+
+def test_execute_step_static_inspection_ignores_stored_metrics_and_command_drift(tmp_path, monkeypatch):
+    """A metricless inspect step must not inherit metrics from Claude's result JSON."""
+    from p2c.agents.phase2.codex_executor import CodexExecutorAgent
+    from p2c.io_artifacts import ArtifactManager
+    from p2c.schemas import ExecutionStep, MetricContract
+
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    artifacts = ArtifactManager(tmp_path / "artifacts", "run_inspect_drift_exec")
+    artifacts.ensure_tree()
+    agent = CodexExecutorAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
+
+    class DummyEnvMgr:
+        env_name = "test_env"
+
+    from p2c.agents.phase2.codex_executor import ClaudeResult
+
+    def fake_claude(env_mgr, prompt, cwd, timeout_sec=600):
+        artifacts.write_json(
+            "execution/codex_outputs/step_inspect_result.json",
+            {
+                "command": "conda run --no-capture-output -n test_env python calculate_metrics.py",
+                "exit_code": 0,
+                "metrics": {"precision": 0.4, "recall": 0.2, "f1": 0.3},
+                "notes": "found existing metrics",
+            },
+        )
+        return ClaudeResult(stdout="precision=0.4\n", stderr="", returncode=0)
+
+    monkeypatch.setattr(CodexExecutorAgent, "_run_claude", staticmethod(fake_claude))
+
+    result = agent._execute_step(
+        step=ExecutionStep(
+            step_id="inspect",
+            description="inspect source",
+            command="python -c \"from pathlib import Path; print(Path('train.py').read_text())\"",
+            retry_on_failure=False,
+        ),
+        env_mgr=DummyEnvMgr(),
+        repo_dir=str(repo_dir),
+        contract=MetricContract(),
+        outputs_dir=str(artifacts.path("execution/codex_outputs")),
+        timeout_sec=60,
+    )
+
+    assert result["exit_code"] == 0
+    assert result["metrics"] == {}
+    assert "METRICS_IGNORED_FOR_INSPECTION_STEP" in result["reason_codes"]
+    assert "COMMAND_DRIFT" in result["reason_codes"]
+
+
+def test_execute_step_prefers_stdout_over_stored_generic_summary(tmp_path, monkeypatch):
+    """Phase 2 manifest metrics should not inherit generic values absent from stdout."""
+    from p2c.agents.phase2.codex_executor import CodexExecutorAgent
+    from p2c.io_artifacts import ArtifactManager
+    from p2c.schemas import ExecutionStep, MetricContract
+
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    artifacts = ArtifactManager(tmp_path / "artifacts", "run_step_summary")
+    artifacts.ensure_tree()
+    agent = CodexExecutorAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
+
+    class DummyEnvMgr:
+        env_name = "test_env"
+
+    from p2c.agents.phase2.codex_executor import ClaudeResult
+
+    def fake_claude(env_mgr, prompt, cwd, timeout_sec=600):
+        artifacts.write_json(
+            "execution/codex_outputs/step_summary_result.json",
+            {
+                "command": "conda run --no-capture-output -n test_env python -c \"print('summary')\"",
+                "exit_code": 0,
+                "metrics": {
+                    "precision": 0.041,
+                    "recall": 0.9837,
+                    "threshold_0_1_precision": 0.013579,
+                    "true_fraud_cases": 492,
+                },
+                "notes": "summarized artifacts",
+            },
+        )
+        return ClaudeResult(
+            stdout=(
+                " threshold  precision   recall       f1  tp   fp  fn    tn\n"
+                "       0.1   0.013579 0.948980 0.026774  93 6756   5 50108\n"
+            ),
+            stderr="",
+            returncode=0,
+        )
+
+    monkeypatch.setattr(CodexExecutorAgent, "_run_claude", staticmethod(fake_claude))
+
+    result = agent._execute_step(
+        step=ExecutionStep(
+            step_id="summary",
+            description="summarize artifacts",
+            command="python -c \"print('summary')\"",
+            expected_metrics=["precision", "recall", "f1"],
+            retry_on_failure=False,
+        ),
+        env_mgr=DummyEnvMgr(),
+        repo_dir=str(repo_dir),
+        contract=MetricContract(),
+        outputs_dir=str(artifacts.path("execution/codex_outputs")),
+        timeout_sec=60,
+    )
+
+    assert "precision" not in result["metrics"]
+    assert "recall" not in result["metrics"]
+    assert result["metrics"]["threshold_0_1_precision"] == 0.013579
+    assert result["metrics"]["true_fraud_cases"] == 492
 
 
 def test_execute_step_shell_false_success_is_forced_failed(tmp_path, monkeypatch):

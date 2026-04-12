@@ -122,7 +122,7 @@ class ScoreAndDiagnoseAgent(BaseAgent):
     # Artifact loading
     # ------------------------------------------------------------------
 
-    def _safe_read(self, path: str) -> dict:
+    def _safe_read(self, path: str) -> Any:
         try:
             return self.artifacts.read_json(path)
         except Exception:  # noqa: BLE001
@@ -402,7 +402,7 @@ class ScoreAndDiagnoseAgent(BaseAgent):
         verdict: dict,
         manifest: dict,
         env_result: dict,
-        failures: dict,
+        failures: Any,
     ) -> list[GapDiagnosis]:
         """Classify reproduction failures into gap categories."""
         gaps: list[GapDiagnosis] = []
@@ -416,7 +416,7 @@ class ScoreAndDiagnoseAgent(BaseAgent):
                 stdout = run.get("stdout_tail", "") or ""
                 error_texts.append((run.get("run_id", "unknown"), f"{stderr}\n{stdout}"))
 
-        for fail in failures.get("failures", []):
+        for fail in _failure_entries(failures):
             for sf in fail.get("step_failures", []):
                 error_texts.append((
                     sf.get("step_id", "unknown"),
@@ -493,3 +493,16 @@ def _severity_for_category(category: str) -> str:
     if category in minor:
         return "minor"
     return "major"
+
+
+def _failure_entries(failures: Any) -> list[dict]:
+    """Normalize execution_failures.json across legacy/current shapes."""
+    if isinstance(failures, list):
+        return [f for f in failures if isinstance(f, dict)]
+    if isinstance(failures, dict):
+        rows = failures.get("failures", [])
+        if isinstance(rows, list):
+            return [f for f in rows if isinstance(f, dict)]
+        if failures.get("step_failures"):
+            return [failures]
+    return []

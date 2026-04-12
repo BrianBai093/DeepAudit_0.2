@@ -31,9 +31,10 @@ class EnrichClaimsVisualAgent(BaseAgent):
             self.log("PROGRESS", "No atomic_criteria.json found, skipping enrichment")
             return {}
 
-        accepted = criteria.get("accepted", [])
-        if not accepted:
-            self.log("PROGRESS", "No accepted criteria to enrich")
+        criteria_key = "criteria" if isinstance(criteria.get("criteria"), list) else "accepted"
+        criterion_rows = criteria.get(criteria_key, [])
+        if not criterion_rows:
+            self.log("PROGRESS", "No atomic criteria to enrich")
             return {}
 
         # Build visual element index by anchor (e.g., "Table 1" → element)
@@ -49,7 +50,7 @@ class EnrichClaimsVisualAgent(BaseAgent):
 
         # Enrich existing criteria with visual data
         enriched_count = 0
-        for criterion in accepted:
+        for criterion in criterion_rows:
             table_anchor = _extract_table_anchor(criterion)
             if not table_anchor:
                 continue
@@ -74,12 +75,12 @@ class EnrichClaimsVisualAgent(BaseAgent):
             enriched_count += 1
 
         # Generate new criteria from figure data_series not covered by existing criteria
-        new_criteria = self._generate_criteria_from_figures(elements, accepted)
+        new_criteria = self._generate_criteria_from_figures(elements, criterion_rows)
         if new_criteria:
-            accepted.extend(new_criteria)
+            criterion_rows.extend(new_criteria)
 
         # Write back
-        criteria["accepted"] = accepted
+        criteria[criteria_key] = criterion_rows
         self.artifacts.write_json("fingerprint/atomic_criteria.json", criteria)
 
         self.log(
@@ -97,8 +98,8 @@ class EnrichClaimsVisualAgent(BaseAgent):
         # Collect existing metric+value pairs to avoid duplicates
         existing_values: set[tuple[str, str]] = set()
         for c in existing_criteria:
-            metric = str(c.get("metric", "")).strip().lower()
-            target = str(c.get("target", ""))
+            metric = str(c.get("metric_name") or c.get("metric") or "").strip().lower()
+            target = str(c.get("metric_value") if c.get("metric_value") is not None else c.get("target", ""))
             if metric:
                 existing_values.add((metric, target))
 
@@ -134,15 +135,28 @@ class EnrichClaimsVisualAgent(BaseAgent):
                     if series_name:
                         scope += f", {series_name}"
 
+                    fact = f"{metric_name} = {y_val}"
+                    visual_anchor = elem.get("visual_anchor") or elem.get("element_id")
                     new_criteria.append({
-                        "fact": f"{metric_name} = {y_val}",
+                        "criterion": f"<fact>{fact}</fact> <scope>{scope}</scope>",
+                        "fact": fact,
                         "scope": scope,
-                        "metric": metric_name,
-                        "target": y_val,
-                        "source": "visual_extraction",
+                        "facet": "metric_result",
+                        "source_type": "visual_metric",
+                        "metric_name": metric_name,
+                        "metric_value": y_val,
+                        "metric_unit": "value",
+                        "entity": series_name or x_label or None,
+                        "comparator": None,
+                        "dataset_scope": x_label or None,
+                        "table_anchor": visual_anchor,
+                        "input_unit_id": elem.get("element_id"),
                         "visual_data": {
                             "element_id": elem.get("element_id"),
                             "chart_type": elem.get("chart_type"),
+                            "axis_labels": elem.get("axis_labels", {}),
+                            "legend_entries": elem.get("legend_entries", []),
+                            "data_series": elem.get("data_series", []),
                         },
                         "reason_codes": ["VISUAL_FIGURE_EXTRACTED"],
                     })
@@ -152,6 +166,10 @@ class EnrichClaimsVisualAgent(BaseAgent):
 
 def _extract_table_anchor(criterion: dict) -> str | None:
     """Extract a table/figure anchor like 'Table 1' from criterion text."""
+    direct_anchor = criterion.get("table_anchor")
+    if isinstance(direct_anchor, str) and direct_anchor.strip():
+        return direct_anchor.strip()
+
     scope = str(criterion.get("scope", ""))
     fact = str(criterion.get("fact", ""))
     text = f"{scope} {fact}"

@@ -167,6 +167,28 @@ def build_step_execution_prompt(
         f"  - {p.get('metric_name', '?')}: regex `{p.get('regex', '')}`"
         for p in metric_parsers
     ) or "  (none specified — use METRIC format below)"
+    has_expected_metrics = bool(expected_metrics)
+    expected_metrics_desc = (
+        ", ".join(expected_metrics)
+        if has_expected_metrics
+        else "(none; this inspection/setup step should not emit metrics)"
+    )
+    metric_output_section = (
+        """After execution, print each metric on its own line:
+METRIC:<metric_name>=<numeric_value>
+
+IMPORTANT: Distinguish train vs validation/test metrics with prefixes:
+METRIC:val_accuracy=0.9534
+METRIC:train_accuracy=0.9972
+METRIC:val_loss=0.1823
+METRIC:test_accuracy=0.9685
+Use the unprefixed name (e.g. METRIC:accuracy=0.9534) ONLY for the most meaningful
+result — typically the validation or test metric, NOT the training metric."""
+        if has_expected_metrics
+        else """This step has no expected metrics. Do not print METRIC lines.
+Do not infer metrics from source text, prior steps, existing artifacts, or README examples.
+Write the result JSON with an empty metrics object: "metrics": {}."""
+    )
 
     # Inter-step context: let this step see what prior steps produced
     context_section = ""
@@ -207,22 +229,13 @@ A conda environment is available — use `conda run` as instructed in the system
 ```
 
 ## Expected Metrics
-{', '.join(expected_metrics) if expected_metrics else '(discover any numeric metrics)'}
+{expected_metrics_desc}
 
 ## Metric Regex Patterns (from paper analysis)
 {parsers_desc}
 
 ## Output Format
-After execution, print each metric on its own line:
-METRIC:<metric_name>=<numeric_value>
-
-IMPORTANT: Distinguish train vs validation/test metrics with prefixes:
-METRIC:val_accuracy=0.9534
-METRIC:train_accuracy=0.9972
-METRIC:val_loss=0.1823
-METRIC:test_accuracy=0.9685
-Use the unprefixed name (e.g. METRIC:accuracy=0.9534) ONLY for the most meaningful
-result — typically the validation or test metric, NOT the training metric.
+{metric_output_section}
 
 ## Rules
 1. Recover this step with at most 3 additional attempts.
@@ -234,6 +247,10 @@ result — typically the validation or test metric, NOT the training metric.
    {outputs_dir}/step_{step_id}_result.json
    Schema: {{"command": "<final command>", "exit_code": <int>, "metrics": {{"name": value}}, "notes": "<any notes>"}}
 7. IMPORTANT: Always use `python` (not `python3`) to run scripts — `python3` may resolve to the system interpreter outside the active conda/venv environment.
+8. Run the command shown above for this step. Do not substitute a different training,
+   prediction, or metric script just because such artifacts already exist.
+9. If the command is a static inspection/read command, do not run training,
+   prediction, threshold tuning, or metric calculation scripts.
 """).strip()
 
 

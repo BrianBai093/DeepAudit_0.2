@@ -92,7 +92,7 @@ class AtomicCriterion(BaseModel):
     fact: str
     scope: str
     facet: Literal["metric_result", "execution_param"] = "execution_param"
-    source_type: Literal["table_metric", "text_metric", "text_statement"] = "text_statement"
+    source_type: Literal["table_metric", "text_metric", "text_statement", "visual_metric"] = "text_statement"
     metric_name: str | None = None
     metric_value: float | None = None
     metric_unit: str | None = None

@@ -73,6 +73,11 @@ def write_inconclusive_verdict(artifacts: ArtifactManager, reason: str) -> None:
     artifacts.write_json("results/verdict.json", verdict.model_dump())
 
 
+def serializable_context(ctx: dict) -> dict:
+    """Return the public, JSON-serializable context fields for context.json."""
+    return {k: v for k, v in ctx.items() if not str(k).startswith("_")}
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Paper2Code MVP runner")
     parser.add_argument("--phase", type=int, choices=[1, 2, 3], required=True)
@@ -130,9 +135,8 @@ def main() -> None:
         write_inconclusive_verdict(artifacts, f"PIPELINE_ERROR:{e}")
         raise
 
-    # Strip internal Phase 2 objects before serializing context
-    serializable_ctx = {k: v for k, v in ctx.items() if not k.startswith("_p2_")}
-    artifacts.write_text("execution/context.json", json.dumps(serializable_ctx, ensure_ascii=False, indent=2))
+    # Strip internal runtime objects before serializing context.
+    artifacts.write_text("execution/context.json", json.dumps(serializable_context(ctx), ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":
