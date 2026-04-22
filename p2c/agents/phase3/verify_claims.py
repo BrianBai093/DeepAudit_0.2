@@ -87,7 +87,6 @@ def _build_user_prompt(
                 f"repo_coverage={exp.get('repo_coverage', '?')}, "
                 f"entrypoint={exp.get('repo_entrypoint', 'N/A')})"
             )
-            sections.append(f"  claims: {exp.get('claim_ids', [])}")
             if exp.get("notes"):
                 sections.append(f"  notes: {exp['notes']}")
 

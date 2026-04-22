@@ -48,6 +48,9 @@ def build_planner_user_prompt(
 
     return dedent(f"""\
 ## Paper Claims to Reproduce
+The JSON may be a compact Phase 1 summary with omitted counts. Plan against the
+included high-priority claims and collect reusable metrics that Phase 3 can align
+back to the full artifact set.
 ```json
 {claims_ir_json}
 ```
@@ -67,7 +70,7 @@ def build_planner_user_prompt(
 {metric_contract_json}
 ```
 
-## Repository File Tree (first 500 entries)
+## Repository File Tree (bounded summary)
 ```
 {repo_tree}
 ```
@@ -135,11 +138,11 @@ Guidelines:
 6. Each execution step's command must be a single shell command runnable in bash.
 7. Set realistic timeout_sec per step based on expected runtime:
    - data download/preprocessing: 600-1800s
-   - short training (small models, few epochs): 1800-3600s
+   - short training (small models, few epochs): at least 7200s
    - full training (CNN/Transformer, many epochs): 7200-21600s (2-6 hours)
    - evaluation/inference: 300-1200s
    Prefer generous values — underestimating causes mid-training kills.
-8. Map every code-verifiable claim from claims_ir to an expected_result entry.
+8. Map every included code-verifiable result claim from claims_ir to an expected_result entry.
 9. IMPORTANT: In commands, always use `python` (not `python3`) — `python3` may resolve to the system interpreter rather than the conda/venv environment's Python.
 10. When tensorflow/torch is a pip dependency, put numpy in pip_dependencies too (not conda) to avoid C ABI mismatches.
 11. Do NOT probe repository-owned Python scripts with `--help` or `-h`; many research scripts execute training instead of printing usage. Use static source inspection commands instead.
@@ -245,12 +248,22 @@ A conda environment is available — use `conda run` as instructed in the system
 5. Record all commands you run.
 6. After extracting metrics, write the complete result to:
    {outputs_dir}/step_{step_id}_result.json
-   Schema: {{"command": "<final command>", "exit_code": <int>, "metrics": {{"name": value}}, "notes": "<any notes>"}}
+   Schema: {{"command": "<final command>", "exit_code": <int>, "metrics": {{"name": value}}, "notes": "<any notes>", "repair_actions": [{{"type": "package_upgrade|source_patch|gpu_compatibility", "reason": "<why>", "command_or_file": "<command or file path>", "details": "<what changed>"}}]}}
 7. IMPORTANT: Always use `python` (not `python3`) to run scripts — `python3` may resolve to the system interpreter outside the active conda/venv environment.
 8. Run the command shown above for this step. Do not substitute a different training,
    prediction, or metric script just because such artifacts already exist.
 9. If the command is a static inspection/read command, do not run training,
    prediction, threshold tuning, or metric calculation scripts.
+10. GPU compatibility exception: if execution fails because the installed torch/CUDA
+    stack is incompatible with the visible GPU (for example `no kernel image`,
+    unsupported `sm_XX`, CUDA capability warnings, or CUDA driver/runtime mismatch),
+    you are allowed to upgrade packages inside the existing managed conda environment
+    and make minimal source compatibility patches needed for the newer stack.
+    Typical upgrades include torch, torchvision, numpy, CUDA runtime packages, and
+    Python inside the same conda env when the newer GPU-compatible torch requires it.
+    Do not create a new environment. Prefer commands such as
+    `conda install -n <env> ...` or `conda run -n <env> pip install -U ...`.
+    Record every package upgrade and source edit in `repair_actions` and `notes`.
 """).strip()
 
 
@@ -314,4 +327,7 @@ Schema: {{
 3. If you cannot reproduce a metric, note why.
 4. Keep output compact — no large file dumps.
 5. Always use `python` (not `python3`) to run scripts — `python3` may resolve to the system interpreter outside the active environment.
+6. If GPU/PyTorch/CUDA incompatibility blocks execution, you may upgrade packages
+   inside the existing managed conda environment and make minimal source compatibility
+   patches. Record all package upgrades and source edits in the output JSON `notes`.
 """).strip()

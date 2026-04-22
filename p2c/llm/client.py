@@ -22,6 +22,8 @@ class LLMClient:
         self.base_url = base_url.strip() if base_url else "https://api.openai.com/v1"
         if not self.base_url.endswith("/v1"):
             self.base_url = self.base_url.rstrip("/") + "/v1"
+        self.timeout_sec = _env_int("OPENAI_TIMEOUT_SEC", 300)
+        self.vision_timeout_sec = _env_int("OPENAI_VISION_TIMEOUT_SEC", max(360, self.timeout_sec))
 
     @staticmethod
     def _validate_ascii_env(name: str, value: str | None) -> None:
@@ -91,7 +93,7 @@ class LLMClient:
                 {"role": "user", "content": content},
             ],
         }
-        data = self._post_json(payload, timeout=180)
+        data = self._post_json(payload, timeout=self.vision_timeout_sec)
         return self._extract_content(data)
 
     def chat_vision_json(
@@ -122,7 +124,7 @@ class LLMClient:
             ],
             "response_format": {"type": "json_object"},
         }
-        data = self._post_json(payload, timeout=180)
+        data = self._post_json(payload, timeout=self.vision_timeout_sec)
         text = self._extract_content(data)
         try:
             return json.loads(text)
@@ -132,7 +134,7 @@ class LLMClient:
                 raise LLMClientError("Vision LLM did not return JSON")
             return json.loads(match.group(0))
 
-    def _post_json(self, payload: dict[str, Any], timeout: int = 120) -> dict[str, Any]:
+    def _post_json(self, payload: dict[str, Any], timeout: int | None = None) -> dict[str, Any]:
         if not self.api_key:
             raise LLMClientError("OPENAI_API_KEY is not set")
         # urllib/http headers are latin-1 encoded. Non-ASCII key/base_url values cause opaque
@@ -150,8 +152,9 @@ class LLMClient:
                 "Content-Type": "application/json",
             },
         )
+        effective_timeout = timeout if timeout is not None else self.timeout_sec
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
+            with urllib.request.urlopen(req, timeout=effective_timeout) as resp:
                 return json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
             details = e.read().decode("utf-8", errors="ignore")
@@ -181,3 +184,13 @@ class LLMClient:
                     joined.append(part)
             return "\n".join(joined)
         return str(content)
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        return max(1, int(raw.strip()))
+    except ValueError:
+        return default

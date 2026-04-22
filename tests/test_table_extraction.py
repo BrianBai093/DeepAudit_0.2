@@ -25,6 +25,47 @@ def _make_agent():
     )
 
 
+class MemoryArtifacts:
+    def __init__(self, initial: dict[str, dict] | None = None) -> None:
+        self.store = initial or {}
+
+    def read_json(self, relative: str) -> dict:
+        return self.store.get(relative, {})
+
+    def write_json(self, relative: str, payload: dict) -> None:
+        self.store[relative] = payload
+
+    def append_text(self, relative: str, content: str) -> None:
+        current = self.store.get(relative, {}).get("text", "")
+        self.store[relative] = {"text": current + content}
+
+
+class TableFallbackLLM:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def chat_json(self, *, schema, system: str, user: str):
+        self.calls += 1
+        assert "Table 1" in user
+        return {
+            "criteria": [
+                {
+                    "fact": "EP symmetric test error = 12.45%",
+                    "scope": "CIFAR-10, Table 1, Squared Error loss, symmetric gradient estimate",
+                    "facet": "metric_result",
+                    "metric_name": "test error",
+                    "metric_value": 12.45,
+                    "metric_unit": "%",
+                    "entity": "EP symmetric",
+                    "table_anchor": "Table 1",
+                }
+            ]
+        }
+
+    def chat_text(self, *, system: str, user: str) -> str:
+        return ""
+
+
 # ---- Classification report table (sklearn-style) ----
 
 CLF_REPORT_HTML = """
@@ -104,6 +145,54 @@ def test_standard_table_extraction():
     assert baseline_facts or ours_facts, f"Expected model-specific facts, got: {facts}"
 
 
+def test_table_block_llm_fallback_when_deterministic_parser_extracts_zero():
+    table_html = """
+    <table>
+    <tr><td></td><td colspan="2">Equilibrium Propagation Error (%)</td></tr>
+    <tr><td>Gradient Estimate</td><td>Test</td><td>Train</td></tr>
+    <tr><td>Symmetric</td><td>12.45 (0.18)</td><td>7.83</td></tr>
+    </table>
+    """
+    artifacts = MemoryArtifacts(
+        {
+            "fingerprint/guide_sentences.json": {
+                "units": [
+                    {
+                        "unit_id": "t_0",
+                        "type": "table_block",
+                        "text": "Table 1: CIFAR-10 results.\n" + table_html,
+                        "caption": "Table 1: CIFAR-10 results.",
+                    }
+                ],
+                "selected_unit_ids": ["t_0"],
+            },
+            "fingerprint/visual_elements.json": {
+                "elements": [
+                    {
+                        "element_id": "table_1",
+                        "element_type": "table",
+                        "visual_anchor": "Table 1",
+                        "caption": "Table 1: CIFAR-10 results.",
+                        "chart_type": "table",
+                        "data_series": [],
+                    }
+                ]
+            },
+        }
+    )
+    llm = TableFallbackLLM()
+    agent = ExtractFingerprintAtomicAgent(llm=llm, artifacts=artifacts, step_index=1, step_total=1)
+
+    result = agent.execute({})
+
+    criteria = result["atomic_criteria"]["criteria"]
+    assert llm.calls == 1
+    assert len(criteria) == 1
+    assert criteria[0]["source_type"] == "llm_table_metric"
+    assert criteria[0]["metric_name"] == "test error"
+    assert criteria[0]["table_anchor"] == "Table 1"
+
+
 # ---- Value plausibility ----
 
 def test_plausibility_rejects_large_accuracy():
@@ -148,3 +237,31 @@ def test_claims_ir_extracts_valid_decimal():
     metric, target = BuildClaimsIRAgent._extract_metric_and_target("f1 = 0.95")
     assert metric == "f1"
     assert abs(target - 0.95) < 0.001
+
+
+def test_fingerprint_filter_caps_claims_with_result_priority():
+    from p2c.agents.phase1.extract_fingerprint_filter import ExtractFingerprintFilterAgent
+
+    criteria = [
+        {"facet": "execution_param", "fact": f"batch size {idx}", "scope": "setup"}
+        for idx in range(4)
+    ] + [
+        {
+            "facet": "metric_result",
+            "fact": f"accuracy {90 + idx}%",
+            "scope": "test",
+            "metric_name": "accuracy",
+            "metric_value": 90 + idx,
+        }
+        for idx in range(4)
+    ]
+
+    kept, dropped = ExtractFingerprintFilterAgent._limit_selected_indices(
+        criteria,
+        list(range(len(criteria))),
+        max_claims=3,
+    )
+
+    assert dropped == 5
+    assert len(kept) == 3
+    assert all(criteria[idx]["facet"] == "metric_result" for idx in kept)

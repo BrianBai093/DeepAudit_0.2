@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import csv
 import json
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -12,24 +10,6 @@ from typing import Any
 
 from p2c.agents.base import BaseAgent
 from p2c.schemas import ReproducedFigure, ReproducedFiguresDoc
-
-# Disallowed imports in generated matplotlib code
-_DANGEROUS_IMPORTS = re.compile(
-    r"\bimport\s+(?:os|subprocess|socket|shutil|http|urllib|requests|sys)\b"
-    r"|\bfrom\s+(?:os|subprocess|socket|shutil|http|urllib|requests|sys)\b"
-)
-
-MATPLOTLIB_SYSTEM_PROMPT = """\
-You generate self-contained Python scripts using matplotlib to create comparison figures.
-The script MUST:
-- Only import matplotlib, numpy, and json (no os, subprocess, etc.)
-- Save the figure to the exact path provided
-- Use plt.tight_layout() and fig.savefig(path, dpi=150, bbox_inches='tight')
-- Create a clear side-by-side comparison: paper values vs reproduced values
-- Color-code: green (#2ecc71) for within tolerance, red (#e74c3c) for outside, gray (#95a5a6) for missing
-- Include axis labels and a legend
-- Print "FIGURE_SAVED" to stdout on success
-"""
 
 
 class ReproduceFiguresAgent(BaseAgent):
@@ -42,7 +22,8 @@ class ReproduceFiguresAgent(BaseAgent):
         metrics = self._safe_read("results/metrics.json")
         visual_elements = self._safe_read("fingerprint/visual_elements.json")
         claims_doc = self._safe_read("fingerprint/claims_ir.json")
-        repo_figure_data = _load_repo_figure_data(ctx, metrics)
+        visual_alignment = self._safe_read("results/visual_to_repo_alignment.json")
+        alignment_by_element = _alignment_by_element_id(visual_alignment)
 
         # Ensure figures directory exists
         figures_dir = self.artifacts.path("results/figures").resolve()
@@ -59,13 +40,18 @@ class ReproduceFiguresAgent(BaseAgent):
         elements = visual_elements.get("elements", [])
         chart_elements = [
             e for e in elements
-            if e.get("chart_type") in ("bar", "line", "scatter")
-            and e.get("data_series")
+            if _is_supported_visual_element(e)
         ]
 
-        for elem in chart_elements[:5]:  # Limit to 5 figures
+        for elem in chart_elements:
+            element_id = str(elem.get("element_id") or "")
             fig = self._reproduce_element(
-                elem, verdict, metrics, claims_doc, repo_figure_data, figures_dir
+                elem,
+                verdict,
+                metrics,
+                claims_doc,
+                alignment_by_element.get(element_id, _default_no_match_alignment(element_id)),
+                figures_dir,
             )
             if fig:
                 reproduced.append(fig)
@@ -130,10 +116,10 @@ class ReproduceFiguresAgent(BaseAgent):
         verdict: dict,
         metrics: dict,
         claims_doc: dict,
-        repo_figure_data: dict,
+        alignment: dict,
         figures_dir: Path,
     ) -> ReproducedFigure | None:
-        """Use LLM to generate matplotlib code for a specific paper figure."""
+        """Generate an alignment-controlled comparison chart for a paper visual."""
         element_id = elem.get("element_id", "unknown")
         output_path = str((figures_dir / f"{element_id}.png").resolve())
 
@@ -141,53 +127,8 @@ class ReproduceFiguresAgent(BaseAgent):
         metric_records = metrics.get("records", [])
         claim_verdicts = verdict.get("claim_verdicts", [])
         matching_claims = _claims_for_element(element_id, claims_doc, claim_verdicts)
-
-        prompt = (
-            f"Generate a matplotlib script to reproduce this paper figure.\n\n"
-            f"Paper figure info:\n"
-            f"- Chart type: {elem.get('chart_type')}\n"
-            f"- Axis labels: {elem.get('axis_labels', {})}\n"
-            f"- Legend: {elem.get('legend_entries', [])}\n"
-            f"- Paper data: {elem.get('data_series', [])}\n\n"
-            f"Reproduced metrics available:\n"
-            f"{_format_metrics_for_prompt(metric_records, claim_verdicts)}\n\n"
-            f"Save the figure to: {output_path}\n"
-            f"Create TWO subplots side by side: 'Paper (claimed)' and 'Reproduced'."
-        )
-
-        text, err = self.safe_chat_text(MATPLOTLIB_SYSTEM_PROMPT, prompt)
-        if not text:
-            self.log("PROGRESS", f"LLM unavailable for {element_id}, using deterministic fallback")
-            return self._reproduce_element_deterministic(
-                elem, matching_claims, metric_records, output_path, repo_figure_data
-            )
-
-        # Extract Python code from response
-        code = _extract_python_code(text)
-        if not code:
-            return self._reproduce_element_deterministic(
-                elem, matching_claims, metric_records, output_path, repo_figure_data
-            )
-
-        # Safety check
-        if _DANGEROUS_IMPORTS.search(code):
-            self.log("PROGRESS", f"Rejected unsafe code for {element_id}")
-            return self._reproduce_element_deterministic(
-                elem, matching_claims, metric_records, output_path, repo_figure_data
-            )
-
-        success = self._run_matplotlib(code)
-        if not success:
-            self.log("PROGRESS", f"LLM chart failed for {element_id}, using deterministic fallback")
-            return self._reproduce_element_deterministic(
-                elem, matching_claims, metric_records, output_path, repo_figure_data
-            )
-        return ReproducedFigure(
-            element_id=element_id,
-            matplotlib_code=code,
-            image_path=f"results/figures/{element_id}.png",
-            comparison_notes=elem.get("caption", ""),
-            reason_codes=["LLM_GENERATED"],
+        return self._reproduce_element_deterministic(
+            elem, matching_claims, metric_records, alignment, output_path,
         )
 
     def _reproduce_element_deterministic(
@@ -195,27 +136,34 @@ class ReproduceFiguresAgent(BaseAgent):
         elem: dict,
         matching_claims: list[dict],
         metric_records: list[dict],
+        alignment: dict,
         output_path: str,
-        repo_figure_data: dict | None = None,
     ) -> ReproducedFigure | None:
         element_id = elem.get("element_id", "unknown")
         code = _build_visual_element_chart_code(
             elem=elem,
             matching_claims=matching_claims,
             metric_records=metric_records,
-            repo_figure_data=repo_figure_data or {},
+            alignment=alignment,
             output_path=output_path,
         )
         success = self._run_matplotlib(code)
+        alignment_status = str(alignment.get("status") or "NO_MATCH")
+        reasons = [
+            str(reason)
+            for reason in alignment.get("mismatch_reasons", [])
+            if str(reason).strip()
+        ]
+        note = elem.get("caption") or "Paper figure with reproduced evidence summary"
+        if alignment_status == "NO_MATCH":
+            suffix = reasons[0] if reasons else "repo has no corresponding visual/data artifact"
+            note = f"{note} | visual alignment: NO_MATCH ({suffix})"
         return ReproducedFigure(
             element_id=element_id,
             matplotlib_code=code,
             image_path=f"results/figures/{element_id}.png" if success else "",
-            comparison_notes=(
-                elem.get("caption", "")
-                or "Paper figure with available reproduced evidence summary"
-            ),
-            reason_codes=["DETERMINISTIC_FALLBACK"] if success else ["DETERMINISTIC_CHART_FAILED"],
+            comparison_notes=note,
+            reason_codes=_figure_reason_codes(alignment_status, success),
         )
 
     def _run_matplotlib(self, code: str) -> bool:
@@ -332,79 +280,6 @@ def _claims_for_element(
     return rows
 
 
-def _load_repo_figure_data(ctx: dict[str, Any], metrics: dict[str, Any]) -> dict[str, Any]:
-    """Load repo-produced figure data that Phase 3 can plot deterministically."""
-    repo_dir_raw = ctx.get("repo_dir")
-    repo_dir = Path(str(repo_dir_raw)).expanduser() if repo_dir_raw else None
-    if repo_dir and not repo_dir.is_absolute():
-        repo_dir = repo_dir.resolve()
-
-    roc_points: list[dict[str, float]] = []
-    threshold_csv = repo_dir / "metrics" / "threshold_metrics.csv" if repo_dir else None
-    if threshold_csv and threshold_csv.exists():
-        try:
-            with threshold_csv.open("r", encoding="utf-8", newline="") as handle:
-                for row in csv.DictReader(handle):
-                    fp = _float_or_none(row.get("fp"))
-                    tn = _float_or_none(row.get("tn"))
-                    tp = _float_or_none(row.get("tp"))
-                    fn = _float_or_none(row.get("fn"))
-                    threshold = _float_or_none(row.get("threshold"))
-                    if fp is None or tn is None or tp is None or fn is None:
-                        continue
-                    fpr_den = fp + tn
-                    tpr_den = tp + fn
-                    if fpr_den <= 0 or tpr_den <= 0:
-                        continue
-                    roc_points.append({
-                        "x": fp / fpr_den,
-                        "y": tp / tpr_den,
-                        "threshold": threshold if threshold is not None else 0.0,
-                    })
-        except Exception:  # noqa: BLE001
-            roc_points = []
-
-    auc_values: list[float] = []
-    for record in metrics.get("records", []):
-        if not isinstance(record, dict):
-            continue
-        metric_name = str(record.get("metric_name") or "").lower()
-        if metric_name != "roc_auc" and not metric_name.endswith("_roc_auc"):
-            continue
-        value = _float_or_none(record.get("value"))
-        if value is None:
-            continue
-        if value not in auc_values:
-            auc_values.append(value)
-
-    roc_images: list[dict[str, str]] = []
-    figures_dir = repo_dir / "figures" if repo_dir else None
-    if figures_dir and figures_dir.exists():
-        for image_path in figures_dir.glob("roc_*.png"):
-            roc_images.append({
-                "path": str(image_path.resolve()),
-                "name": image_path.name,
-            })
-
-    def image_priority(row: dict[str, str]) -> tuple[int, str]:
-        name = row.get("name", "").lower()
-        if "xgboost" in name or "xgb" in name:
-            return (0, name)
-        if "random_forest" in name or "randomforest" in name:
-            return (1, name)
-        if "logistic" in name or "lr" in name:
-            return (2, name)
-        return (3, name)
-
-    return {
-        "repo_dir": str(repo_dir) if repo_dir else "",
-        "threshold_metrics_csv": str(threshold_csv) if threshold_csv and threshold_csv.exists() else "",
-        "roc_points": sorted(roc_points, key=lambda point: point["x"]),
-        "roc_auc_values": auc_values,
-        "roc_image_paths": sorted(roc_images, key=image_priority),
-    }
-
-
 def _float_or_none(value: Any) -> float | None:
     try:
         if value is None:
@@ -414,12 +289,58 @@ def _float_or_none(value: Any) -> float | None:
         return None
 
 
+def _alignment_by_element_id(alignment_doc: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    rows = alignment_doc.get("alignments", []) if isinstance(alignment_doc, dict) else []
+    if not isinstance(rows, list):
+        return {}
+    return {
+        str(row.get("element_id")): row
+        for row in rows
+        if isinstance(row, dict) and row.get("element_id")
+    }
+
+
+def _default_no_match_alignment(element_id: str) -> dict[str, Any]:
+    return {
+        "element_id": element_id,
+        "status": "NO_MATCH",
+        "repo_artifact_path": None,
+        "artifact_type": None,
+        "confidence": 0.0,
+        "matched_model_names": [],
+        "matched_sampling_strategy": None,
+        "matched_metric_names": [],
+        "mismatch_reasons": ["visual_to_repo_alignment.json has no row for this visual element"],
+        "reason_codes": ["VISUAL_ALIGNMENT_MISSING"],
+    }
+
+
+def _is_supported_visual_element(elem: dict[str, Any]) -> bool:
+    if not isinstance(elem, dict):
+        return False
+    chart_type = str(elem.get("chart_type") or "").lower()
+    if chart_type in {"bar", "line", "scatter", "table", "heatmap"}:
+        return True
+    return str(elem.get("element_type") or "").lower() == "table"
+
+
+def _figure_reason_codes(alignment_status: str, success: bool) -> list[str]:
+    if not success:
+        return ["DETERMINISTIC_CHART_FAILED"]
+    codes = ["DETERMINISTIC_VISUAL_CHART"]
+    if alignment_status == "MATCH":
+        codes.append("VISUAL_ALIGNMENT_MATCH")
+    else:
+        codes.append("VISUAL_ALIGNMENT_NO_MATCH")
+    return codes
+
+
 def _build_visual_element_chart_code(
     *,
     elem: dict,
     matching_claims: list[dict],
     metric_records: list[dict],
-    repo_figure_data: dict,
+    alignment: dict,
     output_path: str,
 ) -> str:
     """Build deterministic matplotlib code for a paper visual element."""
@@ -435,7 +356,7 @@ def _build_visual_element_chart_code(
             for row in metric_records[:20]
             if isinstance(row, dict)
         ],
-        "repo_figure_data": repo_figure_data,
+        "alignment": alignment,
         "output_path": output_path,
     }
     payload_json = json.dumps(payload, ensure_ascii=True)
@@ -452,7 +373,7 @@ payload = json.loads({payload_json!r})
 elem = payload["elem"]
 claims = payload["claims"]
 metrics = payload["metrics"]
-repo_figure_data = payload.get("repo_figure_data", {{}})
+alignment = payload.get("alignment", {{}})
 output_path = payload["output_path"]
 
 GREEN = "#2ecc71"
@@ -497,8 +418,123 @@ def point_xy(points):
     return xs, ys, labels
 
 
+def extract_table_rows():
+    data_series = elem.get("data_series") or []
+    rows = []
+    for series in data_series:
+        if not isinstance(series, dict):
+            continue
+        series_rows = series.get("rows")
+        if isinstance(series_rows, list):
+            rows.extend(row for row in series_rows if isinstance(row, dict))
+        values = series.get("values")
+        if isinstance(values, list):
+            rows.extend(row for row in values if isinstance(row, dict))
+    if not rows and isinstance(data_series, list):
+        rows.extend(row for row in data_series if isinstance(row, dict))
+    return rows[:16]
+
+
+def render_table(ax, rows, title=None):
+    ax.set_axis_off()
+    if not rows:
+        ax.text(0.5, 0.5, "No extracted table cells", ha="center", va="center", wrap=True)
+        return
+    columns = []
+    for row in rows:
+        for key in row.keys():
+            key = str(key)
+            if key not in columns and key not in {{"reason_codes"}}:
+                columns.append(key)
+        if len(columns) >= 7:
+            break
+    columns = columns[:7]
+    cell_text = []
+    for row in rows:
+        cell_text.append([short(row.get(column, ""), 18) for column in columns])
+    table = ax.table(cellText=cell_text, colLabels=columns, loc="center", cellLoc="center")
+    table.auto_set_font_size(False)
+    table.set_fontsize(8)
+    table.scale(1.0, 1.35)
+    if title:
+        ax.set_title(title)
+
+
+def extract_heatmap_matrix():
+    for source in [elem] + list(elem.get("data_series") or []):
+        if not isinstance(source, dict):
+            continue
+        matrix = source.get("matrix")
+        if isinstance(matrix, list) and matrix and all(isinstance(row, list) for row in matrix):
+            return matrix, source.get("x_labels") or source.get("columns") or [], source.get("y_labels") or source.get("rows_labels") or []
+        cells = source.get("cells")
+        if isinstance(cells, list):
+            pivot = cell_matrix(cells)
+            if pivot[0]:
+                return pivot
+        values = source.get("values")
+        if isinstance(values, list):
+            pivot = cell_matrix(values)
+            if pivot[0]:
+                return pivot
+    return [], [], []
+
+
+def cell_matrix(cells):
+    xs = []
+    ys = []
+    values = {{}}
+    for cell in cells:
+        if not isinstance(cell, dict):
+            continue
+        x = cell.get("x")
+        y = cell.get("y")
+        value = numeric_or_none(cell.get("value", cell.get("z")))
+        if x is None or y is None or value is None:
+            continue
+        x = str(x)
+        y = str(y)
+        if x not in xs:
+            xs.append(x)
+        if y not in ys:
+            ys.append(y)
+        values[(x, y)] = value
+    if not xs or not ys:
+        return [], [], []
+    matrix = [[values.get((x, y), 0.0) for x in xs] for y in ys]
+    return matrix, xs, ys
+
+
+def plot_heatmap(ax):
+    matrix, x_labels, y_labels = extract_heatmap_matrix()
+    if not matrix:
+        rows = extract_table_rows()
+        render_table(ax, rows, "Paper extracted table")
+        return
+    arr = np.array(matrix, dtype=float)
+    im = ax.imshow(arr, cmap="viridis")
+    ax.figure.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    if x_labels:
+        ax.set_xticks(np.arange(len(x_labels)))
+        ax.set_xticklabels([short(x, 12) for x in x_labels], rotation=45, ha="right")
+    if y_labels:
+        ax.set_yticks(np.arange(len(y_labels)))
+        ax.set_yticklabels([short(y, 12) for y in y_labels])
+    for row_idx in range(arr.shape[0]):
+        for col_idx in range(arr.shape[1]):
+            ax.text(col_idx, row_idx, f"{{arr[row_idx, col_idx]:.2g}}",
+                    ha="center", va="center", color="white", fontsize=8)
+
+
 def plot_paper(ax):
     chart_type = str(elem.get("chart_type") or "line").lower()
+    if chart_type == "table" or str(elem.get("element_type") or "").lower() == "table":
+        render_table(ax, extract_table_rows(), "Paper extracted table")
+        return
+    if chart_type == "heatmap":
+        plot_heatmap(ax)
+        return
+
     data_series = elem.get("data_series") or []
     if not data_series:
         ax.text(0.5, 0.5, "No extracted paper data", ha="center", va="center")
@@ -539,56 +575,80 @@ def plot_paper(ax):
 
 
 def plot_reproduced(ax):
-    axis_labels = elem.get("axis_labels") or {{}}
-    caption = str(elem.get("caption") or "")
-    is_roc = (
-        "false positive" in str(axis_labels.get("x", "")).lower()
-        and "true positive" in str(axis_labels.get("y", "")).lower()
-    ) or "aucroc" in caption.lower() or "roc" in caption.lower()
-    repo_roc_points = repo_figure_data.get("roc_points") or []
-    repo_roc_images = repo_figure_data.get("roc_image_paths") or []
-    if is_roc and repo_roc_images:
-        selected = repo_roc_images[0]
+    status = str(alignment.get("status") or "NO_MATCH")
+    artifact_path = str(alignment.get("repo_artifact_path") or "")
+    artifact_type = str(alignment.get("artifact_type") or "")
+    if status != "MATCH":
+        reasons = [
+            str(reason)
+            for reason in alignment.get("mismatch_reasons", [])
+            if str(reason).strip()
+        ]
+        if not reasons:
+            reasons = ["No strict visual-to-repo alignment was produced."]
+        text_lines = [
+            "No matching repo artifact/data for this paper visual.",
+            "",
+            "This figure is not replaced by another model or experiment.",
+            "",
+            "Reasons:",
+        ]
+        text_lines.extend("- " + short(reason, 70) for reason in reasons[:6])
+        ax.text(
+            0.04, 0.96, "\\n".join(text_lines),
+            ha="left", va="top", transform=ax.transAxes, fontsize=9, wrap=True,
+            bbox=dict(boxstyle="round", facecolor="white", edgecolor=GRAY, alpha=0.95),
+        )
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_frame_on(True)
+        return
+
+    if artifact_path and (
+        artifact_type == "image"
+        or artifact_path.lower().endswith((".png", ".jpg", ".jpeg", ".tif", ".tiff"))
+    ):
         try:
-            img = mpimg.imread(selected["path"])
+            img = mpimg.imread(artifact_path)
             ax.imshow(img)
             ax.set_axis_off()
-            ax.set_title("Repo-generated ROC: " + short(selected.get("name"), 38))
-            auc_values = repo_figure_data.get("roc_auc_values") or []
-            if auc_values:
-                auc_text = "ROC-AUC: " + ", ".join(f"{{float(v):.4f}}" for v in auc_values[:3])
-                ax.text(0.03, 0.97, auc_text, ha="left", va="top",
-                        transform=ax.transAxes, fontsize=9,
-                        bbox=dict(boxstyle="round", facecolor="white", edgecolor=GRAY, alpha=0.9))
+            title_bits = ["Matched repo artifact"]
+            models = alignment.get("matched_model_names") or []
+            metrics = alignment.get("matched_metric_names") or []
+            if models:
+                title_bits.append(", ".join(str(x) for x in models[:3]))
+            if metrics:
+                title_bits.append(", ".join(str(x) for x in metrics[:3]))
+            ax.set_title(short(" | ".join(title_bits), 70))
             return
         except Exception:
-            pass
+            text = "Matched repo image could not be rendered.\\n" + short(artifact_path, 80)
+            ax.text(0.5, 0.5, text, ha="center", va="center", wrap=True)
+            ax.set_xticks([])
+            ax.set_yticks([])
+            return
 
-    if is_roc and repo_roc_points:
-        xs = [float(point["x"]) for point in repo_roc_points]
-        ys = [float(point["y"]) for point in repo_roc_points]
-        thresholds = [point.get("threshold") for point in repo_roc_points]
-        auc_values = repo_figure_data.get("roc_auc_values") or []
-        auc_label = ""
-        if auc_values:
-            auc_label = " | ROC-AUC " + ", ".join(f"{{float(v):.4f}}" for v in auc_values[:3])
-        ax.plot(xs, ys, marker="o", linewidth=2, markersize=4, color=ORANGE,
-                label="Repo threshold sweep" + auc_label)
-        ax.plot([0, 1], [0, 1], linestyle="--", color="black", linewidth=1.2, label="Baseline")
-        for idx, (xv, yv, thr) in enumerate(zip(xs, ys, thresholds)):
-            if idx in {{0, len(xs) // 2, len(xs) - 1}}:
-                ax.annotate(f"thr={{float(thr):.1f}}", (xv, yv),
-                            textcoords="offset points", xytext=(5, -10), fontsize=7)
-        ax.set_xlabel(axis_labels.get("x") or "False Positive Rate")
-        ax.set_ylabel(axis_labels.get("y") or "True Positive Rate")
-        ax.set_xlim(0, 1)
-        ax.set_ylim(0, 1.02)
-        ax.grid(True, alpha=0.3)
-        ax.legend(fontsize=8, loc="lower right")
-        source = repo_figure_data.get("threshold_metrics_csv") or "repo threshold metrics"
-        ax.text(0.03, 0.97, "Reproduced from\\n" + short(source, 42),
-                ha="left", va="top", transform=ax.transAxes, fontsize=8,
-                bbox=dict(boxstyle="round", facecolor="white", edgecolor=GRAY, alpha=0.9))
+    if artifact_path:
+        text_lines = [
+            "Matched repo data artifact.",
+            "",
+            "Path:",
+            short(artifact_path, 82),
+        ]
+        matched_metrics = alignment.get("matched_metric_names") or []
+        matched_models = alignment.get("matched_model_names") or []
+        if matched_models:
+            text_lines.extend(["", "Model:", ", ".join(str(x) for x in matched_models)])
+        if matched_metrics:
+            text_lines.extend(["", "Metrics:", ", ".join(str(x) for x in matched_metrics)])
+        ax.text(
+            0.04, 0.96, "\\n".join(text_lines),
+            ha="left", va="top", transform=ax.transAxes, fontsize=9, wrap=True,
+            bbox=dict(boxstyle="round", facecolor="white", edgecolor=GRAY, alpha=0.95),
+        )
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_frame_on(True)
         return
 
     comparable = [
@@ -666,29 +726,3 @@ plt.tight_layout()
 fig.savefig(output_path, dpi=150, bbox_inches="tight")
 print("FIGURE_SAVED")
 '''
-
-
-def _format_metrics_for_prompt(records: list[dict], verdicts: list[dict]) -> str:
-    """Format available metrics for the LLM prompt."""
-    lines = []
-    for r in records[:20]:
-        lines.append(f"  {r.get('metric_name')}: {r.get('value')} (source: {r.get('source', 'unknown')})")
-    for cv in verdicts[:15]:
-        if cv.get("compared_value") is not None:
-            lines.append(
-                f"  claim {cv.get('claim_id')}: target={cv.get('target_value')}, "
-                f"reproduced={cv.get('compared_value')}, status={cv.get('status')}"
-            )
-    return "\n".join(lines) if lines else "  (no metrics available)"
-
-
-def _extract_python_code(text: str) -> str | None:
-    """Extract Python code block from LLM response."""
-    # Try fenced code block first
-    m = re.search(r"```(?:python)?\s*\n(.*?)```", text, re.DOTALL)
-    if m:
-        return m.group(1).strip()
-    # Fall back to the entire response if it looks like code
-    if "import matplotlib" in text or "plt.savefig" in text:
-        return text.strip()
-    return None

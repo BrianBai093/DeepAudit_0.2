@@ -92,7 +92,16 @@ class AtomicCriterion(BaseModel):
     fact: str
     scope: str
     facet: Literal["metric_result", "execution_param"] = "execution_param"
-    source_type: Literal["table_metric", "text_metric", "text_statement", "visual_metric"] = "text_statement"
+    source_type: Literal[
+        "table_metric",
+        "text_metric",
+        "text_statement",
+        "visual_metric",
+        "llm_table_metric",
+        "llm_table_param",
+        "visual_table_metric",
+        "visual_table_param",
+    ] = "text_statement"
     metric_name: str | None = None
     metric_value: float | None = None
     metric_unit: str | None = None
@@ -148,7 +157,6 @@ class Experiment(BaseModel):
     description: str = ""
     dataset: str | None = None
     table_anchor: str | None = None
-    claim_ids: list[str] = Field(default_factory=list)
     repo_coverage: Literal["implemented", "partial", "not_found"] = "not_found"
     repo_entrypoint: str | None = None
     notes: str | None = None
@@ -448,6 +456,15 @@ class VisualElement(BaseModel):
     legend_entries: list[str] = Field(default_factory=list)
     data_series: list[dict[str, Any]] = Field(default_factory=list)
     visual_anchor: str = ""                        # "Figure 1", "Table 3"
+    bbox: dict[str, float] = Field(default_factory=dict)  # normalized x0/y0/x1/y1 page coordinates
+    raw_page_image: str | None = None               # run-root-relative page image path
+    crop_path: str | None = None                    # run-root-relative cropped element image path
+    x_axis_range: list[float] | None = None
+    y_axis_range: list[float] | None = None
+    series_semantics: list[dict[str, Any]] = Field(default_factory=list)
+    model_names: list[str] = Field(default_factory=list)
+    sampling_strategy: str | None = None
+    numeric_confidence: float | None = None
     associated_claim_ids: list[str] = Field(default_factory=list)
     reason_codes: list[str] = Field(default_factory=list)
 
@@ -457,6 +474,33 @@ class VisualElementsDoc(BaseModel):
 
     elements: list[VisualElement] = Field(default_factory=list)
     page_count: int = 0
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+class VisualTarget(BaseModel):
+    """Object-level reconstruction target derived from a paper figure or table."""
+
+    element_id: str
+    visual_anchor: str = ""
+    element_type: Literal["figure", "table"]
+    chart_type: str | None = None
+    caption: str = ""
+    page: int | None = None
+    reference_image_path: str | None = None
+    axis_labels: dict[str, str] = Field(default_factory=dict)
+    legend_entries: list[str] = Field(default_factory=list)
+    series_names: list[str] = Field(default_factory=list)
+    metric_names: list[str] = Field(default_factory=list)
+    model_names: list[str] = Field(default_factory=list)
+    sampling_strategy: str | None = None
+    semantic_summary: str = ""
+    reconstruction_instructions: list[str] = Field(default_factory=list)
+    associated_claim_ids: list[str] = Field(default_factory=list)
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+class VisualTargetsDoc(BaseModel):
+    visual_targets: list[VisualTarget] = Field(default_factory=list)
     reason_codes: list[str] = Field(default_factory=list)
 
 
@@ -472,6 +516,26 @@ class ReproducedFigure(BaseModel):
 
 class ReproducedFiguresDoc(BaseModel):
     figures: list[ReproducedFigure] = Field(default_factory=list)
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+class VisualRepoAlignmentItem(BaseModel):
+    """Strict mapping from a paper visual element to a repo artifact or NO_MATCH."""
+
+    element_id: str
+    status: Literal["MATCH", "NO_MATCH"] = "NO_MATCH"
+    repo_artifact_path: str | None = None
+    artifact_type: str | None = None
+    confidence: float = 0.0
+    matched_model_names: list[str] = Field(default_factory=list)
+    matched_sampling_strategy: str | None = None
+    matched_metric_names: list[str] = Field(default_factory=list)
+    mismatch_reasons: list[str] = Field(default_factory=list)
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+class VisualRepoAlignmentDoc(BaseModel):
+    alignments: list[VisualRepoAlignmentItem] = Field(default_factory=list)
     reason_codes: list[str] = Field(default_factory=list)
 
 

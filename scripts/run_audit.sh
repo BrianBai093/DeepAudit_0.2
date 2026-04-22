@@ -21,6 +21,11 @@ PAPER_PDF="Target/paper.pdf"
 REPO_DIR="${PROJECT_ROOT}/Target/code"
 ARTIFACTS_DIR="artifacts"
 BUDGET_MINUTES="${BUDGET_MINUTES:-180}"  # default 3h, override with env var
+P2C_MIN_EXEC_TIMEOUT_SEC="${P2C_MIN_EXEC_TIMEOUT_SEC:-7200}"
+P2C_ATOMIC_LLM_SENTENCE_BUDGET="${P2C_ATOMIC_LLM_SENTENCE_BUDGET:-32}"
+P2C_ATOMIC_LLM_TABLE_BUDGET="${P2C_ATOMIC_LLM_TABLE_BUDGET:-20}"
+OPENAI_TIMEOUT_SEC="${OPENAI_TIMEOUT_SEC:-300}"
+OPENAI_VISION_TIMEOUT_SEC="${OPENAI_VISION_TIMEOUT_SEC:-360}"
 # -------------------------------------------------
 
 if [[ $# -lt 1 ]]; then
@@ -52,7 +57,16 @@ echo " paper      : $PAPER_MD"
 echo " paper_pdf  : $PAPER_PDF"
 echo " repo       : $REPO_DIR"
 echo " artifacts  : $ARTIFACTS_DIR/$RUN_ID"
+echo " min timeout: ${P2C_MIN_EXEC_TIMEOUT_SEC}s"
+echo " atomic LLM : sentences=${P2C_ATOMIC_LLM_SENTENCE_BUDGET}, tables=${P2C_ATOMIC_LLM_TABLE_BUDGET}"
+echo " OpenAI wait: text/json=${OPENAI_TIMEOUT_SEC}s, vision=${OPENAI_VISION_TIMEOUT_SEC}s"
 echo "================================================================"
+
+export P2C_MIN_EXEC_TIMEOUT_SEC
+export P2C_ATOMIC_LLM_SENTENCE_BUDGET
+export P2C_ATOMIC_LLM_TABLE_BUDGET
+export OPENAI_TIMEOUT_SEC
+export OPENAI_VISION_TIMEOUT_SEC
 
 IFS=',' read -ra PHASE_LIST <<< "$PHASES"
 for phase in "${PHASE_LIST[@]}"; do

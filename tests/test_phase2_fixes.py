@@ -214,6 +214,160 @@ def test_metric_extraction_skips_static_inspection_commands():
     assert metrics == {}
 
 
+def test_planner_sanitize_raises_non_setup_timeout_to_7200(tmp_path):
+    from p2c.agents.phase2.planner import PlannerAgent
+    from p2c.schemas import ExecutionPlan, ExecutionStep
+
+    plan = ExecutionPlan(
+        plan_id="timeout-test",
+        env_name="timeout_env",
+        execution_steps=[
+            ExecutionStep(
+                step_id="train",
+                description="train model",
+                command="python train.py",
+                timeout_sec=3600,
+                expected_metrics=["accuracy"],
+                is_setup=False,
+            ),
+            ExecutionStep(
+                step_id="inspect",
+                description="inspect",
+                command="grep -n train README.md",
+                timeout_sec=120,
+                expected_metrics=[],
+                is_setup=True,
+            ),
+        ],
+    )
+
+    PlannerAgent._sanitize_plan(plan, str(tmp_path), repo_analysis={}, task_spec={})
+
+    assert plan.execution_steps[0].timeout_sec == 7200
+    assert plan.execution_steps[1].timeout_sec == 120
+
+
+def test_codex_executor_effective_timeout_uses_7200_floor():
+    from p2c.agents.phase2.codex_executor import CodexExecutorAgent
+    from p2c.schemas import ExecutionStep
+
+    train_step = ExecutionStep(
+        step_id="train",
+        description="train",
+        command="python train.py",
+        timeout_sec=3600,
+        expected_metrics=["accuracy"],
+        is_setup=False,
+    )
+    setup_step = ExecutionStep(
+        step_id="inspect",
+        description="inspect",
+        command="grep -n train README.md",
+        timeout_sec=120,
+        expected_metrics=[],
+        is_setup=True,
+    )
+
+    assert CodexExecutorAgent._effective_step_timeout(train_step) == 7200
+    assert CodexExecutorAgent._effective_step_timeout(setup_step) == 120
+
+
+def test_step_prompt_allows_logged_gpu_compat_repairs():
+    from p2c.agents.phase2.local_prompt_templates import build_step_execution_prompt
+
+    prompt = build_step_execution_prompt(
+        repo_dir="/tmp/repo",
+        step_description="train",
+        step_command="python train.py",
+        expected_metrics=["accuracy"],
+        metric_parsers=[],
+        outputs_dir="/tmp/out",
+        step_id="step_01",
+    )
+
+    assert "GPU compatibility exception" in prompt
+    assert "repair_actions" in prompt
+    assert "upgrade packages inside the existing managed conda environment" in prompt
+
+
+def test_codex_executor_records_gpu_repair_actions(tmp_path):
+    from p2c.agents.phase2.codex_executor import CodexExecutorAgent
+    from p2c.io_artifacts import ArtifactManager
+    from p2c.schemas import ExecutionStep, MetricContract
+
+    artifacts = ArtifactManager(tmp_path / "artifacts", "repair_run")
+    artifacts.ensure_tree()
+    agent = CodexExecutorAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
+    step = ExecutionStep(
+        step_id="gpu_train",
+        description="train",
+        command="python train.py",
+        timeout_sec=7200,
+        expected_metrics=[],
+        is_setup=False,
+    )
+    result_rel = "execution/codex_outputs/step_gpu_train_result.json"
+    artifacts.write_json(
+        result_rel,
+        {
+            "command": "python train.py",
+            "exit_code": 0,
+            "metrics": {},
+            "notes": "Upgraded torch for sm_89 compatibility.",
+            "repair_actions": [
+                {
+                    "type": "package_upgrade",
+                    "reason": "CUDA no kernel image for sm_89 GPU",
+                    "command_or_file": "pip install -U torch torchvision",
+                    "details": "Upgraded PyTorch stack for GPU compatibility.",
+                },
+                {
+                    "type": "source_patch",
+                    "reason": "newer Python iterator compatibility",
+                    "command_or_file": "main.py",
+                    "details": "Replaced dataiter.next() with next(dataiter).",
+                },
+            ],
+        },
+    )
+
+    class Proc:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+        narrative = ""
+
+    result = agent._finalize_step_result(
+        step=step,
+        contract=MetricContract(),
+        step_result_relative=result_rel,
+        default_command=step.command,
+        proc=Proc(),
+        runtime_sec=1.0,
+        stdout_text="",
+        stderr_text="",
+        attempt_records=[
+            {
+                "mode": "claude:primary",
+                "command": step.command,
+                "executed_command": step.command,
+                "exit_code": 0,
+                "runtime_sec": 1.0,
+                "stdout": "",
+                "stderr": "",
+            }
+        ],
+        execution_mode="claude_primary",
+        effective_cwd=".",
+    )
+
+    assert "PACKAGE_UPGRADE_PERFORMED" in result["reason_codes"]
+    assert "SOURCE_COMPAT_PATCH_PERFORMED" in result["reason_codes"]
+    assert "GPU_COMPAT_REPAIR_RECORDED" in result["reason_codes"]
+    assert artifacts.path("execution/codex_outputs/step_gpu_train_repair_actions.json").exists()
+    assert "REPAIR_ACTIONS" in artifacts.path("execution/codex_outputs/codex_exec.log").read_text(encoding="utf-8")
+
+
 # ---- Fix 4: env variable forwarding ----
 
 def test_build_child_env_includes_path():
@@ -706,6 +860,189 @@ def test_planner_rewrites_wrapper_derived_shell_steps(tmp_path):
     assert step.path_resolution_mode == "wrapper_virtual_cwd"
     assert step.derived_from_wrapper == "run.sh"
     assert step.required_artifacts == ["data/input.csv", "workdir/scores/out.txt"]
+
+
+def test_planner_prefers_readme_task_command_for_same_python_target(tmp_path):
+    from p2c.agents.phase2.planner import PlannerAgent
+    from p2c.schemas import ExecutionPlan, ExecutionStep
+
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir(parents=True)
+    (repo_dir / "main.py").write_text("print('ok')\n", encoding="utf-8")
+
+    repo_analysis = {
+        "entrypoint_candidates": [
+            {
+                "entrypoint_id": "python-file:main.py",
+                "path": "main.py",
+                "command": "python main.py",
+                "cwd": ".",
+                "runtime": "python",
+                "confidence": 0.93,
+                "evidence": "python CLI entrypoint detected",
+                "reason_codes": [],
+            },
+            {
+                "entrypoint_id": "readme-python:main.py",
+                "path": "main.py",
+                "command": "python main.py --task CIFAR10 --epochs 120 --data-aug",
+                "cwd": ".",
+                "runtime": "python",
+                "confidence": 0.91,
+                "evidence": "README verified python command",
+                "reason_codes": ["README_VERIFIED_COMMAND"],
+            },
+        ]
+    }
+    task_spec = {
+        "tasks": [
+            {
+                "task_id": "task_01",
+                "entrypoint": "main.py",
+                "command": "python main.py --task CIFAR10 --epochs 120 --data-aug",
+                "cwd": ".",
+                "runtime": "python",
+                "confidence": 0.91,
+                "evidence": "README verified python command",
+                "reason_codes": ["README_VERIFIED_COMMAND"],
+            }
+        ]
+    }
+
+    plan = ExecutionPlan(
+        plan_id="plan",
+        env_name="env",
+        execution_steps=[
+            ExecutionStep(
+                step_id="train",
+                description="run training",
+                command="python main.py",
+                cwd=".",
+            )
+        ],
+    )
+
+    PlannerAgent._sanitize_plan(plan, str(repo_dir), repo_analysis=repo_analysis, task_spec=task_spec)
+
+    step = plan.execution_steps[0]
+    assert step.command == "python main.py --task CIFAR10 --epochs 120 --data-aug"
+    assert step.cwd == "."
+
+
+def test_planner_compacts_phase1_inputs_for_prompt():
+    """Phase 2 should not stuff full Phase 1 artifacts into the planner prompt."""
+    from p2c.agents.phase2.planner import PlannerAgent
+
+    claims_ir = {
+        "claims": [
+            {
+                "claim_id": f"claim_{idx:03d}",
+                "type": "result" if idx % 2 == 0 else "config",
+                "predicate": "accuracy result " + ("x" * 1000),
+                "metric": "accuracy" if idx % 2 == 0 else None,
+                "target": 0.9 if idx % 2 == 0 else None,
+                "code_verifiable": True,
+                "conditions": {"is_primary": idx == 10, "scope": "test"},
+                "evidence_set": ["paper", "table", "extra"],
+            }
+            for idx in range(40)
+        ],
+        "experiments": [{"experiment_id": "exp_01", "name": "exp 01", "repo_coverage": "partial"}],
+    }
+    repo_analysis = {
+        "entrypoint_candidates": [
+            {
+                "entrypoint_id": f"ep_{idx}",
+                "path": f"train_{idx}.py",
+                "command": f"python train_{idx}.py",
+                "cwd": ".",
+                "runtime": "python",
+                "confidence": 0.5,
+                "evidence": "e" * 1000,
+            }
+            for idx in range(50)
+        ],
+        "dependency_profiles": [
+            {
+                "profile_id": f"profile_{idx}",
+                "ecosystem": "python",
+                "manager": "pip_requirements",
+                "cwd": ".",
+                "manifest_paths": [f"requirements-{idx}.txt"],
+            }
+            for idx in range(30)
+        ],
+    }
+    task_spec = {
+        "tasks": [
+            {
+                "task_id": f"task_{idx}",
+                "entrypoint": f"train_{idx}.py",
+                "command": f"python train_{idx}.py",
+                "cwd": ".",
+                "runtime": "python",
+                "expected_metrics": ["accuracy"],
+                "evidence": "e" * 1000,
+            }
+            for idx in range(25)
+        ]
+    }
+    metric_contract = {
+        "required_metrics": ["accuracy"],
+        "parsers": [
+            {"name": f"acc_{idx}", "regex": r"accuracy: (\d+\.\d+)", "metric_name": "accuracy"}
+            for idx in range(20)
+        ],
+    }
+    limits = {
+        "max_claims": 6,
+        "max_tasks": 4,
+        "max_metric_parsers": 3,
+        "max_entrypoints": 5,
+        "max_dep_profiles": 4,
+    }
+
+    compact = PlannerAgent._compact_phase1_inputs(
+        claims_ir=claims_ir,
+        task_spec=task_spec,
+        metric_contract=metric_contract,
+        repo_analysis=repo_analysis,
+        limits=limits,
+    )
+
+    assert compact["claims_ir"]["summary"]["omitted_claims"] == 34
+    assert len(compact["claims_ir"]["claims"]) == 6
+    assert len(compact["repo_analysis"]["entrypoint_candidates"]) == 5
+    assert len(compact["task_spec"]["tasks"]) == 4
+    assert len(compact["metric_contract"]["parsers"]) <= 3
+    assert "claim_ids" not in compact["claims_ir"]["experiments"][0]
+    assert all(len(row["predicate"]) < 560 for row in compact["claims_ir"]["claims"])
+
+
+def test_planner_backfills_expected_results_with_cap():
+    """Large claim sets should get bounded expected_results instead of an unbounded prompt."""
+    from p2c.agents.phase2.planner import PlannerAgent
+
+    claims_ir = {
+        "claims": [
+            {
+                "claim_id": f"claim_{idx:03d}",
+                "type": "result",
+                "predicate": "accuracy",
+                "metric": "accuracy",
+                "target": 0.8,
+                "code_verifiable": True,
+            }
+            for idx in range(10)
+        ]
+    }
+    data = {"expected_results": [], "reason_codes": []}
+
+    PlannerAgent._backfill_expected_results(data, claims_ir, max_expected_results=3)
+
+    assert len(data["expected_results"]) == 3
+    assert data["expected_results"][0]["claim_id"] == "claim_000"
+    assert "EXPECTED_RESULTS_CAPPED" in data["reason_codes"]
 
 
 def test_derive_key_imports_maps_imblearn():

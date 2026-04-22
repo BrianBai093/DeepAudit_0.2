@@ -305,6 +305,14 @@ def _build_report_prompt(ctx: dict, artifacts) -> str:
     except Exception:  # noqa: BLE001
         pass
 
+    try:
+        visual_alignment = artifacts.read_json("results/visual_to_repo_alignment.json")
+        if visual_alignment.get("alignments"):
+            sections.append("\n# VISUAL TO REPO ALIGNMENT")
+            sections.append(json.dumps(visual_alignment, indent=2, ensure_ascii=False)[:3000])
+    except Exception:  # noqa: BLE001
+        pass
+
     # ── Reproduced figures ──────────────────────────────────────
     try:
         figs = artifacts.read_json("results/reproduced_figures.json")
@@ -358,6 +366,15 @@ class AuditReportAgent(BaseAgent):
         plan = self.artifacts.read_json("execution/execution_plan.json")
         plan_steps = _plan_step_map(plan)
         reproduced_figures = self.artifacts.read_json("results/reproduced_figures.json")
+        try:
+            visual_alignment = self.artifacts.read_json("results/visual_to_repo_alignment.json")
+        except Exception:  # noqa: BLE001
+            visual_alignment = {}
+        alignment_by_id = {
+            str(row.get("element_id")): row
+            for row in visual_alignment.get("alignments", [])
+            if isinstance(row, dict) and row.get("element_id")
+        }
 
         lines = [
             "# Reproducibility Audit Report",
@@ -386,9 +403,15 @@ class AuditReportAgent(BaseAgent):
                 caption = fig.get("comparison_notes") or fig.get("element_id") or "reproduced figure"
                 lines.append(f"![{caption}]({image_path})")
                 lines.append("")
-                lines.append(
-                    f"- {fig.get('element_id')}: {caption}"
-                )
+                element_id = str(fig.get("element_id") or "")
+                alignment = alignment_by_id.get(element_id, {})
+                alignment_note = ""
+                if alignment:
+                    status = alignment.get("status", "NO_MATCH")
+                    reasons = alignment.get("mismatch_reasons") or []
+                    reason = f" ({reasons[0]})" if reasons else ""
+                    alignment_note = f" visual alignment={status}{reason}."
+                lines.append(f"- {element_id}: {caption}.{alignment_note}")
                 lines.append("")
         else:
             lines.extend(["No figures reproduced.", ""])

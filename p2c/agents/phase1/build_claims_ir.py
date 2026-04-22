@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -11,6 +12,9 @@ from p2c.schemas import ClaimItem, ClaimsIR, Experiment
 # ---------------------------------------------------------------------------
 # LLM prompts
 # ---------------------------------------------------------------------------
+
+_DEFAULT_EXPERIMENT_PROMPT_ENTRYPOINTS = 30
+_DEFAULT_EXPERIMENT_PROMPT_DEP_PROFILES = 20
 
 EXPERIMENT_SYSTEM_PROMPT = """\
 You are an expert ML paper analyst. Given extracted claims from a paper and a \
@@ -44,7 +48,6 @@ Return a JSON object with this EXACT structure:
       "description": "what this experiment tests",
       "dataset": "dataset name or null",
       "table_anchor": "Table X or null",
-      "claim_ids": ["claim_01", "claim_02"],
       "repo_coverage": "implemented | partial | not_found",
       "repo_entrypoint": "path/to/file.py or null",
       "notes": "why you think it is/isn't in the repo"
@@ -112,20 +115,48 @@ def _build_experiment_user_prompt(
 
     # Repo analysis
     if repo_analysis:
+        try:
+            max_entrypoints = max(
+                1,
+                int(os.getenv("P2C_EXPERIMENT_PROMPT_ENTRYPOINTS", str(_DEFAULT_EXPERIMENT_PROMPT_ENTRYPOINTS))),
+            )
+        except ValueError:
+            max_entrypoints = _DEFAULT_EXPERIMENT_PROMPT_ENTRYPOINTS
+        try:
+            max_dep_profiles = max(
+                1,
+                int(os.getenv("P2C_EXPERIMENT_PROMPT_DEP_PROFILES", str(_DEFAULT_EXPERIMENT_PROMPT_DEP_PROFILES))),
+            )
+        except ValueError:
+            max_dep_profiles = _DEFAULT_EXPERIMENT_PROMPT_DEP_PROFILES
         sections.append("\n## Repository Analysis")
         entrypoints = repo_analysis.get("entrypoint_candidates", []) or repo_analysis.get("entrypoints", [])
-        for ep in entrypoints:
+        for ep in entrypoints[:max_entrypoints]:
             sections.append(
                 f"- Entrypoint: {ep.get('path', '')} "
                 f"(command: {ep.get('command', '')}, confidence: {ep.get('confidence', '?')})"
             )
-        for dep in repo_analysis.get("dependency_profiles", []):
+        if len(entrypoints) > max_entrypoints:
+            sections.append(f"- ... omitted {len(entrypoints) - max_entrypoints} additional entrypoints")
+        dep_profiles = repo_analysis.get("dependency_profiles", [])
+        for dep in dep_profiles[:max_dep_profiles]:
             sections.append(
                 f"- Dependencies: {dep.get('profile_id', '')} "
                 f"(manifests: {dep.get('manifest_paths', [])})"
             )
+        if len(dep_profiles) > max_dep_profiles:
+            sections.append(f"- ... omitted {len(dep_profiles) - max_dep_profiles} additional dependency profiles")
 
     return "\n".join(sections)
+
+
+def _compact_visual_reference(raw: object) -> dict[str, object]:
+    if not isinstance(raw, dict):
+        return {}
+    element_id = str(raw.get("element_id") or "").strip()
+    if not element_id:
+        return {}
+    return {"element_id": element_id}
 
 
 # ---------------------------------------------------------------------------
@@ -216,7 +247,6 @@ class BuildClaimsIRAgent(BaseAgent):
                             "description": {"type": "string"},
                             "dataset": {"type": ["string", "null"]},
                             "table_anchor": {"type": ["string", "null"]},
-                            "claim_ids": {"type": "array", "items": {"type": "string"}},
                             "repo_coverage": {
                                 "type": "string",
                                 "enum": ["implemented", "partial", "not_found"],
@@ -224,7 +254,7 @@ class BuildClaimsIRAgent(BaseAgent):
                             "repo_entrypoint": {"type": ["string", "null"]},
                             "notes": {"type": ["string", "null"]},
                         },
-                        "required": ["experiment_id", "name", "claim_ids", "repo_coverage"],
+                        "required": ["experiment_id", "name", "repo_coverage"],
                     },
                 },
                 "claims": {
@@ -262,23 +292,12 @@ class BuildClaimsIRAgent(BaseAgent):
         experiments: list[Experiment] = []
         for exp in llm_data.get("experiments", []):
             try:
-                claim_ids = []
-                seen_claim_ids: set[str] = set()
-                for claim_id in exp.get("claim_ids", []):
-                    normalized = str(claim_id or "").strip()
-                    if not normalized or normalized not in base_claim_id_set or normalized in seen_claim_ids:
-                        continue
-                    claim_ids.append(normalized)
-                    seen_claim_ids.add(normalized)
-                if not claim_ids:
-                    continue
                 experiments.append(Experiment(
                     experiment_id=exp.get("experiment_id", f"exp_{len(experiments)+1}"),
                     name=exp.get("name", "unknown"),
                     description=exp.get("description", ""),
                     dataset=exp.get("dataset"),
                     table_anchor=exp.get("table_anchor"),
-                    claim_ids=claim_ids,
                     repo_coverage=exp.get("repo_coverage", "not_found"),
                     repo_entrypoint=exp.get("repo_entrypoint"),
                     notes=exp.get("notes"),
@@ -389,7 +408,9 @@ class BuildClaimsIRAgent(BaseAgent):
             if evidence_anchors.get("visual_anchor"):
                 conditions["table_anchor"] = str(evidence_anchors["visual_anchor"])
             if evidence_anchors.get("visual_data"):
-                conditions["visual_data"] = evidence_anchors["visual_data"]
+                compact_visual = _compact_visual_reference(evidence_anchors["visual_data"])
+                if compact_visual:
+                    conditions["visual_data"] = compact_visual
 
             out.append(
                 ClaimItem(
@@ -485,6 +506,94 @@ class BuildClaimsIRAgent(BaseAgent):
             reason_codes.append("REPO_COVERAGE_POSTPROCESSED")
         return claims_ir.model_copy(update={"experiments": experiments, "reason_codes": reason_codes})
 
+    @staticmethod
+    def _append_unique(values: list[str], candidate: str) -> None:
+        item = str(candidate or "").strip()
+        if item and item not in values:
+            values.append(item)
+
+    def _sync_visual_associations(self, claims_ir: ClaimsIR) -> None:
+        claim_ids_by_element: dict[str, list[str]] = {}
+        claim_ids_by_anchor: dict[str, list[str]] = {}
+
+        for claim in claims_ir.claims:
+            conditions = claim.conditions if isinstance(claim.conditions, dict) else {}
+            anchor = str(conditions.get("table_anchor") or "").strip().lower()
+            if anchor:
+                claim_ids_by_anchor.setdefault(anchor, [])
+                self._append_unique(claim_ids_by_anchor[anchor], claim.claim_id)
+
+            visual_data = conditions.get("visual_data")
+            if isinstance(visual_data, dict):
+                element_id = str(visual_data.get("element_id") or "").strip().lower()
+                if element_id:
+                    claim_ids_by_element.setdefault(element_id, [])
+                    self._append_unique(claim_ids_by_element[element_id], claim.claim_id)
+
+        self._write_visual_claim_links(
+            "fingerprint/visual_elements.json",
+            "elements",
+            claim_ids_by_element,
+            claim_ids_by_anchor,
+            "VISUAL_ELEMENTS_LINKED_TO_CLAIMS",
+        )
+        self._write_visual_claim_links(
+            "fingerprint/visual_targets.json",
+            "visual_targets",
+            claim_ids_by_element,
+            claim_ids_by_anchor,
+            "VISUAL_TARGETS_LINKED_TO_CLAIMS",
+        )
+
+    def _write_visual_claim_links(
+        self,
+        artifact_path: str,
+        rows_key: str,
+        claim_ids_by_element: dict[str, list[str]],
+        claim_ids_by_anchor: dict[str, list[str]],
+        reason_code: str,
+    ) -> None:
+        try:
+            doc = self.artifacts.read_json(artifact_path)
+        except Exception:  # noqa: BLE001
+            return
+
+        rows = doc.get(rows_key)
+        if not isinstance(rows, list) or not rows:
+            return
+
+        updated_rows: list[dict[str, Any]] = []
+        changed = False
+        for row in rows:
+            if not isinstance(row, dict):
+                updated_rows.append(row)
+                continue
+            claim_ids: list[str] = []
+            element_id = str(row.get("element_id") or "").strip().lower()
+            anchor = str(row.get("visual_anchor") or "").strip().lower()
+            for claim_id in claim_ids_by_element.get(element_id, []):
+                self._append_unique(claim_ids, claim_id)
+            for claim_id in claim_ids_by_anchor.get(anchor, []):
+                self._append_unique(claim_ids, claim_id)
+            if row.get("associated_claim_ids") != claim_ids:
+                next_row = dict(row)
+                next_row["associated_claim_ids"] = claim_ids
+                updated_rows.append(next_row)
+                changed = True
+            else:
+                updated_rows.append(row)
+
+        if not changed:
+            return
+
+        next_doc = dict(doc)
+        next_doc[rows_key] = updated_rows
+        reason_codes = [str(code) for code in next_doc.get("reason_codes", []) if str(code).strip()]
+        if reason_code not in reason_codes:
+            reason_codes.append(reason_code)
+        next_doc["reason_codes"] = reason_codes
+        self.artifacts.write_json(artifact_path, next_doc)
+
     # ------------------------------------------------------------------
     # Main entry point
     # ------------------------------------------------------------------
@@ -511,4 +620,5 @@ class BuildClaimsIRAgent(BaseAgent):
             claims_ir = self._postprocess_repo_coverage(claims_ir, repo_analysis)
 
         self.artifacts.write_json("fingerprint/claims_ir.json", claims_ir.model_dump())
+        self._sync_visual_associations(claims_ir)
         return {"claims_ir": claims_ir.model_dump()}

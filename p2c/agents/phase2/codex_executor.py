@@ -75,7 +75,8 @@ from p2c.schemas import (
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_CLAUDE_MODEL = "claude-sonnet-4-20250514"
+DEFAULT_CLAUDE_MODEL = "claude-haiku-4-5-20251001"
+DEFAULT_MIN_EXECUTION_STEP_TIMEOUT_SEC = 7200
 _GENERIC_SCALAR_METRICS = {
     "accuracy",
     "auc",
@@ -162,7 +163,13 @@ class CodexExecutorAgent(BaseAgent):
                 self.log("PROGRESS", f"budget exhausted, skipping {step.step_id}")
                 break
 
-            step_remaining = min(step.timeout_sec, remaining_sec - elapsed)
+            effective_timeout = self._effective_step_timeout(step)
+            if effective_timeout > int(step.timeout_sec or 0):
+                self.log(
+                    "PROGRESS",
+                    f"extending timeout for {step.step_id}: {step.timeout_sec}s -> {effective_timeout}s",
+                )
+            step_remaining = min(effective_timeout, remaining_sec - elapsed)
             self.log("PROGRESS", f"step {step.step_id} (Claude Code): {step.description[:80]}")
 
             prior_context = self._summarize_journal(execution_journal)
@@ -417,6 +424,21 @@ class CodexExecutorAgent(BaseAgent):
             effective_cwd=step.cwd,
         )
 
+    @staticmethod
+    def _effective_step_timeout(step: ExecutionStep) -> int:
+        """Apply a conservative lower bound for executable reproduction steps."""
+        timeout = int(step.timeout_sec or 0)
+        if step.is_setup:
+            return timeout
+        try:
+            min_timeout = int(os.getenv(
+                "P2C_MIN_EXEC_TIMEOUT_SEC",
+                str(DEFAULT_MIN_EXECUTION_STEP_TIMEOUT_SEC),
+            ))
+        except ValueError:
+            min_timeout = DEFAULT_MIN_EXECUTION_STEP_TIMEOUT_SEC
+        return max(timeout, min_timeout)
+
     def _finalize_step_result(
         self,
         *,
@@ -434,6 +456,7 @@ class CodexExecutorAgent(BaseAgent):
     ) -> dict[str, Any]:
         stored = self.artifacts.read_json(step_result_relative)
         stored_metrics = stored.get("metrics") if isinstance(stored.get("metrics"), dict) else {}
+        repair_actions = self._normalize_repair_actions(stored.get("repair_actions"))
         ignore_metrics = self._should_ignore_step_metrics(step)
         if ignore_metrics:
             metrics: dict[str, Any] = {}
@@ -491,6 +514,9 @@ class CodexExecutorAgent(BaseAgent):
         run_reason_codes: list[str] = []
         if ignore_metrics and stored_metrics:
             run_reason_codes.append("METRICS_IGNORED_FOR_INSPECTION_STEP")
+        if repair_actions:
+            run_params["repair_actions"] = repair_actions
+            run_reason_codes.extend(self._reason_codes_for_repair_actions(repair_actions))
         if effective_command.strip() != step.command.strip() and not self._commands_share_target(step.command, effective_command):
             run_reason_codes.append("COMMAND_DRIFT")
         if degraded_success and primary_attempt is not None:
@@ -516,8 +542,11 @@ class CodexExecutorAgent(BaseAgent):
                 "exit_code": effective_exit_code,
                 "metrics": metrics,
                 "notes": notes,
+                "repair_actions": repair_actions,
             },
         )
+        if repair_actions:
+            self._record_repair_actions(step.step_id, repair_actions)
         self.artifacts.write_text(f"execution/codex_outputs/step_{step.step_id}_stdout.log", stdout_text)
         self.artifacts.write_text(f"execution/codex_outputs/step_{step.step_id}_stderr.log", stderr_text)
         narrative_text = getattr(proc, "narrative", "") or ""
@@ -683,6 +712,53 @@ class CodexExecutorAgent(BaseAgent):
             details += f" (exit {attempt['exit_code']}, {attempt['runtime_sec']:.2f}s)"
             lines.append(details)
         return "\n".join(lines)
+
+    @staticmethod
+    def _normalize_repair_actions(raw: Any) -> list[dict[str, str]]:
+        if not isinstance(raw, list):
+            return []
+        normalized: list[dict[str, str]] = []
+        for item in raw[:20]:
+            if isinstance(item, dict):
+                action = {
+                    "type": str(item.get("type") or "other").strip() or "other",
+                    "reason": str(item.get("reason") or "").strip(),
+                    "command_or_file": str(item.get("command_or_file") or item.get("command") or item.get("file") or "").strip(),
+                    "details": str(item.get("details") or "").strip(),
+                }
+            else:
+                action = {
+                    "type": "other",
+                    "reason": "",
+                    "command_or_file": "",
+                    "details": str(item).strip(),
+                }
+            if any(action.values()):
+                normalized.append(action)
+        return normalized
+
+    @staticmethod
+    def _reason_codes_for_repair_actions(actions: list[dict[str, str]]) -> list[str]:
+        combined = json.dumps(actions, ensure_ascii=False).lower()
+        codes: list[str] = ["REPAIR_ACTIONS_RECORDED"]
+        if any(token in combined for token in ("pip install", "conda install", "package_upgrade", "upgrade", "torch", "torchvision")):
+            codes.append("PACKAGE_UPGRADE_PERFORMED")
+        if any(token in combined for token in ("source_patch", "patch", "edit", ".py", "compatibility")):
+            codes.append("SOURCE_COMPAT_PATCH_PERFORMED")
+        if any(token in combined for token in ("gpu", "cuda", "sm_", "kernel image", "nvidia", "driver", "runtime")):
+            codes.append("GPU_COMPAT_REPAIR_RECORDED")
+        return list(dict.fromkeys(codes))
+
+    def _record_repair_actions(self, step_id: str, actions: list[dict[str, str]]) -> None:
+        payload = {
+            "step_id": step_id,
+            "actions": actions,
+            "reason_codes": self._reason_codes_for_repair_actions(actions),
+        }
+        self.artifacts.write_json(f"execution/codex_outputs/step_{step_id}_repair_actions.json", payload)
+        line = json.dumps(payload, ensure_ascii=False)
+        self.artifacts.append_text("execution/codex_outputs/codex_exec.log", f"REPAIR_ACTIONS {line}\n")
+        self.artifacts.append_text("execution/run.log", f"[codex_executor] REPAIR_ACTIONS {line}\n")
 
     @staticmethod
     def _extract_python_script_target(command: str) -> str | None:
@@ -916,9 +992,17 @@ class CodexExecutorAgent(BaseAgent):
             "2. Run each script EXACTLY ONCE. Do not relaunch a long-running "
             "training script just because you have not seen output yet — be "
             "patient and wait for it to complete.\n"
-            "3. Do not modify, patch, rewrite, or wrap repository source files. "
-            "Use the file as-is. If a script needs an argument, pass it on the "
-            "command line; do not edit the script.\n"
+            "3. Do not modify, patch, rewrite, or wrap repository source files "
+            "unless GPU/PyTorch/CUDA compatibility blocks execution. If the "
+            "installed stack is incompatible with the visible GPU (for example "
+            "`no kernel image`, unsupported `sm_XX`, CUDA capability warnings, "
+            "or driver/runtime mismatch), you may upgrade packages inside the "
+            "existing managed conda environment and make minimal source "
+            "compatibility patches needed for the newer stack. Typical upgrades "
+            "include torch, torchvision, numpy, CUDA runtime packages, and Python "
+            "inside the same conda env when newer GPU-compatible torch requires it. "
+            "Do not create a new environment. Record every package upgrade and source edit in "
+            "the result JSON `repair_actions` and in `notes`.\n"
             "4. Keep your assistant-text commentary minimal. Do not narrate "
             "every step. Status checklists, ✅ summaries, and progress updates "
             "are unnecessary."
@@ -940,7 +1024,7 @@ class CodexExecutorAgent(BaseAgent):
                 prompt=prompt,
                 options=ClaudeAgentOptions(
                     cwd=cwd,
-                    allowed_tools=["Bash", "Read", "Glob", "Grep"],
+                    allowed_tools=["Bash", "Read", "Glob", "Grep", "Edit", "Write"],
                     permission_mode="bypassPermissions",
                     max_turns=max_turns,
                     model=model,

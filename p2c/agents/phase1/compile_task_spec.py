@@ -120,7 +120,17 @@ class CompileTaskSpecAgent(BaseAgent):
         return items
 
     @staticmethod
-    def _select_entrypoints(candidates: list[Entrypoint], primary_id: str) -> list[Entrypoint]:
+    def _is_readme_candidate(candidate: Entrypoint) -> bool:
+        evidence = str(candidate.evidence or "").lower()
+        reason_codes = {str(code) for code in candidate.reason_codes}
+        return (
+            "README_WORKFLOW_PRIMARY" in reason_codes
+            or "README_VERIFIED_COMMAND" in reason_codes
+            or "readme verified" in evidence
+        )
+
+    @classmethod
+    def _select_entrypoints(cls, candidates: list[Entrypoint], primary_id: str) -> list[Entrypoint]:
         selected: list[Entrypoint] = []
         seen: set[str] = set()
 
@@ -131,13 +141,26 @@ class CompileTaskSpecAgent(BaseAgent):
             seen.add(candidate_id)
             selected.append(candidate)
 
+        primary_candidate: Entrypoint | None = None
         if primary_id:
             for candidate in candidates:
                 if str(candidate.entrypoint_id or "") == primary_id:
-                    add(candidate)
+                    primary_candidate = candidate
                     break
 
-        primary_wrapper = selected[0].path if selected and "README_WORKFLOW_PRIMARY" in selected[0].reason_codes else None
+        readme_candidates = [candidate for candidate in candidates if cls._is_readme_candidate(candidate)]
+        if primary_candidate and cls._is_readme_candidate(primary_candidate):
+            add(primary_candidate)
+        for candidate in readme_candidates:
+            add(candidate)
+        if primary_candidate is not None:
+            add(primary_candidate)
+
+        primary_wrapper = None
+        for candidate in selected:
+            if "README_WORKFLOW_PRIMARY" in candidate.reason_codes:
+                primary_wrapper = candidate.path
+                break
         for candidate in candidates:
             if "README_WORKFLOW_PRIMARY" in candidate.reason_codes:
                 add(candidate)

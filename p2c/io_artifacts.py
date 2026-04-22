@@ -18,6 +18,7 @@ REQUIRED_FILES = [
     "fingerprint/filter_clusters.json",
     "fingerprint/filter_selected.json",
     "fingerprint/claims_ir.json",
+    "fingerprint/visual_targets.json",
     # Phase 1 — task compilation
     "task/repo_analysis.json",
     "task/task_spec.json",
@@ -38,6 +39,7 @@ REQUIRED_FILES = [
     "results/evaluability.json",
     "results/evaluability_verdict.json",
     "results/verdict.json",
+    "results/visual_to_repo_alignment.json",
     "results/report.md",
 ]
 
@@ -75,12 +77,14 @@ class ArtifactManager:
             "evaluability.json": {"entries": [], "reason_codes": [_P]},
             "evaluability_verdict.json": {"status": "NOT_EVALUABLE", "claim_rows": [],
                                           "reason_codes": [_P], "summary": "Pipeline not complete yet."},
+            "visual_to_repo_alignment.json": {"alignments": [], "reason_codes": [_P]},
             "task_spec.json": {"tasks": [], "constraints": {}, "entrypoints": [],
                                "metric_observers": [], "run_matrix": [], "selection_notes": [],
                                "reason_codes": [_P]},
             "repo_analysis.json": {"ecosystems": [], "dependency_profiles": [],
                                    "entrypoint_candidates": [], "primary_entrypoint_id": None,
                                    "reason_codes": [_P]},
+            "visual_targets.json": {"visual_targets": [], "reason_codes": [_P]},
             "metric_contract.json": {"required_metrics": [], "parsers": [], "normalization": {},
                                      "reason_codes": [_P]},
             "execution_plan.json": {"plan_id": "", "execution_steps": [], "env_name": "",

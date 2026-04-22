@@ -23,8 +23,9 @@ from p2c.agents.phase3.observe_metrics import ObserveMetricsAgent
 from p2c.agents.phase3.reproduce_figures import ReproduceFiguresAgent
 from p2c.agents.phase3.score_and_diagnose import ScoreAndDiagnoseAgent
 from p2c.agents.phase3.verify_claims import VerifyClaimsAgent
+from p2c.agents.phase3.visual_to_repo_alignment import VisualToRepoAlignmentAgent
 
-_STEP_TOTAL = 19
+_STEP_TOTAL = 20
 
 
 def run_phase_1(ctx: dict[str, Any], agents: dict[str, Any]) -> None:
@@ -74,6 +75,7 @@ def run_phase_3(ctx: dict[str, Any], agents: dict[str, Any]) -> None:
     agents["align_evidence"].run(ctx)
     agents["verify_claims"].run(ctx)
     agents["score_and_diagnose"].run(ctx)
+    agents["visual_to_repo_alignment"].run(ctx)
     agents["reproduce_figures"].run(ctx)
     agents["audit_report"].run(ctx)
 
@@ -128,8 +130,11 @@ def build_agents(llm, artifacts) -> dict[str, Any]:
         "align_evidence": AlignEvidenceAgent(llm=llm, artifacts=artifacts, step_index=15, step_total=_STEP_TOTAL),
         "verify_claims": VerifyClaimsAgent(llm=llm, artifacts=artifacts, step_index=16, step_total=_STEP_TOTAL),
         "score_and_diagnose": ScoreAndDiagnoseAgent(llm=llm, artifacts=artifacts, step_index=17, step_total=_STEP_TOTAL),
-        "reproduce_figures": ReproduceFiguresAgent(llm=llm, artifacts=artifacts, step_index=18, step_total=_STEP_TOTAL),
-        "audit_report": AuditReportAgent(llm=llm, artifacts=artifacts, step_index=19, step_total=_STEP_TOTAL),
+        "visual_to_repo_alignment": VisualToRepoAlignmentAgent(
+            llm=llm, artifacts=artifacts, step_index=18, step_total=_STEP_TOTAL,
+        ),
+        "reproduce_figures": ReproduceFiguresAgent(llm=llm, artifacts=artifacts, step_index=19, step_total=_STEP_TOTAL),
+        "audit_report": AuditReportAgent(llm=llm, artifacts=artifacts, step_index=20, step_total=_STEP_TOTAL),
     }
 
     return {**phase1, **phase2, **phase3}

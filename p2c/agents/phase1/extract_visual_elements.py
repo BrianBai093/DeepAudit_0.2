@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -33,16 +34,28 @@ Return a JSON object with this structure:
       "data_series": [
         {"name": "Method A", "values": [{"x": "Dataset1", "y": 0.95}, {"x": "Dataset2", "y": 0.91}]}
       ],
-      "visual_anchor": "Figure 1"
+      "visual_anchor": "Figure 1",
+      "bbox": {"x0": 0.10, "y0": 0.20, "x1": 0.90, "y1": 0.65},
+      "x_axis_range": [0, 1],
+      "y_axis_range": [0, 1],
+      "series_semantics": [{"name": "Method A", "model": "AutoEncoder", "metric": "ROC-AUC"}],
+      "model_names": ["AutoEncoder"],
+      "sampling_strategy": "under-sampling" | "over-sampling" | "none" | null,
+      "numeric_confidence": 0.85
     }
   ]
 }
 
 Rules:
 - Extract APPROXIMATE numeric values from chart bars/lines/points as accurately as possible.
+- bbox must be normalized page coordinates from 0 to 1 around the visual element.
 - For tables: use data_series with one entry per row, values as [{column_header: cell_value}, ...].
+- For classification-report tables, preserve row labels and column names in values.
+- For heatmaps/confusion matrices, use data_series values containing matrix cells with row/column labels.
 - If a figure is a diagram/architecture without numeric data, set chart_type="diagram" and data_series=[].
 - Use the figure/table numbering from the paper (e.g., "Figure 3", "Table 2").
+- Extract model_names and sampling_strategy from caption, legend, labels, or nearby title text.
+- numeric_confidence is your confidence in the extracted numeric values, from 0.0 to 1.0.
 - Only extract elements with reproducibility-relevant data (metrics, results, comparisons).
 """
 
@@ -63,6 +76,13 @@ _EXTRACT_SCHEMA: dict[str, Any] = {
                     "legend_entries": {"type": "array", "items": {"type": "string"}},
                     "data_series": {"type": "array"},
                     "visual_anchor": {"type": "string"},
+                    "bbox": {"type": "object"},
+                    "x_axis_range": {"type": ["array", "null"]},
+                    "y_axis_range": {"type": ["array", "null"]},
+                    "series_semantics": {"type": "array"},
+                    "model_names": {"type": "array", "items": {"type": "string"}},
+                    "sampling_strategy": {"type": ["string", "null"]},
+                    "numeric_confidence": {"type": ["number", "null"]},
                 },
                 "required": ["element_id", "element_type", "page"],
             },
@@ -144,8 +164,12 @@ class ExtractVisualElementsAgent(BaseAgent):
 
         # Render PDF pages
         try:
-            from p2c.utils.pdf_extract import pdf_to_page_images
+            from p2c.utils.pdf_extract import pdf_to_page_images, write_page_image_assets
             pages = pdf_to_page_images(pdf_path, dpi=150)
+            page_image_paths = write_page_image_assets(
+                pages,
+                self.artifacts.path("fingerprint/page_images"),
+            )
         except ImportError:
             self.log("PROGRESS", "PyMuPDF not installed, skipping visual extraction")
             doc = VisualElementsDoc(reason_codes=["PYMUPDF_UNAVAILABLE"])
@@ -172,7 +196,7 @@ class ExtractVisualElementsAgent(BaseAgent):
 
         # Pass 2: detailed extraction from figure pages
         figure_pages = [(pn, uri) for pn, uri in pages if pn in figure_page_nums]
-        all_elements = self._extract_elements(figure_pages)
+        all_elements = self._extract_elements(figure_pages, page_image_paths=page_image_paths)
 
         doc = VisualElementsDoc(
             elements=all_elements,
@@ -214,7 +238,12 @@ class ExtractVisualElementsAgent(BaseAgent):
 
         return figure_pages
 
-    def _extract_elements(self, pages: list[tuple[int, str]]) -> list[VisualElement]:
+    def _extract_elements(
+        self,
+        pages: list[tuple[int, str]],
+        *,
+        page_image_paths: dict[int, Path] | None = None,
+    ) -> list[VisualElement]:
         """Detailed extraction of figures and tables from identified pages."""
         all_elements: list[VisualElement] = []
 
@@ -255,10 +284,100 @@ class ExtractVisualElementsAgent(BaseAgent):
                         legend_entries=elem_dict.get("legend_entries", []),
                         data_series=elem_dict.get("data_series", []),
                         visual_anchor=elem_dict.get("visual_anchor", ""),
+                        bbox=_normalize_bbox(elem_dict.get("bbox")),
+                        x_axis_range=_axis_range(elem_dict.get("x_axis_range")),
+                        y_axis_range=_axis_range(elem_dict.get("y_axis_range")),
+                        series_semantics=[
+                            row for row in elem_dict.get("series_semantics", [])
+                            if isinstance(row, dict)
+                        ],
+                        model_names=[
+                            str(name).strip()
+                            for name in elem_dict.get("model_names", [])
+                            if str(name).strip()
+                        ],
+                        sampling_strategy=elem_dict.get("sampling_strategy"),
+                        numeric_confidence=_float_or_none(elem_dict.get("numeric_confidence")),
                         reason_codes=["VISION_EXTRACTED"],
                     )
+                    self._attach_image_paths(elem, page_image_paths or {})
                     all_elements.append(elem)
                 except Exception:  # noqa: BLE001
                     continue
 
         return all_elements
+
+    def _attach_image_paths(self, elem: VisualElement, page_image_paths: dict[int, Path]) -> None:
+        page_image = page_image_paths.get(int(elem.page))
+        if not page_image:
+            elem.reason_codes.append("PAGE_IMAGE_MISSING")
+            return
+        elem.raw_page_image = self._relative_artifact_path(page_image)
+        if not elem.bbox:
+            elem.reason_codes.append("BBOX_MISSING")
+            return
+
+        try:
+            from p2c.utils.pdf_extract import crop_image_by_normalized_bbox
+            crop_name = _safe_image_name(elem.element_id)
+            crop_path = self.artifacts.path(f"fingerprint/visual_crops/{crop_name}.png")
+            if crop_image_by_normalized_bbox(page_image, elem.bbox, crop_path):
+                elem.crop_path = self._relative_artifact_path(crop_path)
+            else:
+                elem.reason_codes.append("CROP_FAILED")
+        except Exception:  # noqa: BLE001
+            elem.reason_codes.append("CROP_FAILED")
+
+    def _relative_artifact_path(self, path: Path) -> str:
+        try:
+            return path.resolve().relative_to(self.artifacts.run_root.resolve()).as_posix()
+        except Exception:  # noqa: BLE001
+            return path.as_posix()
+
+
+def _safe_image_name(raw: str) -> str:
+    name = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(raw or "visual")).strip("_")
+    return name or "visual"
+
+
+def _normalize_bbox(raw: Any) -> dict[str, float]:
+    if not isinstance(raw, dict):
+        return {}
+    aliases = {
+        "x0": ("x0", "left", "xmin"),
+        "y0": ("y0", "top", "ymin"),
+        "x1": ("x1", "right", "xmax"),
+        "y1": ("y1", "bottom", "ymax"),
+    }
+    out: dict[str, float] = {}
+    for key, names in aliases.items():
+        for name in names:
+            if name in raw:
+                value = _float_or_none(raw.get(name))
+                if value is not None:
+                    out[key] = value
+                break
+    if set(out) != {"x0", "y0", "x1", "y1"}:
+        return {}
+    if not (0.0 <= out["x0"] < out["x1"] <= 1.0 and 0.0 <= out["y0"] < out["y1"] <= 1.0):
+        return {}
+    return out
+
+
+def _axis_range(raw: Any) -> list[float] | None:
+    if not isinstance(raw, list) or len(raw) != 2:
+        return None
+    a = _float_or_none(raw[0])
+    b = _float_or_none(raw[1])
+    if a is None or b is None:
+        return None
+    return [a, b]
+
+
+def _float_or_none(value: Any) -> float | None:
+    try:
+        if value is None:
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None

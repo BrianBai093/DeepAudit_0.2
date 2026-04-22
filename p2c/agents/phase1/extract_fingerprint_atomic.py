@@ -6,6 +6,13 @@ import re
 
 from p2c.agents.base import BaseAgent
 from p2c.agents.phase1.fingerprint_prompt_templates import ATOMIC_SYSTEM_PROMPT, ATOMIC_USER_PROMPT_TEMPLATE
+from p2c.agents.phase1.table_llm import (
+    TABLE_CRITERIA_SCHEMA,
+    TABLE_CRITERIA_SYSTEM_PROMPT,
+    build_table_criteria_user_prompt,
+    normalize_table_criteria,
+    rows_from_llm_table_response,
+)
 
 FACT_SCOPE_RE = re.compile(r"<fact>(.*?)</fact>.*?<scope>(.*?)</scope>", flags=re.I | re.S)
 PERCENT_RE = re.compile(r"(\d+(?:\.\d+)?)\s*%")
@@ -45,6 +52,17 @@ class ExtractFingerprintAtomicAgent(BaseAgent):
         if not m:
             return None
         return f"Table {m.group(1)}"
+
+    @staticmethod
+    def _infer_table_anchor(unit: dict) -> str | None:
+        anchor = ExtractFingerprintAtomicAgent._extract_table_anchor(str(unit.get("text") or ""))
+        if anchor:
+            return anchor
+        unit_id = str(unit.get("unit_id") or "")
+        m = re.fullmatch(r"t_(\d+)", unit_id)
+        if m:
+            return f"Table {int(m.group(1)) + 1}"
+        return None
 
     @staticmethod
     def _parse_llm_list(text: str) -> list[dict]:
@@ -486,6 +504,85 @@ class ExtractFingerprintAtomicAgent(BaseAgent):
                 "reason_codes": ["TABLE_EXPANDED", "CLF_REPORT"],
             })
 
+    def _visual_table_index(self) -> dict[str, dict]:
+        try:
+            ve_doc = self.artifacts.read_json("fingerprint/visual_elements.json")
+        except Exception:  # noqa: BLE001
+            return {}
+        out: dict[str, dict] = {}
+        for elem in ve_doc.get("elements", []):
+            if not isinstance(elem, dict) or elem.get("element_type") != "table":
+                continue
+            for key in (elem.get("visual_anchor"), elem.get("element_id")):
+                normalized = str(key or "").strip().lower()
+                if normalized:
+                    out[normalized] = elem
+        return out
+
+    def _visual_for_table_unit(self, unit: dict, visual_index: dict[str, dict]) -> dict | None:
+        anchor = self._infer_table_anchor(unit)
+        if anchor:
+            elem = visual_index.get(anchor.lower())
+            if elem:
+                return elem
+        unit_id = str(unit.get("unit_id") or "")
+        m = re.fullmatch(r"t_(\d+)", unit_id)
+        if not m:
+            return None
+        candidates = [
+            f"table_{int(m.group(1)) + 1}",
+            f"Table {int(m.group(1)) + 1}",
+        ]
+        for candidate in candidates:
+            elem = visual_index.get(candidate.lower())
+            if elem:
+                return elem
+        return None
+
+    def _expand_table_unit_with_llm(
+        self,
+        unit: dict,
+        *,
+        visual_index: dict[str, dict],
+    ) -> tuple[list[dict], list[dict], str | None]:
+        table_anchor = self._infer_table_anchor(unit)
+        visual_elem = self._visual_for_table_unit(unit, visual_index)
+        if visual_elem and not table_anchor:
+            table_anchor = str(visual_elem.get("visual_anchor") or visual_elem.get("element_id") or "").strip() or None
+
+        user = build_table_criteria_user_prompt(
+            table_anchor=table_anchor,
+            caption=str(unit.get("caption") or ""),
+            table_html=str(unit.get("text") or ""),
+            context_before=str(unit.get("context_before") or ""),
+            context_after=str(unit.get("context_after") or ""),
+            visual_element=visual_elem,
+        )
+        data, err = self.safe_chat_json(
+            schema=TABLE_CRITERIA_SCHEMA,
+            system=TABLE_CRITERIA_SYSTEM_PROMPT,
+            user=user,
+        )
+        rows = rows_from_llm_table_response(data)
+        criteria = normalize_table_criteria(
+            rows,
+            default_anchor=table_anchor,
+            input_unit_id=str(unit.get("unit_id") or ""),
+            source_prefix="llm_table",
+            default_reason_code="LLM_TABLE_EXTRACTED",
+            visual_data=_visual_data_from_element(visual_elem) if visual_elem else None,
+        )
+        rejected: list[dict] = []
+        if not criteria:
+            rejected.append(
+                {
+                    "unit_id": unit.get("unit_id"),
+                    "raw": str(unit.get("text") or "")[:2000],
+                    "reason_codes": ["LLM_TABLE_EXTRACTION_EMPTY" if not err else "LLM_TABLE_UNAVAILABLE"],
+                }
+            )
+        return criteria, rejected, err
+
     def execute(self, ctx: dict) -> dict:
         guide = self.artifacts.read_json("fingerprint/guide_sentences.json")
         units = [u for u in guide.get("units", []) if isinstance(u, dict)]
@@ -523,14 +620,22 @@ class ExtractFingerprintAtomicAgent(BaseAgent):
             return {"atomic_criteria": payload}
 
         llm_budget = int(os.getenv("P2C_ATOMIC_LLM_SENTENCE_BUDGET", "8"))
+        table_llm_budget = int(os.getenv("P2C_ATOMIC_LLM_TABLE_BUDGET", "20"))
         llm_calls = 0
+        table_llm_calls = 0
         llm_enabled = True
+        table_llm_enabled = True
+        visual_index = self._visual_table_index()
 
         accepted: list[dict] = []
         rejected: list[dict] = []
         reason_codes: list[str] = []
 
-        self.log("PROGRESS", f"atomic stage processing {len(selected_units)} units (llm_budget={llm_budget})")
+        self.log(
+            "PROGRESS",
+            f"atomic stage processing {len(selected_units)} units "
+            f"(llm_budget={llm_budget}, table_llm_budget={table_llm_budget})",
+        )
 
         for idx, unit in enumerate(selected_units, start=1):
             if idx == 1 or idx % 25 == 0 or idx == len(selected_units):
@@ -542,6 +647,27 @@ class ExtractFingerprintAtomicAgent(BaseAgent):
 
             if unit_type == "table_block":
                 rows, rej = self._expand_table_unit(unit)
+                if not rows and table_llm_enabled and table_llm_calls < table_llm_budget:
+                    table_llm_calls += 1
+                    reason_codes.append("LLM_TABLE_FALLBACK_USED")
+                    llm_rows, llm_rej, llm_err = self._expand_table_unit_with_llm(
+                        unit,
+                        visual_index=visual_index,
+                    )
+                    if llm_err:
+                        reason_codes.append("LLM_TABLE_UNAVAILABLE")
+                        table_llm_enabled = False
+                    rows = llm_rows
+                    rej.extend(llm_rej)
+                elif not rows and table_llm_calls >= table_llm_budget:
+                    reason_codes.append("LLM_TABLE_BUDGET_EXCEEDED")
+                    rej.append(
+                        {
+                            "unit_id": unit_id,
+                            "raw": text[:2000],
+                            "reason_codes": ["LLM_TABLE_BUDGET_EXCEEDED"],
+                        }
+                    )
                 accepted.extend(rows)
                 rejected.extend(rej)
                 continue
@@ -653,3 +779,30 @@ class ExtractFingerprintAtomicAgent(BaseAgent):
         self.artifacts.write_json("fingerprint/atomic_criteria.json", payload)
         self.artifacts.write_json("fingerprint/atomic_rejected.json", rejected_payload)
         return {"atomic_criteria": payload}
+
+
+def _visual_data_from_element(elem: dict | None) -> dict:
+    if not isinstance(elem, dict):
+        return {}
+    out = {
+        "element_id": elem.get("element_id"),
+        "chart_type": elem.get("chart_type"),
+        "axis_labels": elem.get("axis_labels", {}),
+        "legend_entries": elem.get("legend_entries", []),
+        "data_series": elem.get("data_series", []),
+    }
+    for key in (
+        "bbox",
+        "raw_page_image",
+        "crop_path",
+        "x_axis_range",
+        "y_axis_range",
+        "series_semantics",
+        "model_names",
+        "sampling_strategy",
+        "numeric_confidence",
+    ):
+        value = elem.get(key)
+        if value not in (None, [], {}):
+            out[key] = value
+    return out
