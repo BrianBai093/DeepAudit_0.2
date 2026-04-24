@@ -836,8 +836,35 @@ class SystemRepoAnalyzer:
             if not readme.exists():
                 continue
             text = readme.read_text(encoding="utf-8", errors="ignore")
-            for line in text.splitlines():
+            logical_lines: list[str] = []
+            pending = ""
+            in_code_fence = False
+            for raw_line in text.splitlines():
+                line = raw_line.rstrip()
                 stripped = line.strip()
+                if stripped.startswith("```"):
+                    in_code_fence = not in_code_fence
+                    if pending:
+                        logical_lines.append(pending.strip())
+                        pending = ""
+                    continue
+                if not stripped:
+                    if pending:
+                        logical_lines.append(pending.strip())
+                        pending = ""
+                    continue
+                candidate = stripped
+                if pending:
+                    candidate = f"{pending} {candidate}"
+                if candidate.endswith("\\"):
+                    pending = candidate[:-1].strip()
+                    continue
+                logical_lines.append(candidate.strip())
+                pending = ""
+            if pending:
+                logical_lines.append(pending.strip())
+
+            for stripped in logical_lines:
                 for pattern in line_patterns:
                     m = re.match(pattern, stripped)
                     if m:

@@ -13,6 +13,8 @@ from p2c.schemas import (
     VerdictDoc,
 )
 
+_ARTIFACT_PROVENANCE = {"checkpoint_eval", "existing_logs", "existing_results", "mixed"}
+
 SYSTEM_PROMPT = """\
 You are an expert ML reproducibility auditor. You will receive:
 
@@ -38,9 +40,6 @@ against threshold = max(abs_eps, rel_eps * |target|).
 - For result claims WITHOUT matched metrics: check the missing_reason. If it says \
 "could not be aligned" or "ALIGNMENT_AMBIGUOUS", the repo likely does not implement \
  this exact paper configuration — verdict is INCONCLUSIVE with reason.
-- If repo_coverage says "not_found" but execution produced same-named metrics or \
- successful related steps, treat that as an alignment gap or evidence mismatch, not \
- as proof that the repository lacks all relevant implementation.
 - For config claims: these describe dataset sizes, hyperparameters, etc. Mark them \
 INCONCLUSIVE with a brief note on whether the execution implicitly satisfied them.
 - Do NOT fabricate values. Only use the metrics provided.
@@ -84,8 +83,7 @@ def _build_user_prompt(
             sections.append(
                 f"- {exp.get('experiment_id')}: {exp.get('name')} "
                 f"(dataset={exp.get('dataset', 'N/A')}, table={exp.get('table_anchor', 'N/A')}, "
-                f"repo_coverage={exp.get('repo_coverage', '?')}, "
-                f"entrypoint={exp.get('repo_entrypoint', 'N/A')})"
+                f"primary_metrics={exp.get('primary_metrics', [])})"
             )
             if exp.get("notes"):
                 sections.append(f"  notes: {exp['notes']}")
@@ -144,6 +142,7 @@ def _fallback_evaluate(
     tol = claim.get("tolerance_policy", {}) or {}
     abs_eps = float(tol.get("abs_eps", 0.01))
     rel_eps = float(tol.get("rel_eps", 0.02))
+    provenance_codes = _provenance_reason_codes(matched_records)
 
     if ctype == "config":
         return ClaimVerdict(
@@ -155,7 +154,7 @@ def _fallback_evaluate(
             ),
             compared_value=None,
             target_value=float(target) if target is not None else None,
-            reason_codes=["CONFIG_CLAIM", "NO_DIRECT_CONFIG_EVIDENCE"],
+            reason_codes=["CONFIG_CLAIM", "NO_DIRECT_CONFIG_EVIDENCE", *provenance_codes],
         )
 
     valued_records = [r for r in matched_records if r.value is not None]
@@ -171,7 +170,7 @@ def _fallback_evaluate(
             claim_id=claim_id,
             status="INCONCLUSIVE",
             detail=detail,
-            reason_codes=reason_codes,
+            reason_codes=[*reason_codes, *provenance_codes],
             target_value=float(target) if target is not None else None,
         )
 
@@ -198,7 +197,11 @@ def _fallback_evaluate(
             ),
             compared_value=x_rep,
             target_value=float(target),
-            reason_codes=["MATCHED_METRIC", "WITHIN_TOLERANCE" if ok else "OUTSIDE_TOLERANCE"],
+            reason_codes=[
+                "MATCHED_METRIC",
+                "WITHIN_TOLERANCE" if ok else "OUTSIDE_TOLERANCE",
+                *provenance_codes,
+            ],
         )
 
     return ClaimVerdict(
@@ -207,6 +210,19 @@ def _fallback_evaluate(
         detail="Claim type unsupported",
         reason_codes=["UNSUPPORTED_CLAIM_TYPE"],
     )
+
+
+def _provenance_reason_codes(matched_records: list[MetricRecord]) -> list[str]:
+    if any(record.execution_outcome == "FULLY_REPRODUCED" for record in matched_records):
+        return ["FULL_FIDELITY_EVIDENCE"]
+    if any(
+        (record.evidence_source in _ARTIFACT_PROVENANCE) or record.fidelity == "artifact"
+        for record in matched_records
+    ):
+        return ["ARTIFACT_BASED_EVIDENCE"]
+    if matched_records:
+        return ["REDUCED_FIDELITY_EVIDENCE"]
+    return []
 
 
 class VerifyClaimsAgent(BaseAgent):
@@ -218,7 +234,7 @@ class VerifyClaimsAgent(BaseAgent):
         parsed_doc = self.artifacts.read_json("results/parsed_evidence.json")
         evaluability_doc_raw = self.artifacts.read_json("results/evaluability.json")
         evaluability_doc = EvaluabilityDoc(**evaluability_doc_raw)
-        run_manifest = self.artifacts.read_json("execution/codex_outputs/run_manifest.json")
+        run_manifest = self.artifacts.read_json("execution/executor_outputs/run_manifest.json")
         evidence_map: dict[str, list[MetricRecord]] = {}
         missing_reason_map: dict[str, str | None] = {}
         for row in parsed_doc.get("claim_evidence", []):
@@ -319,16 +335,20 @@ class VerifyClaimsAgent(BaseAgent):
             return None
         paper_experiments = [str(exp.get("name") or exp.get("experiment_id") or "unknown") for exp in experiments]
         repo_experiments = [
-            str(run.get("run_id") or "unknown")
+            str(run.get("experiment_name") or run.get("run_id") or "unknown")
             for run in run_manifest.get("runs", [])
             if str(run.get("status") or "") in {"ok", "partial"}
         ]
         missing_experiments = [
             str(exp.get("name") or exp.get("experiment_id") or "unknown")
             for exp in experiments
-            if str(exp.get("repo_coverage") or "not_found") == "not_found"
+            if str(exp.get("experiment_id") or "") not in {
+                str(run.get("experiment_id") or run.get("run_id") or "")
+                for run in run_manifest.get("runs", [])
+                if str(run.get("status") or "") in {"ok", "partial"}
+            }
         ]
-        covered = sum(1 for exp in experiments if str(exp.get("repo_coverage") or "") in {"implemented", "partial"})
+        covered = len(experiments) - len(missing_experiments)
         return {
             "paper_experiments": paper_experiments,
             "repo_experiments": repo_experiments,

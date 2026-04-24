@@ -100,8 +100,9 @@ class CondaEnvManager:
     @staticmethod
     def _find_conda() -> str | None:
         for cmd in ("mamba", "conda"):
-            if shutil.which(cmd):
-                return cmd
+            resolved = CondaEnvManager._resolve_binary(cmd)
+            if resolved:
+                return resolved
         return None
 
     @property
@@ -189,10 +190,10 @@ class CondaEnvManager:
         """Execute *command* inside the managed environment.
 
         Inherits key host environment variables (PATH, API keys, proxy
-        settings) so that tools like ``codex`` and ``pip`` work correctly
+        settings) so that tools like the executor SDK and ``pip`` work correctly
         inside the conda-isolated shell.
         """
-        # Build an env dict that merges the host PATH (for codex, npm, etc.)
+        # Build an env dict that merges the host PATH (for executor SDK, npm, etc.)
         # with the conda env's own PATH.
         env = self._build_child_env()
         # ``mamba run`` on some Linux hosts (reproduced on Debian 13) misparses

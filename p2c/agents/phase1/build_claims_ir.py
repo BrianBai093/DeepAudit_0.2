@@ -17,17 +17,14 @@ _DEFAULT_EXPERIMENT_PROMPT_ENTRYPOINTS = 30
 _DEFAULT_EXPERIMENT_PROMPT_DEP_PROFILES = 20
 
 EXPERIMENT_SYSTEM_PROMPT = """\
-You are an expert ML paper analyst. Given extracted claims from a paper and a \
-repository analysis, you will:
+You are an expert ML paper analyst. Given extracted claims from a paper, you will:
 
 1. Identify each DISTINCT EXPERIMENT described in the paper.
    An experiment is a separate evaluation setting — different dataset, different \
    model variant, different test condition, etc. Two rows in the same table are \
    NOT separate experiments unless they test fundamentally different things.
 
-2. For each experiment, determine whether the repository contains code to run it.
-
-3. Classify each claim as either:
+2. Classify each claim as either:
    - "result": a numeric outcome that can be reproduced (accuracy, F1, loss, etc.)
    - "config": a parameter or setup detail (dataset size, epochs, learning rate, etc.)
    Only result claims with a clear metric name and numeric target are useful for \
@@ -48,8 +45,6 @@ Return a JSON object with this EXACT structure:
       "description": "what this experiment tests",
       "dataset": "dataset name or null",
       "table_anchor": "Table X or null",
-      "repo_coverage": "implemented | partial | not_found",
-      "repo_entrypoint": "path/to/file.py or null",
       "notes": "why you think it is/isn't in the repo"
     }
   ],
@@ -77,15 +72,12 @@ RULES:
   with metric=null and target=null.
 - is_primary=true for the main result claims the paper emphasizes. is_primary=false for \
   secondary/supporting claims.
-- For repo_coverage: "implemented" means there is clear code to run this experiment. \
-  "partial" means some code exists but it's incomplete. "not_found" means no code for this.
 - Do NOT invent metrics or values. Only use what appears in the input.
 """
 
 
 def _build_experiment_user_prompt(
     fingerprint: dict,
-    repo_analysis: dict | None,
 ) -> str:
     sections = []
 
@@ -112,40 +104,6 @@ def _build_experiment_user_prompt(
             sections.append(f"- Hyperparameters: {json.dumps(configs['hyperparameters'])}")
         if configs.get("evaluation_metrics"):
             sections.append(f"- Evaluation metrics: {configs['evaluation_metrics']}")
-
-    # Repo analysis
-    if repo_analysis:
-        try:
-            max_entrypoints = max(
-                1,
-                int(os.getenv("P2C_EXPERIMENT_PROMPT_ENTRYPOINTS", str(_DEFAULT_EXPERIMENT_PROMPT_ENTRYPOINTS))),
-            )
-        except ValueError:
-            max_entrypoints = _DEFAULT_EXPERIMENT_PROMPT_ENTRYPOINTS
-        try:
-            max_dep_profiles = max(
-                1,
-                int(os.getenv("P2C_EXPERIMENT_PROMPT_DEP_PROFILES", str(_DEFAULT_EXPERIMENT_PROMPT_DEP_PROFILES))),
-            )
-        except ValueError:
-            max_dep_profiles = _DEFAULT_EXPERIMENT_PROMPT_DEP_PROFILES
-        sections.append("\n## Repository Analysis")
-        entrypoints = repo_analysis.get("entrypoint_candidates", []) or repo_analysis.get("entrypoints", [])
-        for ep in entrypoints[:max_entrypoints]:
-            sections.append(
-                f"- Entrypoint: {ep.get('path', '')} "
-                f"(command: {ep.get('command', '')}, confidence: {ep.get('confidence', '?')})"
-            )
-        if len(entrypoints) > max_entrypoints:
-            sections.append(f"- ... omitted {len(entrypoints) - max_entrypoints} additional entrypoints")
-        dep_profiles = repo_analysis.get("dependency_profiles", [])
-        for dep in dep_profiles[:max_dep_profiles]:
-            sections.append(
-                f"- Dependencies: {dep.get('profile_id', '')} "
-                f"(manifests: {dep.get('manifest_paths', [])})"
-            )
-        if len(dep_profiles) > max_dep_profiles:
-            sections.append(f"- ... omitted {len(dep_profiles) - max_dep_profiles} additional dependency profiles")
 
     return "\n".join(sections)
 
@@ -213,26 +171,10 @@ class BuildClaimsIRAgent(BaseAgent):
     def _build_claims_ir_via_llm(
         self,
         fingerprint: dict,
-        repo_analysis: dict | None,
         base_claims: list[ClaimItem],
-        code_index: object | None = None,
     ) -> ClaimsIR | None:
-        """Use LLM to identify experiments, group claims, and assess repo coverage."""
-        user_prompt = _build_experiment_user_prompt(fingerprint, repo_analysis)
-
-        # Append RAG-retrieved code context if available
-        if code_index is not None:
-            try:
-                from p2c.rag.query import retrieve_for_claims
-                claim_dicts = [
-                    {"predicate": c.fact, "metric": getattr(c, "metric", None)}
-                    for c in base_claims
-                ]
-                rag_context = retrieve_for_claims(code_index, claim_dicts, top_k=8, max_chars=8000)
-                if rag_context:
-                    user_prompt += "\n\n" + rag_context
-            except Exception:  # noqa: BLE001
-                pass  # graceful degradation
+        """Use LLM to identify experiments and group claims using paper evidence only."""
+        user_prompt = _build_experiment_user_prompt(fingerprint)
 
         schema = {
             "type": "object",
@@ -247,14 +189,9 @@ class BuildClaimsIRAgent(BaseAgent):
                             "description": {"type": "string"},
                             "dataset": {"type": ["string", "null"]},
                             "table_anchor": {"type": ["string", "null"]},
-                            "repo_coverage": {
-                                "type": "string",
-                                "enum": ["implemented", "partial", "not_found"],
-                            },
-                            "repo_entrypoint": {"type": ["string", "null"]},
                             "notes": {"type": ["string", "null"]},
                         },
-                        "required": ["experiment_id", "name", "repo_coverage"],
+                        "required": ["experiment_id", "name"],
                     },
                 },
                 "claims": {
@@ -298,8 +235,6 @@ class BuildClaimsIRAgent(BaseAgent):
                     description=exp.get("description", ""),
                     dataset=exp.get("dataset"),
                     table_anchor=exp.get("table_anchor"),
-                    repo_coverage=exp.get("repo_coverage", "not_found"),
-                    repo_entrypoint=exp.get("repo_entrypoint"),
                     notes=exp.get("notes"),
                 ))
             except Exception:  # noqa: BLE001
@@ -376,7 +311,7 @@ class BuildClaimsIRAgent(BaseAgent):
             claims=claims,
             reason_codes=reason_codes,
         )
-        return self._postprocess_repo_coverage(claims_ir, repo_analysis)
+        return self._attach_experiment_rollups(claims_ir)
 
     # ------------------------------------------------------------------
     # Deterministic fallback
@@ -438,73 +373,113 @@ class BuildClaimsIRAgent(BaseAgent):
         return out, reason_codes
 
     @staticmethod
-    def _primary_repo_entrypoint(repo_analysis: dict | None) -> str | None:
-        if not isinstance(repo_analysis, dict):
-            return None
-        entrypoints = [row for row in repo_analysis.get("entrypoint_candidates", []) if isinstance(row, dict)]
-        if not entrypoints:
-            return None
-        primary_id = str(repo_analysis.get("primary_entrypoint_id") or "").strip()
-        if primary_id:
-            for row in entrypoints:
-                if str(row.get("entrypoint_id") or "").strip() == primary_id:
-                    path = str(row.get("path") or "").strip()
-                    if path:
-                        return path
-        for row in entrypoints:
-            path = str(row.get("path") or "").strip()
-            if path:
-                return path
-        return None
+    def _attach_experiment_rollups(claims_ir: ClaimsIR) -> ClaimsIR:
+        claims = [claim.model_copy(deep=True) for claim in claims_ir.claims]
+        experiments = [exp.model_copy(deep=True) for exp in claims_ir.experiments]
 
-    def _postprocess_repo_coverage(self, claims_ir: ClaimsIR, repo_analysis: dict | None) -> ClaimsIR:
-        if not isinstance(repo_analysis, dict):
-            return claims_ir
-        entrypoints = [row for row in repo_analysis.get("entrypoint_candidates", []) if isinstance(row, dict)]
-        if not entrypoints:
-            return claims_ir
+        experiment_by_id = {exp.experiment_id: exp for exp in experiments}
+        synthetic_counter = len(experiments)
 
-        primary_path = self._primary_repo_entrypoint(repo_analysis)
-        updated = False
-        experiments: list[Experiment] = []
-        for exp in claims_ir.experiments:
-            repo_coverage = exp.repo_coverage
-            repo_entrypoint = exp.repo_entrypoint or primary_path
-            notes = exp.notes
-            exp_updated = False
+        def ensure_experiment(experiment_id: str, *, anchor: str | None = None) -> Experiment:
+            nonlocal synthetic_counter
+            exp = experiment_by_id.get(experiment_id)
+            if exp is not None:
+                return exp
+            synthetic_counter += 1
+            exp = Experiment(
+                experiment_id=experiment_id,
+                name=experiment_id.replace("_", " "),
+                description="",
+                dataset=None,
+                table_anchor=anchor,
+                notes="Synthesized from claim grouping.",
+            )
+            experiment_by_id[experiment_id] = exp
+            experiments.append(exp)
+            return exp
 
-            if repo_coverage == "not_found":
-                repo_coverage = "partial"
-                exp_updated = True
-            if repo_entrypoint != exp.repo_entrypoint:
-                exp_updated = True
-            if exp_updated and (
-                not notes
-                or "no repository analysis content" in str(notes).lower()
-                or "cannot be confirmed" in str(notes).lower()
-            ):
-                entrypoint_note = f" via `{repo_entrypoint}`" if repo_entrypoint else ""
-                notes = (
-                    "Repository analysis found runnable entrypoint(s)"
-                    f"{entrypoint_note}, but the paper experiment is only partially aligned to the repo implementation."
-                )
+        if not experiments:
+            fallback_id = "exp_01"
             experiments.append(
+                Experiment(
+                    experiment_id=fallback_id,
+                    name="paper experiment 1",
+                    description="Fallback experiment synthesized from paper claims.",
+                    notes="Synthesized because experiment extraction returned no explicit experiments.",
+                )
+            )
+            experiment_by_id[fallback_id] = experiments[0]
+
+        for idx, claim in enumerate(claims, start=1):
+            conditions = dict(claim.conditions)
+            experiment_id = str(conditions.get("experiment_id") or "").strip()
+            if not experiment_id:
+                anchor = str(conditions.get("table_anchor") or "").strip()
+                if anchor:
+                    normalized = re.sub(r"[^a-z0-9]+", "_", anchor.lower()).strip("_")
+                    experiment_id = normalized or f"exp_{idx:02d}"
+                else:
+                    experiment_id = experiments[0].experiment_id
+                conditions["experiment_id"] = experiment_id
+                claims[idx - 1] = claim.model_copy(update={"conditions": conditions})
+                claim = claims[idx - 1]
+            ensure_experiment(experiment_id, anchor=conditions.get("table_anchor"))
+
+        updated_experiments: list[Experiment] = []
+        dropped_empty_experiments = 0
+        for exp in experiments:
+            related_claims = [
+                claim for claim in claims
+                if str((claim.conditions or {}).get("experiment_id") or "").strip() == exp.experiment_id
+            ]
+            claim_ids = [claim.claim_id for claim in related_claims]
+            if not claim_ids:
+                dropped_empty_experiments += 1
+                continue
+            primary_metrics: list[str] = []
+            is_primary = False
+            dataset = exp.dataset
+            table_anchor = exp.table_anchor
+            description = exp.description
+            notes = exp.notes
+
+            for claim in related_claims:
+                conditions = claim.conditions or {}
+                if not dataset and conditions.get("dataset"):
+                    dataset = str(conditions["dataset"])
+                if not table_anchor and conditions.get("table_anchor"):
+                    table_anchor = str(conditions["table_anchor"])
+                if claim.metric and claim.metric not in primary_metrics and (
+                    conditions.get("is_primary", False) or claim.type == "result"
+                ):
+                    primary_metrics.append(str(claim.metric))
+                if conditions.get("is_primary", False):
+                    is_primary = True
+
+            if not description and related_claims:
+                description = related_claims[0].predicate
+            if not notes and not related_claims:
+                notes = "No claims were grouped into this experiment."
+
+            updated_experiments.append(
                 exp.model_copy(
                     update={
-                        "repo_coverage": repo_coverage,
-                        "repo_entrypoint": repo_entrypoint,
+                        "dataset": dataset,
+                        "table_anchor": table_anchor,
+                        "primary_metrics": primary_metrics,
+                        "is_primary": is_primary or bool(primary_metrics),
+                        "description": description,
                         "notes": notes,
                     }
                 )
             )
-            updated = updated or exp_updated
 
-        if not updated:
-            return claims_ir
         reason_codes = list(claims_ir.reason_codes)
-        if "REPO_COVERAGE_POSTPROCESSED" not in reason_codes:
-            reason_codes.append("REPO_COVERAGE_POSTPROCESSED")
-        return claims_ir.model_copy(update={"experiments": experiments, "reason_codes": reason_codes})
+        if "EXPERIMENT_ROLLUPS_ATTACHED" not in reason_codes:
+            reason_codes.append("EXPERIMENT_ROLLUPS_ATTACHED")
+        if dropped_empty_experiments:
+            reason_codes.append("EXPERIMENTS_WITHOUT_CLAIMS_DROPPED")
+        return claims_ir.model_copy(update={"experiments": updated_experiments, "claims": claims, "reason_codes": reason_codes})
 
     @staticmethod
     def _append_unique(values: list[str], candidate: str) -> None:
@@ -602,22 +577,15 @@ class BuildClaimsIRAgent(BaseAgent):
         fingerprint = self.artifacts.read_json("fingerprint/fingerprint.json")
         claims_from_fp, reason_codes = self._claims_from_fingerprint(fingerprint)
 
-        # Try to load repo analysis for cross-referencing
-        repo_analysis: dict | None = None
-        try:
-            repo_analysis = self.artifacts.read_json("task/repo_analysis.json")
-        except Exception:  # noqa: BLE001
-            pass
-
         # Primary path: LLM-based experiment identification
-        code_index = ctx.get("_code_index")
-        claims_ir = self._build_claims_ir_via_llm(fingerprint, repo_analysis, claims_from_fp, code_index=code_index)
+        claims_ir = self._build_claims_ir_via_llm(fingerprint, claims_from_fp)
 
         if claims_ir is None:
             # Fallback: deterministic extraction
             self.log("PROGRESS", "Falling back to deterministic claim extraction")
-            claims_ir = ClaimsIR(claims=claims_from_fp, reason_codes=reason_codes)
-            claims_ir = self._postprocess_repo_coverage(claims_ir, repo_analysis)
+            claims_ir = self._attach_experiment_rollups(
+                ClaimsIR(claims=claims_from_fp, reason_codes=reason_codes)
+            )
 
         self.artifacts.write_json("fingerprint/claims_ir.json", claims_ir.model_dump())
         self._sync_visual_associations(claims_ir)

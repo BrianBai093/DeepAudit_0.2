@@ -77,15 +77,14 @@ class ScoreAndDiagnoseAgent(BaseAgent):
     def execute(self, ctx: dict[str, Any]) -> dict[str, Any]:
         # Load all required artifacts
         verdict = self._safe_read("results/verdict.json")
-        manifest = self._safe_read("execution/codex_outputs/run_manifest.json")
+        manifest = self._safe_read("execution/executor_outputs/run_manifest.json")
         env_result = self._safe_read("execution/env_setup_result.json")
-        plan = self._safe_read("execution/execution_plan.json")
         repo_analysis = self._safe_read("task/repo_analysis.json")
         claims_ir = self._safe_read("fingerprint/claims_ir.json")
         failures = self._safe_read("execution/execution_failures.json")
 
         # Compute dimension scores
-        env_score = self._score_environment(env_result, plan, repo_analysis)
+        env_score = self._score_environment(env_result, repo_analysis)
         data_score = self._score_data_availability(manifest, claims_ir, repo_analysis)
         exec_score = self._score_execution_success(manifest)
         claim_score = self._score_claim_match(verdict)
@@ -103,7 +102,7 @@ class ScoreAndDiagnoseAgent(BaseAgent):
         )
 
         # Determine ECR
-        ecr, ecr_reason = self._compute_ecr(verdict, manifest, exec_score.score)
+        ecr, ecr_reason = self._compute_ecr(verdict, manifest, exec_score.score, claims_ir)
 
         score = ReproducibilityScore(
             total_score=round(total, 1),
@@ -133,7 +132,7 @@ class ScoreAndDiagnoseAgent(BaseAgent):
     # ------------------------------------------------------------------
 
     def _score_environment(
-        self, env_result: dict, plan: dict, repo_analysis: dict,
+        self, env_result: dict, repo_analysis: dict,
     ) -> DimensionScore:
         """Environment dimension (25%): deterministic env build quality."""
         score = 100
@@ -219,7 +218,12 @@ class ScoreAndDiagnoseAgent(BaseAgent):
 
         # Check experiments for data coverage
         experiments = claims_ir.get("experiments", [])
-        not_found = [e for e in experiments if e.get("repo_coverage") == "not_found"]
+        executed_ids = {
+            str(run.get("experiment_id") or run.get("run_id") or "")
+            for run in runs
+            if str(run.get("status") or "") in {"ok", "partial"}
+        }
+        not_found = [e for e in experiments if str(e.get("experiment_id") or "") not in executed_ids]
         if not_found:
             penalty = min(len(not_found) * 15, 40)
             score -= penalty
@@ -272,16 +276,34 @@ class ScoreAndDiagnoseAgent(BaseAgent):
         failed_count = sum(1 for r in non_setup if r.get("status") == "failed")
         total = len(non_setup)
 
+        weighted_points = sum(self._execution_run_points(run) for run in non_setup)
         if total > 0:
-            per_step = 100.0 / total
-            score = round(ok_count * per_step + partial_count * per_step * 0.5)
+            score = round((weighted_points / total) * 100.0)
 
-        evidence.append(f"{ok_count} ok, {partial_count} partial, {failed_count} failed out of {total} steps")
+        outcome_counts: dict[str, int] = {}
+        for run in non_setup:
+            key = str(run.get("execution_outcome") or run.get("fidelity") or run.get("status") or "unknown")
+            outcome_counts[key] = outcome_counts.get(key, 0) + 1
+
+        evidence.append(
+            f"{ok_count} ok, {partial_count} partial, {failed_count} failed out of {total} runs; "
+            f"weighted_progress={weighted_points:.2f}/{total:.2f}"
+        )
+        if outcome_counts:
+            evidence.append(
+                "Outcome mix: " + ", ".join(f"{name}={count}" for name, count in sorted(outcome_counts.items()))
+            )
 
         if failed_count > 0:
             reason_codes.append("STEPS_FAILED")
         if partial_count > 0:
             reason_codes.append("STEPS_PARTIAL")
+        if any(str(run.get("execution_outcome") or "") == "FULLY_REPRODUCED" for run in non_setup):
+            reason_codes.append("FULL_FIDELITY_RUN_PRESENT")
+        elif any(str(run.get("execution_outcome") or "") == "TREND_SUPPORTED" for run in non_setup):
+            reason_codes.append("REDUCED_FIDELITY_RUNS_PRESENT")
+        elif any(str(run.get("execution_outcome") or "") == "EXECUTABLE" for run in non_setup):
+            reason_codes.append("SMOKE_RUNS_PRESENT")
 
         score = max(0, min(100, score))
         return DimensionScore(
@@ -361,28 +383,43 @@ class ScoreAndDiagnoseAgent(BaseAgent):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _compute_ecr(verdict: dict, manifest: dict, exec_score: int) -> tuple[bool, str]:
+    def _compute_ecr(verdict: dict, manifest: dict, exec_score: int, claims_ir: dict) -> tuple[bool, str]:
         """Compute binary ECR (Executable-Claim Reproducible) label."""
         claim_verdicts = verdict.get("claim_verdicts", [])
         if not claim_verdicts:
             return False, "No claim verdicts available"
 
-        # Check all primary result claims are SUPPORTED
+        claims_by_id = {
+            str(row.get("claim_id") or ""): row
+            for row in claims_ir.get("claims", [])
+            if isinstance(row, dict) and row.get("claim_id")
+        }
         non_config = [
             cv for cv in claim_verdicts
-            if cv.get("status") != "INCONCLUSIVE" or cv.get("compared_value") is not None
+            if claims_by_id.get(str(cv.get("claim_id") or ""), {}).get("type") != "config"
         ]
         if not non_config:
-            non_config = claim_verdicts
+            return False, "No non-config claims available for ECR"
 
         all_supported = all(cv.get("status") == "SUPPORTED" for cv in non_config)
         if not all_supported:
             unsupported = [cv["claim_id"] for cv in non_config if cv.get("status") != "SUPPORTED"]
             return False, f"Claims not supported: {', '.join(unsupported[:5])}"
 
+        unsupported_provenance = [
+            cv["claim_id"]
+            for cv in non_config
+            if "FULL_FIDELITY_EVIDENCE" not in set(cv.get("reason_codes", []))
+        ]
+        if unsupported_provenance:
+            return False, f"Supported claims lack full-fidelity evidence: {', '.join(unsupported_provenance[:5])}"
+
         # Check execution success
         if exec_score < 80:
             return False, f"Execution score {exec_score}/100 < 80 threshold"
+
+        if not any(str(run.get("execution_outcome") or "") == "FULLY_REPRODUCED" for run in manifest.get("runs", [])):
+            return False, "No FULLY_REPRODUCED execution run available"
 
         # Check no manual fixes needed
         runs = manifest.get("runs", [])
@@ -391,7 +428,31 @@ class ScoreAndDiagnoseAgent(BaseAgent):
             if manual_codes & set(run.get("reason_codes", [])):
                 return False, "Manual fixes were needed during execution"
 
-        return True, "All primary claims supported, execution score >= 80, no manual fixes"
+        return True, "All non-config claims are supported with full-fidelity evidence, execution score >= 80, and no manual fixes"
+
+    @staticmethod
+    def _execution_run_points(run: dict[str, Any]) -> float:
+        status = str(run.get("status") or "")
+        if status == "failed":
+            return 0.0
+        if status == "skipped":
+            return 0.1
+        if status == "partial":
+            status_multiplier = 0.8
+        else:
+            status_multiplier = 1.0
+
+        outcome = str(run.get("execution_outcome") or "")
+        fidelity = str(run.get("fidelity") or "")
+        if outcome == "FULLY_REPRODUCED" or fidelity == "full":
+            base = 1.0
+        elif outcome == "TREND_SUPPORTED" or fidelity in {"trend", "artifact"}:
+            base = 0.75
+        elif outcome == "EXECUTABLE" or fidelity == "smoke":
+            base = 0.5
+        else:
+            base = 0.25 if status in {"ok", "partial"} else 0.0
+        return round(base * status_multiplier, 3)
 
     # ------------------------------------------------------------------
     # Gap taxonomy classifier

@@ -157,8 +157,8 @@ class Experiment(BaseModel):
     description: str = ""
     dataset: str | None = None
     table_anchor: str | None = None
-    repo_coverage: Literal["implemented", "partial", "not_found"] = "not_found"
-    repo_entrypoint: str | None = None
+    primary_metrics: list[str] = Field(default_factory=list)
+    is_primary: bool = False
     notes: str | None = None
 
 
@@ -295,36 +295,59 @@ class RepoState(BaseModel):
     reason_codes: list[str] = Field(default_factory=list)
 
 
-class CodexRun(BaseModel):
+class ExecutionLogRefs(BaseModel):
+    stdout: str | None = None
+    stderr: str | None = None
+    narrative: str | None = None
+    activity: str | None = None
+
+
+ExecutionRunStatus = Literal["ok", "partial", "failed", "skipped"]
+ExecutionFidelity = Literal["artifact", "smoke", "trend", "full"]
+ExecutionOutcome = Literal["EXECUTABLE", "TREND_SUPPORTED", "FULLY_REPRODUCED"]
+ExecutionEvidenceSource = Literal["fresh_run", "checkpoint_eval", "existing_logs", "existing_results", "mixed"]
+ExecutionStopReason = Literal[
+    "checkpoint_eval",
+    "existing_artifact",
+    "budget_bound",
+    "early_stop_evidence",
+    "full_run_complete",
+    "repo_missing_path",
+    "runtime_failure",
+    "guardrail_blocked",
+    "skipped_nonessential",
+]
+
+
+class ExecutionRun(BaseModel):
     run_id: str
+    experiment_id: str | None = None
+    experiment_name: str | None = None
+    dataset: str | None = None
     command: str
+    commands_attempted: list[str] = Field(default_factory=list)
     params: dict[str, Any] = Field(default_factory=dict)
     cwd: str
     exit_code: int
-    status: str
+    status: ExecutionRunStatus
+    fidelity: ExecutionFidelity | None = None
+    execution_outcome: ExecutionOutcome | None = None
+    evidence_source: ExecutionEvidenceSource | None = None
+    override_args: list[str] = Field(default_factory=list)
+    observed_signals: list[str] = Field(default_factory=list)
+    stop_reason: ExecutionStopReason | None = None
+    notes: str | None = None
     runtime_sec: float | None = None
     stdout_tail: str | None = None
     stderr_tail: str | None = None
     artifacts: list[str] = Field(default_factory=list)
     metrics: dict[str, Any] = Field(default_factory=dict)
+    logs: ExecutionLogRefs = Field(default_factory=ExecutionLogRefs)
     reason_codes: list[str] = Field(default_factory=list)
 
 
 class RunManifestDoc(BaseModel):
-    runs: list[CodexRun] = Field(default_factory=list)
-    reason_codes: list[str] = Field(default_factory=list)
-
-
-class ClaimAlignmentItem(BaseModel):
-    claim_id: str
-    required_metrics: list[str] = Field(default_factory=list)
-    source: list[str] = Field(default_factory=list)
-    evaluable: Literal["yes", "no", "partial"] = "partial"
-    reason: str | None = None
-
-
-class ClaimAlignmentDoc(BaseModel):
-    claims: list[ClaimAlignmentItem] = Field(default_factory=list)
+    runs: list[ExecutionRun] = Field(default_factory=list)
     reason_codes: list[str] = Field(default_factory=list)
 
 
@@ -348,13 +371,13 @@ class ExecutionSummaryDoc(BaseModel):
     reason_codes: list[str] = Field(default_factory=list)
 
 
-class CodexFailureDoc(BaseModel):
+class ExecutorFailureDoc(BaseModel):
     stage: Literal["precheck", "main", "repair", "postcheck"] = "postcheck"
     last_command: str
     exit_code: int
     stdout_tail: str = ""
     stderr_tail: str = ""
-    codex_exec_log_tail: str = ""
+    executor_exec_log_tail: str = ""
     pip_log_tail: str = ""
     capability_snapshot: dict[str, Any] = Field(default_factory=dict)
     dependency_bootstrap_trace: list[str] = Field(default_factory=list)
@@ -367,8 +390,40 @@ class MetricRecord(BaseModel):
     unit: str | None = None
     source: str
     claim_id: str | None = None
+    run_id: str | None = None
+    experiment_id: str | None = None
+    fidelity: ExecutionFidelity | None = None
+    execution_outcome: ExecutionOutcome | None = None
+    evidence_source: ExecutionEvidenceSource | None = None
     parsed: bool = True
     reason_codes: list[str] = Field(default_factory=list)
+
+
+class ExecutorResultRun(BaseModel):
+    experiment_id: str
+    experiment_name: str | None = None
+    dataset: str | None = None
+    command: str = ""
+    commands_attempted: list[str] = Field(default_factory=list)
+    cwd: str = "."
+    exit_code: int = 1
+    status: ExecutionRunStatus = "failed"
+    fidelity: ExecutionFidelity | None = None
+    execution_outcome: ExecutionOutcome | None = None
+    evidence_source: ExecutionEvidenceSource | None = None
+    override_args: list[str] = Field(default_factory=list)
+    observed_signals: list[str] = Field(default_factory=list)
+    stop_reason: ExecutionStopReason | None = None
+    notes: str | None = None
+    runtime_sec: float | None = None
+    artifacts: list[str] = Field(default_factory=list)
+    metrics: dict[str, Any] = Field(default_factory=dict)
+    logs: ExecutionLogRefs = Field(default_factory=ExecutionLogRefs)
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+class ExecutorResultsDoc(BaseModel):
+    runs: list[ExecutorResultRun] = Field(default_factory=list)
 
 
 class MetricsDoc(BaseModel):
@@ -637,7 +692,7 @@ class ExpectedResult(BaseModel):
 
 
 class ExecutionPlan(BaseModel):
-    """Output of the PlannerAgent — drives ToolAgent + CodexExecutor."""
+    """Deprecated plan schema retained only for artifact compatibility."""
 
     plan_id: str
     plan_version: int = 1
@@ -650,8 +705,21 @@ class ExecutionPlan(BaseModel):
     expected_results: list[ExpectedResult] = Field(default_factory=list)
     compatibility_issues: list[CompatibilityIssue] = Field(default_factory=list)
     env_name: str
-    codex_autonomous_fallback: bool = True
+    executor_autonomous_fallback: bool = True
     total_budget_sec: int = 10800  # default 3h; override via --budget_minutes
+    reason_codes: list[str] = Field(default_factory=list)
+    notes: str | None = None
+
+
+class ExecutorEnvSpec(BaseModel):
+    """Deterministic environment spec derived only from repository artifacts."""
+
+    env_name: str
+    python_version: str = "3.10"
+    conda_dependencies: list[CondaDependency] = Field(default_factory=list)
+    pip_dependencies: list[str] = Field(default_factory=list)
+    system_packages: list[str] = Field(default_factory=list)
+    pre_install_commands: list[str] = Field(default_factory=list)
     reason_codes: list[str] = Field(default_factory=list)
     notes: str | None = None
 
@@ -710,14 +778,13 @@ class Phase2State(BaseModel):
     """Orchestrator bookkeeping — persisted as phase2_state.json."""
 
     status: Literal[
-        "planning", "env_setup", "executing", "replanning", "autonomous", "success", "failed"
-    ] = "planning"
+        "env_setup", "executing", "repairing", "success", "failed"
+    ] = "env_setup"
     attempt: int = 0
     max_attempts: int = 3
     total_budget_sec: int = 10800  # default 3h
     elapsed_sec: float = 0.0
-    plan: ExecutionPlan | None = None
+    env_spec: ExecutorEnvSpec | None = None
     env_result: EnvSetupResult | None = None
     failures: list[ExecutionFailure] = Field(default_factory=list)
     final_manifest: RunManifestDoc | None = None
-    final_alignment: ClaimAlignmentDoc | None = None

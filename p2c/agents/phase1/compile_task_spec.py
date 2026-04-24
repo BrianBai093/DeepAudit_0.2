@@ -129,12 +129,24 @@ class CompileTaskSpecAgent(BaseAgent):
             or "readme verified" in evidence
         )
 
+    @staticmethod
+    def _is_compat_task_entrypoint(candidate: Entrypoint) -> bool:
+        path = str(candidate.path or "").lower()
+        command = str(candidate.command or "").lower()
+        if path.endswith(".ipynb"):
+            return False
+        if "jupyter nbconvert" in command and "--execute" in command:
+            return False
+        return candidate.runtime in {"python", "shell", "make"}
+
     @classmethod
     def _select_entrypoints(cls, candidates: list[Entrypoint], primary_id: str) -> list[Entrypoint]:
         selected: list[Entrypoint] = []
         seen: set[str] = set()
 
         def add(candidate: Entrypoint) -> None:
+            if not cls._is_compat_task_entrypoint(candidate):
+                return
             candidate_id = str(candidate.entrypoint_id or candidate.path)
             if candidate_id in seen:
                 return
@@ -170,7 +182,7 @@ class CompileTaskSpecAgent(BaseAgent):
                     add(candidate)
 
         for candidate in candidates:
-            if candidate.runtime in {"python", "shell", "make"}:
+            if cls._is_compat_task_entrypoint(candidate):
                 add(candidate)
             if len(selected) >= 12:
                 break
@@ -257,8 +269,13 @@ class CompileTaskSpecAgent(BaseAgent):
         candidates = [Entrypoint(**row) if isinstance(row, dict) else row for row in repo_analysis.entrypoint_candidates]
         primary_id = str(repo_analysis.primary_entrypoint_id or "")
         selected = self._select_entrypoints(candidates, primary_id)
+        excluded_compat_candidates = [
+            candidate for candidate in candidates if not self._is_compat_task_entrypoint(candidate)
+        ]
 
         reason_codes = list(repo_analysis.reason_codes)
+        if excluded_compat_candidates:
+            reason_codes.append("TASK_SPEC_NON_SCRIPT_ENTRYPOINTS_EXCLUDED")
         if selected:
             reason_codes.append("ENTRYPOINT_SELECTED_PRIMARY")
             if len(selected) > 1:

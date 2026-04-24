@@ -47,7 +47,7 @@ def test_fallback_report_uses_claim_text_before_internal_id(tmp_path: Path, monk
         {"status": "PARTIAL", "claim_rows": [], "reason_codes": [], "summary": ""},
     )
     artifacts.write_json("results/metrics.json", {"records": [], "reason_codes": []})
-    artifacts.write_json("execution/codex_outputs/run_manifest.json", {"runs": [], "reason_codes": []})
+    artifacts.write_json("execution/executor_outputs/run_manifest.json", {"runs": [], "reason_codes": []})
     artifacts.write_json(
         "results/reproduced_figures.json",
         {
@@ -76,54 +76,40 @@ def test_fallback_report_uses_claim_text_before_internal_id(tmp_path: Path, monk
     assert "](results/figures/fig_2.png)" not in report
 
 
-def test_report_prompt_filters_metricless_inspection_metrics_and_reads_failure_list(tmp_path: Path) -> None:
+def test_report_prompt_includes_executor_activity_and_new_manifest(tmp_path: Path) -> None:
     artifacts = ArtifactManager(tmp_path / "artifacts", "run_prompt")
     artifacts.ensure_tree()
     artifacts.write_json("fingerprint/claims_ir.json", {"claims": [], "experiments": [], "reason_codes": []})
     artifacts.write_json(
-        "execution/execution_plan.json",
-        {
-            "plan_id": "p1",
-            "plan_version": 1,
-            "python_version": "3.10",
-            "execution_steps": [
-                {
-                    "step_id": "step_01_repo_inspect",
-                    "description": "read source",
-                    "command": "python -c \"from pathlib import Path; print(Path('train.py').read_text())\"",
-                    "cwd": ".",
-                    "timeout_sec": 60,
-                    "depends_on": [],
-                    "expected_metrics": [],
-                    "is_setup": True,
-                    "retry_on_failure": False,
-                    "fallback_commands": [],
-                    "required_artifacts": [],
-                    "produced_artifacts": [],
-                }
-            ],
-            "env_name": "test_env",
-            "reason_codes": [],
-        },
-    )
-    artifacts.write_json(
-        "execution/codex_outputs/run_manifest.json",
+        "execution/executor_outputs/run_manifest.json",
         {
             "runs": [
                 {
-                    "run_id": "step_01_repo_inspect",
-                    "command": "python calculate_metrics.py",
+                    "run_id": "exp_01",
+                    "experiment_id": "exp_01",
+                    "experiment_name": "fc table 1",
+                    "command": "python train.py",
+                    "commands_attempted": ["python train.py"],
                     "cwd": ".",
                     "exit_code": 0,
                     "status": "ok",
+                    "fidelity": "artifact",
+                    "execution_outcome": "TREND_SUPPORTED",
+                    "evidence_source": "existing_logs",
+                    "stop_reason": "existing_artifact",
                     "runtime_sec": 1.0,
-                    "stdout_tail": "accuracy=0.99\nprecision=0.88\n",
+                    "stdout_tail": "accuracy=0.99\n",
                     "metrics": {"accuracy": 0.99},
+                    "logs": {"activity": "execution/executor_outputs/executor_activity.jsonl"},
                     "reason_codes": [],
                 }
             ],
             "reason_codes": [],
         },
+    )
+    artifacts.write_text(
+        "execution/executor_outputs/executor_activity.jsonl",
+        '{"ts":"2026-04-22T00:00:00Z","event":"command_end","experiment_id":"exp_01","cwd":".","command":"python train.py","status":"ok","exit_code":0,"duration_sec":1.0,"artifacts":[],"message":"done"}\n',
     )
     artifacts.write_json(
         "execution/execution_failures.json",
@@ -140,9 +126,10 @@ def test_report_prompt_filters_metricless_inspection_metrics_and_reads_failure_l
 
     prompt = _build_report_prompt({"run_id": "run_prompt", "repo_dir": "/tmp/repo"}, artifacts)
 
-    assert '"accuracy": 0.99' not in prompt
-    assert "accuracy=0.99" not in prompt
-    assert "stdout_tail_note: omitted" in prompt
-    assert "metrics_note: omitted" in prompt
-    assert "# EXECUTION FAILURES" in prompt
-    assert "failed once" in prompt
+    assert "# RUN MANIFEST" in prompt
+    assert "# EXECUTOR ACTIVITY" in prompt
+    assert "python train.py" in prompt
+    assert "execution_outcome: TREND_SUPPORTED" in prompt
+    assert "evidence_source: existing_logs" in prompt
+    assert "# CLAIM ALIGNMENT" not in prompt
+    assert "# EXECUTION PLAN" not in prompt

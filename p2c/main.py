@@ -20,28 +20,26 @@ def log_global(artifacts: ArtifactManager, state: str, step: str, message: str) 
 
 def ensure_phase_prereq(phase: int, artifacts: ArtifactManager) -> None:
     if phase == 2:
-        task_spec = artifacts.path("task/task_spec.json")
-        if not task_spec.exists() or task_spec.stat().st_size == 0:
+        claims_ir = artifacts.path("fingerprint/claims_ir.json")
+        if not claims_ir.exists() or claims_ir.stat().st_size == 0:
             raise RuntimeError(
                 "Phase 2 requires phase 1 artifacts. Run: python -m p2c.main --phase 1 ..."
             )
         try:
-            payload = json.loads(task_spec.read_text(encoding="utf-8"))
+            payload = json.loads(claims_ir.read_text(encoding="utf-8"))
         except Exception as e:  # noqa: BLE001
             raise RuntimeError(
-                "Phase 2 requires a valid phase 1 task_spec.json. "
+                "Phase 2 requires a valid phase 1 claims_ir.json. "
                 "Run: python -m p2c.main --phase 1 ..."
             ) from e
-        tasks = payload.get("tasks") if isinstance(payload.get("tasks"), list) else []
-        entrypoints = payload.get("entrypoints") if isinstance(payload.get("entrypoints"), list) else []
-        if not tasks and not entrypoints:
+        experiments = payload.get("experiments") if isinstance(payload.get("experiments"), list) else []
+        if not experiments:
             raise RuntimeError(
-                "Phase 2 requires phase 1 outputs with non-empty tasks (or legacy entrypoints). "
+                "Phase 2 requires phase 1 outputs with non-empty experiments. "
                 "Run: python -m p2c.main --phase 1 ..."
             )
     if phase == 3:
-        run_manifest = artifacts.path("execution/codex_outputs/run_manifest.json")
-        claim_alignment = artifacts.path("execution/codex_outputs/claim_alignment.json")
+        run_manifest = artifacts.path("execution/executor_outputs/run_manifest.json")
         if not run_manifest.exists() or run_manifest.stat().st_size == 0:
             raise RuntimeError(
                 "Phase 3 requires phase 2 artifacts. Run: python -m p2c.main --phase 2 ..."
@@ -50,16 +48,12 @@ def ensure_phase_prereq(phase: int, artifacts: ArtifactManager) -> None:
             manifest_payload = json.loads(run_manifest.read_text(encoding="utf-8"))
         except Exception as e:  # noqa: BLE001
             raise RuntimeError(
-                "Phase 3 requires a valid execution/codex_outputs/run_manifest.json from phase 2. "
+                "Phase 3 requires a valid execution/executor_outputs/run_manifest.json from phase 2. "
                 "Run: python -m p2c.main --phase 2 ..."
             ) from e
         if not manifest_payload.get("runs"):
             raise RuntimeError(
                 "Phase 3 requires phase 2 run_manifest runs. Run: python -m p2c.main --phase 2 ..."
-            )
-        if not claim_alignment.exists() or claim_alignment.stat().st_size == 0:
-            raise RuntimeError(
-                "Phase 3 requires phase 2 claim alignment output. Run: python -m p2c.main --phase 2 ..."
             )
 
 

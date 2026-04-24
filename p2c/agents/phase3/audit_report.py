@@ -51,6 +51,7 @@ ENVIRONMENT_UNDERDEFINED, ENTRYPOINT_UNCLEAR, NONDETERMINISM, COMPUTE_INFEASIBLE
 
 | Experiment | Implemented? | Executed? | Result |
 |------------|-------------|-----------|--------|
+The Result column MUST summarize status, fidelity, execution_outcome, evidence_source, and stop_reason.
 
 ## Rules
 - NO verbose paragraphs. Use tables and single-sentence bullets ONLY.
@@ -193,51 +194,30 @@ def _build_report_prompt(ctx: dict, artifacts) -> str:
     except Exception:  # noqa: BLE001
         pass
 
-    # ── Execution plan ───────────────────────────────────────────
-    plan_steps: dict[str, dict] = {}
-    try:
-        plan = artifacts.read_json("execution/execution_plan.json")
-        plan_steps = _plan_step_map(plan)
-        sections.append("\n# EXECUTION PLAN")
-        # Only include key fields to save tokens
-        plan_summary = {
-            "plan_id": plan.get("plan_id"),
-            "python_version": plan.get("python_version"),
-            "steps": [
-                {"step_id": s.get("step_id"), "description": s.get("description"), "command": s.get("command", "")[:200]}
-                for s in plan.get("execution_steps", [])
-            ],
-            "compatibility_issues": plan.get("compatibility_issues", []),
-        }
-        sections.append(json.dumps(plan_summary, indent=2, ensure_ascii=False)[:3000])
-    except Exception:  # noqa: BLE001
-        pass
-
     # ── Run manifest ─────────────────────────────────────────────
-    manifest = artifacts.read_json("execution/codex_outputs/run_manifest.json")
+    manifest = artifacts.read_json("execution/executor_outputs/run_manifest.json")
     sections.append("\n# RUN MANIFEST (execution results)")
     for run in manifest.get("runs", []):
-        sections.append(f"\n## Step: {run.get('run_id')}")
+        sections.append(f"\n## Experiment: {run.get('experiment_name') or run.get('run_id')}")
         sections.append(f"- status: {run.get('status')}")
+        sections.append(f"- fidelity: {run.get('fidelity')}")
+        sections.append(f"- execution_outcome: {run.get('execution_outcome')}")
+        sections.append(f"- evidence_source: {run.get('evidence_source')}")
+        sections.append(f"- stop_reason: {run.get('stop_reason')}")
         sections.append(f"- exit_code: {run.get('exit_code')}")
         sections.append(f"- runtime_sec: {run.get('runtime_sec')}")
         if run.get("params"):
             sections.append(f"- params: {json.dumps(run.get('params', {}), ensure_ascii=False)}")
         if run.get("reason_codes"):
             sections.append(f"- reason_codes: {json.dumps(run.get('reason_codes', []), ensure_ascii=False)}")
-        if run.get("status") == "partial":
-            sections.append("- partial_execution_note: primary command failed; fallback only validated artifacts or a reduced objective")
-        metricless_step = _metricless_report_step(run, plan_steps.get(str(run.get("run_id") or "")))
-        filtered_metrics = _run_metrics_for_report(run, plan_steps)
-        sections.append(f"- metrics: {json.dumps(filtered_metrics)}")
-        if run.get("metrics") and not filtered_metrics:
-            sections.append("- metrics_note: omitted because this step was planned as setup/static inspection with no expected metrics")
-        # Include stdout tail for context (truncated)
+        sections.append(f"- commands_attempted: {json.dumps(run.get('commands_attempted', []), ensure_ascii=False)}")
+        sections.append(f"- metrics: {json.dumps(run.get('metrics', {}), ensure_ascii=False)}")
         stdout = run.get("stdout_tail", "")
-        if stdout and not metricless_step:
+        if stdout:
             sections.append(f"- stdout_tail (last 500 chars): {stdout[-500:]}")
-        elif stdout and metricless_step:
-            sections.append("- stdout_tail_note: omitted because this step was planned as setup/static inspection")
+        logs = run.get("logs") or {}
+        if logs:
+            sections.append(f"- logs: {json.dumps(logs, ensure_ascii=False)}")
 
     # ── Execution failures ───────────────────────────────────────
     try:
@@ -268,7 +248,7 @@ def _build_report_prompt(ctx: dict, artifacts) -> str:
     sections.append("\n# CLAIM VERDICTS")
     sections.append(json.dumps(verdict, indent=2, ensure_ascii=False)[:4000])
 
-    # ── Structured metrics + alignment ───────────────────────────
+    # ── Structured metrics ───────────────────────────────────────
     try:
         metrics = artifacts.read_json("results/metrics.json")
         sections.append("\n# STRUCTURED METRICS")
@@ -277,9 +257,10 @@ def _build_report_prompt(ctx: dict, artifacts) -> str:
         pass
 
     try:
-        alignment = artifacts.read_json("execution/codex_outputs/claim_alignment.json")
-        sections.append("\n# CLAIM ALIGNMENT")
-        sections.append(json.dumps(alignment, indent=2, ensure_ascii=False)[:3000])
+        activity = artifacts.path("execution/executor_outputs/executor_activity.jsonl")
+        if activity.exists():
+            sections.append("\n# EXECUTOR ACTIVITY")
+            sections.append(activity.read_text(encoding="utf-8", errors="ignore")[:3000])
     except Exception:  # noqa: BLE001
         pass
 
@@ -362,9 +343,7 @@ class AuditReportAgent(BaseAgent):
         eval_verdict = self.artifacts.read_json("results/evaluability_verdict.json")
         metrics = self.artifacts.read_json("results/metrics.json")
         claims_doc = self.artifacts.read_json("fingerprint/claims_ir.json")
-        manifest = self.artifacts.read_json("execution/codex_outputs/run_manifest.json")
-        plan = self.artifacts.read_json("execution/execution_plan.json")
-        plan_steps = _plan_step_map(plan)
+        manifest = self.artifacts.read_json("execution/executor_outputs/run_manifest.json")
         reproduced_figures = self.artifacts.read_json("results/reproduced_figures.json")
         try:
             visual_alignment = self.artifacts.read_json("results/visual_to_repo_alignment.json")
@@ -440,24 +419,23 @@ class AuditReportAgent(BaseAgent):
 
         lines.extend([
             "",
-            "## Execution Steps",
+            "## Execution Runs",
             "",
         ])
         for run in manifest.get("runs", []):
             run_id = str(run.get("run_id") or "")
-            planned_step = plan_steps.get(run_id, {})
-            planned_command = str(planned_step.get("command") or "").strip()
-            effective_command = str(run.get("command", "")).strip()
             lines.append(
                 f"- **{run_id}** [{run.get('status', 'unknown')}]: "
-                f"exit_code={run.get('exit_code')}"
+                f"exit_code={run.get('exit_code')}, "
+                f"fidelity={run.get('fidelity')}, "
+                f"outcome={run.get('execution_outcome')}, "
+                f"evidence={run.get('evidence_source')}, "
+                f"stop_reason={run.get('stop_reason')}"
             )
-            if planned_command:
-                lines.append(f"  - Planned: `{planned_command}`")
-            if effective_command and effective_command != planned_command:
-                lines.append(f"  - Effective: `{effective_command}`")
-            if run.get("status") == "partial":
-                lines.append("  - primary command failed; fallback only validated artifacts or a reduced objective")
+            if run.get("command"):
+                lines.append(f"  - Primary command: `{run.get('command')}`")
+            if run.get("commands_attempted"):
+                lines.append(f"  - Commands attempted: {json.dumps(run.get('commands_attempted', []), ensure_ascii=False)}")
             if run.get("params"):
                 lines.append(f"  - params: {json.dumps(run.get('params', {}), ensure_ascii=False)}")
 
