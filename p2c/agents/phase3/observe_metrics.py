@@ -1,15 +1,19 @@
 from __future__ import annotations
 
 from p2c.agents.base import BaseAgent
-from p2c.agents.phase3.execution_summary_evidence import load_effective_run_manifest
+from p2c.agents.phase3.execution_summary_evidence import (
+    PHASE2_PACKAGE_PATH,
+    load_effective_run_manifest,
+    load_phase2_execution_package,
+)
 from p2c.agents.phase2.result_extraction import (
     extract_metric_records_from_stdout,
     is_static_inspection_command,
 )
 from p2c.schemas import MetricContract, MetricRecord, MetricsDoc, RunManifestDoc
 
-SYSTEM_PROMPT = "You parse metrics from effective execution evidence; do not fabricate and return strict JSON only."
-USER_PROMPT_TEMPLATE = "Input: results/effective_run_manifest.json + execution summary evidence. Output: results/metrics.json"
+SYSTEM_PROMPT = "You parse metrics from canonical Phase 2 execution evidence; do not fabricate and return strict JSON only."
+USER_PROMPT_TEMPLATE = "Input: phase2_execution_package.json. Output: results/metrics.json"
 
 _GENERIC_SCALAR_METRICS = {
     "accuracy",
@@ -91,10 +95,6 @@ class ObserveMetricsAgent(BaseAgent):
     def execute(self, ctx: dict) -> dict:
         self.safe_chat_text(SYSTEM_PROMPT, USER_PROMPT_TEMPLATE)
 
-        manifest_payload = load_effective_run_manifest(self.artifacts)
-        manifest = RunManifestDoc(**manifest_payload)
-        summary_evidence = self.artifacts.read_json("results/execution_summary_evidence.json")
-
         contract_payload = self.artifacts.read_json("task/metric_contract.json")
         contract = MetricContract(**contract_payload) if contract_payload else MetricContract()
         required = {str(x).lower() for x in contract.required_metrics if str(x).strip()}
@@ -114,6 +114,7 @@ class ObserveMetricsAgent(BaseAgent):
             fidelity=None,
             execution_outcome=None,
             evidence_source=None,
+            unit: str | None = None,
         ) -> None:
             lowered = str(metric_name).lower()
             if lowered.endswith("_all"):
@@ -129,7 +130,7 @@ class ObserveMetricsAgent(BaseAgent):
                 MetricRecord(
                     metric_name=lowered,
                     value=parsed_value,
-                    unit="ratio" if parsed_value is not None else None,
+                    unit=unit or ("ratio" if parsed_value is not None else None),
                     source=source,
                     run_id=getattr(run, "run_id", None) if run is not None else run_id,
                     experiment_id=getattr(run, "experiment_id", None) if run is not None else experiment_id,
@@ -140,6 +141,58 @@ class ObserveMetricsAgent(BaseAgent):
                     reason_codes=reason_codes or ([] if parsed_value is not None else ["VALUE_PARSE_FAILED"]),
                 )
             )
+
+        package = load_phase2_execution_package(self.artifacts)
+        if package:
+            for experiment in package.get("experiments", []):
+                if not isinstance(experiment, dict):
+                    continue
+                experiment_id = str(experiment.get("experiment_id") or "").strip() or None
+                for attempt in experiment.get("attempts", []):
+                    if not isinstance(attempt, dict):
+                        continue
+                    attempt_id = str(attempt.get("attempt_id") or experiment_id or "").strip()
+                    source = f"{PHASE2_PACKAGE_PATH}:{attempt_id or 'unknown_attempt'}"
+                    for metric in attempt.get("metrics", []):
+                        if not isinstance(metric, dict):
+                            continue
+                        metric_name = str(metric.get("metric_name") or "").strip()
+                        if not metric_name:
+                            continue
+                        value = metric.get("value_ratio")
+                        if value is None:
+                            value = metric.get("value")
+                        append_record(
+                            metric_name=metric_name,
+                            value=value,
+                            source=source,
+                            reason_codes=["PHASE2_PACKAGE_METRIC"],
+                            run_id=attempt_id or None,
+                            experiment_id=experiment_id,
+                            fidelity=attempt.get("fidelity") or metric.get("fidelity"),
+                            execution_outcome=attempt.get("execution_outcome"),
+                            evidence_source=attempt.get("evidence_source"),
+                            unit=metric.get("unit"),
+                        )
+
+            if not records:
+                records.append(
+                    MetricRecord(
+                        metric_name="unknown",
+                        value=None,
+                        unit=None,
+                        source=PHASE2_PACKAGE_PATH,
+                        parsed=False,
+                        reason_codes=["NO_METRIC_MATCH"],
+                    )
+                )
+            metrics = MetricsDoc(records=records, reason_codes=["PHASE2_PACKAGE_METRICS_SOURCE"])
+            self.artifacts.write_json("results/metrics.json", metrics.model_dump())
+            return {"metrics": metrics.model_dump()}
+
+        manifest_payload = load_effective_run_manifest(self.artifacts)
+        manifest = RunManifestDoc(**manifest_payload)
+        summary_evidence = self.artifacts.read_json("results/execution_summary_evidence.json")
 
         for run in manifest.runs:
             if is_static_inspection_command(run.command):

@@ -5,14 +5,20 @@ from pathlib import Path
 
 from p2c.agents.base import BaseAgent
 from p2c.agents.phase3.claim_inputs import load_effective_claims_ir
-from p2c.agents.phase3.execution_summary_evidence import SUMMARY_PRIORITY_NOTE, load_effective_run_manifest
+from p2c.agents.phase3.execution_summary_evidence import (
+    PHASE2_PACKAGE_PATH,
+    PHASE2_RESULTS_PATH,
+    SUMMARY_PRIORITY_NOTE,
+    load_effective_run_manifest,
+    load_phase2_execution_package,
+)
 from p2c.agents.phase2.result_extraction import is_static_inspection_command
 
 SYSTEM_PROMPT = """\
 You are a senior ML reproducibility auditor writing the final assessment report.
 
-You will receive ALL artifacts from a paper reproduction pipeline including a pre-computed \
-reproducibility score (0-100) with four dimensions and a gap diagnosis taxonomy.
+You will receive a canonical Phase 2 execution package plus selected Phase 1 and Phase 3 \
+artifacts. Treat phase2_execution_package.json as the execution source of truth.
 
 Write a CONCISE reproducibility audit report in Markdown. Follow the structure EXACTLY:
 
@@ -32,15 +38,16 @@ Write a CONCISE reproducibility audit report in Markdown. Follow the structure E
 
 ### 2. Verdict Dashboard (table only, NO prose)
 
-| Claim | Paper Value | Reproduced | Δ | Status |
-|-------|-------------|------------|---|--------|
+| Experiment | Scope | Paper Value | Reproduced | Fidelity | Status |
+|------------|-------|-------------|------------|----------|--------|
 Use ✅ for SUPPORTED, ❌ for NOT_SUPPORTED, ⚠️ for INCONCLUSIVE.
-The Claim cell MUST use the concrete claim text first, with the internal claim_id in parentheses.
-Example: "fraudulent:legit ratio = 1:1 (claim_01)".
+Focus this dashboard on result claims with reproduced metrics: experiment, dataset, algorithm,
+model family, paper acc/metric, reproduced acc/metric, and fidelity. Do not include setup/config
+claims such as dropout or data split unless there are no result claims at all.
 
-### 3. Reproduced Figures
-For each reproduced figure: embed ![caption](path) and add ONE sentence comparison note.
-If no figures were generated, write "No figures reproduced."
+### 3. Reproduced Figures/Tables
+For each reproduced figure or table image: embed ![caption](path) and add ONE sentence comparison note.
+If no figures or tables were generated, write "No figures/tables reproduced."
 
 ### 4. Gap Diagnosis (table only)
 
@@ -59,10 +66,10 @@ The Result column MUST summarize status, fidelity, execution_outcome, evidence_s
 - NO verbose paragraphs. Use tables and single-sentence bullets ONLY.
 - Max 2 sentences per section OUTSIDE of tables.
 - Every number MUST come from the provided artifacts.
-- Use the effective claims and effective run manifest supplied in the prompt. The effective claims
-  normalize mean±std paper values so the mean is the target and std is tolerance context.
-- If EXECUTION_SUMMARY_FINAL.md conflicts with lower-priority execution evidence, treat it as
-  same-origin highest-priority evidence and mention conflicts rather than silently downgrading it.
+- Use the Phase 2 execution package first. The effective run manifest is a compatibility projection
+  derived from that package when the package exists.
+- PHASE2_RESULTS.md is a deterministic same-origin summary of the package; raw EXECUTION_*.md files
+  are lower-priority debug context.
 - Do NOT fabricate metrics, file paths, or results.
 - Do NOT repeat information across sections.
 - Do NOT use bare claim IDs as the primary label; always show the concrete claim text first.
@@ -200,11 +207,42 @@ def _build_report_prompt(ctx: dict, artifacts) -> str:
     except Exception:  # noqa: BLE001
         pass
 
-    # ── Highest-priority execution summary and effective manifest ──
+    # ── Canonical Phase2 execution package ────────────────────────
+    phase2_package = load_phase2_execution_package(artifacts)
+    if phase2_package:
+        sections.append("\n# PHASE2 EXECUTION PACKAGE (canonical execution evidence)")
+        sections.append(SUMMARY_PRIORITY_NOTE)
+        package_summary = {
+            "schema_version": phase2_package.get("schema_version"),
+            "source_files": phase2_package.get("source_files", {}),
+            "experiments": [],
+        }
+        for experiment in phase2_package.get("experiments", []):
+            if not isinstance(experiment, dict):
+                continue
+            package_summary["experiments"].append(
+                {
+                    "experiment_id": experiment.get("experiment_id"),
+                    "name": experiment.get("name"),
+                    "aliases": experiment.get("aliases", []),
+                    "paper_target_refs": experiment.get("paper_target_refs", [])[:12],
+                    "best_attempts_by_scope": experiment.get("best_attempts_by_scope", {}),
+                    "metrics": experiment.get("metrics", [])[:20],
+                    "failures": experiment.get("failures", [])[:8],
+                    "summary_for_llm": experiment.get("summary_for_llm"),
+                }
+            )
+        sections.append(json.dumps(package_summary, indent=2, ensure_ascii=False)[:9000])
+        phase2_results = artifacts.path(PHASE2_RESULTS_PATH)
+        if phase2_results.exists() and phase2_results.stat().st_size > 0:
+            sections.append("\n# PHASE2 RESULTS SUMMARY (derived from package)")
+            sections.append(phase2_results.read_text(encoding="utf-8", errors="ignore")[:5000])
+
+    # ── Legacy execution summary and effective manifest ───────────
     try:
         summary_evidence = artifacts.read_json("results/execution_summary_evidence.json")
         summary_path = summary_evidence.get("summary_path")
-        if summary_path:
+        if summary_path and not phase2_package:
             summary_file = artifacts.path(summary_path)
             summary_text = summary_file.read_text(encoding="utf-8", errors="ignore") if summary_file.exists() else ""
             sections.append("\n# EXECUTION SUMMARY FINAL (same-origin, highest priority)")

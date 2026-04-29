@@ -147,6 +147,107 @@ def test_observe_metrics_reads_effective_manifest_and_summary_sources(tmp_path: 
     assert "execution/executor_outputs/EXECUTION_SUMMARY_FINAL.md:exp_01" in sources
 
 
+def test_phase3_prefers_phase2_execution_package_over_raw_manifest(tmp_path: Path, monkeypatch) -> None:
+    artifacts = make_artifacts(tmp_path, "package_priority")
+    artifacts.write_json(
+        "execution/executor_outputs/run_manifest.json",
+        {
+            "runs": [
+                {
+                    "run_id": "exp_02",
+                    "experiment_id": "exp_02",
+                    "experiment_name": "conv table",
+                    "command": "",
+                    "cwd": ".",
+                    "exit_code": 1,
+                    "status": "failed",
+                    "fidelity": "smoke",
+                    "metrics": {},
+                    "reason_codes": ["EXPERIMENT_RESULT_MISSING"],
+                }
+            ],
+            "reason_codes": [],
+        },
+    )
+    artifacts.write_json(
+        "execution/executor_outputs/phase2_execution_package.json",
+        {
+            "schema_version": "phase2_execution_package.v1",
+            "source_files": {},
+            "experiments": [
+                {
+                    "experiment_id": "exp_02",
+                    "name": "Table 1 convolutional benchmark",
+                    "aliases": ["exp_02_bp"],
+                    "paper_target_refs": [],
+                    "attempts": [
+                        {
+                            "attempt_id": "exp_02.bp.mnist.conv.full.100ep",
+                            "experiment_id": "exp_02",
+                            "source_experiment_id": "exp_02_bp",
+                            "experiment_name": "Table 1 convolutional BP benchmark",
+                            "scope": {"algorithm": "bp", "dataset": "mnist", "model_family": "conv", "epochs": 100},
+                            "command": "python main_pytorch.py",
+                            "commands_attempted": ["python main_pytorch.py"],
+                            "cwd": ".",
+                            "exit_code": 0,
+                            "status": "ok",
+                            "fidelity": "full",
+                            "execution_outcome": "FULLY_REPRODUCED",
+                            "evidence_source": "fresh_run",
+                            "stop_reason": "full_run_complete",
+                            "metrics": [
+                                {
+                                    "metric_name": "bp_mnist_conv_full_test_accuracy",
+                                    "raw_metric_name": "test_accuracy",
+                                    "value_ratio": 0.9055,
+                                    "raw_value": 90.55,
+                                    "unit": "ratio",
+                                    "algorithm": "bp",
+                                    "dataset": "mnist",
+                                    "model_family": "conv",
+                                    "fidelity": "full",
+                                    "source_attempt_id": "exp_02.bp.mnist.conv.full.100ep",
+                                }
+                            ],
+                            "logs": {},
+                            "reason_codes": [],
+                        }
+                    ],
+                    "best_attempts_by_scope": {"bp|mnist|conv|test_accuracy": "exp_02.bp.mnist.conv.full.100ep"},
+                    "metrics": [],
+                    "failures": [],
+                    "logs": [],
+                    "summary_for_llm": "full run produced accuracy",
+                }
+            ],
+            "reason_codes": [],
+        },
+    )
+    artifacts.write_text("execution/executor_outputs/PHASE2_RESULTS.md", "# Phase 2 Results\n")
+    artifacts.write_json(
+        "task/metric_contract.json",
+        {"required_metrics": ["accuracy"], "parsers": [], "normalization": {}, "reason_codes": []},
+    )
+
+    evidence_agent = ExecutionSummaryEvidenceAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
+    evidence = evidence_agent.execute({})
+    run = evidence["effective_run_manifest"]["runs"][0]
+    assert run["run_id"] == "exp_02.bp.mnist.conv.full.100ep"
+    assert run["status"] == "ok"
+    assert run["metrics"]["bp_mnist_conv_full_test_accuracy"] == 0.9055
+    assert evidence["execution_summary_evidence"]["conflicts"]
+
+    metrics_agent = ObserveMetricsAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
+    monkeypatch.setattr(metrics_agent, "safe_chat_text", lambda system, user: (None, "no key"))
+    result = metrics_agent.execute({})
+    record = result["metrics"]["records"][0]
+    assert record["source"] == "execution/executor_outputs/phase2_execution_package.json:exp_02.bp.mnist.conv.full.100ep"
+    assert record["experiment_id"] == "exp_02"
+    assert record["fidelity"] == "full"
+    assert record["value"] == 0.9055
+
+
 def test_execution_complete_table_overlays_canonical_conv_experiment(tmp_path: Path) -> None:
     artifacts = make_artifacts(tmp_path, "execution_complete")
     artifacts.write_json(

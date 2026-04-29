@@ -34,3 +34,19 @@ def test_phase3_prereq_accepts_executor_results_when_manifest_is_placeholder(tmp
     )
 
     ensure_phase_prereq(3, artifacts)
+
+
+def test_phase3_prereq_accepts_phase2_execution_package(tmp_path) -> None:
+    artifacts = ArtifactManager(tmp_path / "artifacts", "run")
+    artifacts.ensure_tree()
+    artifacts.write_json("execution/executor_outputs/run_manifest.json", {"runs": [], "reason_codes": []})
+    artifacts.write_json(
+        "execution/executor_outputs/phase2_execution_package.json",
+        {
+            "schema_version": "phase2_execution_package.v1",
+            "experiments": [{"experiment_id": "exp_01", "attempts": []}],
+            "reason_codes": [],
+        },
+    )
+
+    ensure_phase_prereq(3, artifacts)

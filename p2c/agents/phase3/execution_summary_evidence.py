@@ -6,11 +6,13 @@ from typing import Any
 
 from p2c.agents.base import BaseAgent
 
+PHASE2_PACKAGE_PATH = "execution/executor_outputs/phase2_execution_package.json"
+PHASE2_RESULTS_PATH = "execution/executor_outputs/PHASE2_RESULTS.md"
 SUMMARY_PRIORITY_NOTE = (
-    "EXECUTION_COMPLETE.md, EXECUTION_SUMMARY_FINAL.md, executor_results.json, and run_manifest.json "
-    "are same-origin Phase 2 execution evidence. Phase 3 should use EXECUTION_COMPLETE.md first "
-    "when it exists, EXECUTION_SUMMARY_FINAL.md second, executor_results.json third, and raw "
-    "run_manifest.json only as lower-priority audit context."
+    "phase2_execution_package.json is the canonical same-origin Phase 2 execution evidence "
+    "and highest priority source for Phase 3. PHASE2_RESULTS.md is a deterministic "
+    "human-readable companion derived from that package. Raw executor summaries, "
+    "executor_results.json, and run_manifest.json are lower-priority audit/debug context only."
 )
 
 _VALID_STATUS = {"ok", "partial", "failed", "skipped"}
@@ -30,11 +32,120 @@ _VALID_STOP_REASON = {
 
 
 def load_effective_run_manifest(artifacts) -> dict[str, Any]:
-    """Return Phase 3's preferred manifest, falling back to the raw Phase 2 manifest."""
+    """Return Phase 3's preferred manifest, deriving it from the Phase2 package when available."""
+    package = load_phase2_execution_package(artifacts)
+    if package:
+        return manifest_from_phase2_package(package)
     effective = artifacts.read_json("results/effective_run_manifest.json")
     if isinstance(effective, dict) and effective.get("runs"):
         return effective
     return artifacts.read_json("execution/executor_outputs/run_manifest.json")
+
+
+def load_phase2_execution_package(artifacts) -> dict[str, Any]:
+    package = artifacts.read_json(PHASE2_PACKAGE_PATH)
+    if isinstance(package, dict) and package.get("experiments"):
+        return package
+    return {}
+
+
+def manifest_from_phase2_package(package: dict[str, Any]) -> dict[str, Any]:
+    """Project the canonical Phase2 package into legacy RunManifestDoc shape."""
+    runs: list[dict[str, Any]] = []
+    for experiment in package.get("experiments", []):
+        if not isinstance(experiment, dict):
+            continue
+        experiment_id = str(experiment.get("experiment_id") or "").strip()
+        attempts = experiment.get("attempts", [])
+        if not attempts:
+            runs.append(
+                {
+                    "run_id": experiment_id,
+                    "experiment_id": experiment_id,
+                    "experiment_name": experiment.get("name") or experiment_id,
+                    "dataset": experiment.get("dataset"),
+                    "command": "",
+                    "commands_attempted": [],
+                    "params": {
+                        "table_anchor": experiment.get("table_anchor"),
+                        "paper_target_refs": experiment.get("paper_target_refs", []),
+                        "phase2_package_path": PHASE2_PACKAGE_PATH,
+                    },
+                    "cwd": ".",
+                    "exit_code": 1,
+                    "status": "failed",
+                    "fidelity": None,
+                    "execution_outcome": None,
+                    "evidence_source": None,
+                    "override_args": [],
+                    "observed_signals": [],
+                    "stop_reason": "runtime_failure",
+                    "notes": "No Phase 2 execution attempt recorded for this experiment.",
+                    "runtime_sec": None,
+                    "stdout_tail": "",
+                    "stderr_tail": "",
+                    "artifacts": [],
+                    "metrics": {},
+                    "logs": {},
+                    "reason_codes": ["PHASE2_PACKAGE_NO_ATTEMPT"],
+                }
+            )
+            continue
+
+        for attempt in attempts:
+            if not isinstance(attempt, dict):
+                continue
+            try:
+                exit_code = int(attempt.get("exit_code", 1))
+            except (TypeError, ValueError):
+                exit_code = 0 if attempt.get("status") in {"ok", "partial", "skipped"} else 1
+            metrics = {}
+            for metric in attempt.get("metrics", []):
+                if not isinstance(metric, dict):
+                    continue
+                name = str(metric.get("metric_name") or "").strip()
+                if not name:
+                    continue
+                value = metric.get("value_ratio")
+                if value is None:
+                    value = metric.get("value")
+                metrics[name] = value
+            runs.append(
+                {
+                    "run_id": attempt.get("attempt_id") or experiment_id,
+                    "experiment_id": experiment_id,
+                    "experiment_name": attempt.get("experiment_name") or experiment.get("name") or experiment_id,
+                    "dataset": (attempt.get("scope") or {}).get("dataset") or experiment.get("dataset"),
+                    "command": str(attempt.get("command") or ""),
+                    "commands_attempted": list(attempt.get("commands_attempted", []) if isinstance(attempt.get("commands_attempted"), list) else []),
+                    "params": {
+                        "scope": attempt.get("scope", {}),
+                        "source_experiment_id": attempt.get("source_experiment_id"),
+                        "config_name": attempt.get("config_name"),
+                        "paper_target_refs": experiment.get("paper_target_refs", []),
+                        "phase2_package_path": PHASE2_PACKAGE_PATH,
+                    },
+                    "cwd": str(attempt.get("cwd") or "."),
+                    "exit_code": exit_code,
+                    "status": attempt.get("status") or "failed",
+                    "fidelity": attempt.get("fidelity"),
+                    "execution_outcome": attempt.get("execution_outcome"),
+                    "evidence_source": attempt.get("evidence_source"),
+                    "override_args": list(attempt.get("override_args", []) if isinstance(attempt.get("override_args"), list) else []),
+                    "observed_signals": list(attempt.get("observed_signals", []) if isinstance(attempt.get("observed_signals"), list) else []),
+                    "stop_reason": attempt.get("stop_reason"),
+                    "notes": attempt.get("notes") or experiment.get("summary_for_llm"),
+                    "runtime_sec": attempt.get("runtime_sec"),
+                    "stdout_tail": attempt.get("stdout_tail"),
+                    "stderr_tail": attempt.get("stderr_tail"),
+                    "artifacts": list(attempt.get("artifacts", []) if isinstance(attempt.get("artifacts"), list) else []),
+                    "metrics": metrics,
+                    "logs": attempt.get("logs") if isinstance(attempt.get("logs"), dict) else {},
+                    "reason_codes": list(attempt.get("reason_codes", []) if isinstance(attempt.get("reason_codes"), list) else [])
+                    + ["PHASE2_PACKAGE_DERIVED_RUN"],
+                }
+            )
+    return {"runs": runs, "reason_codes": ["PHASE2_PACKAGE_DERIVED_EFFECTIVE_MANIFEST"]}
 
 
 class ExecutionSummaryEvidenceAgent(BaseAgent):
@@ -42,6 +153,41 @@ class ExecutionSummaryEvidenceAgent(BaseAgent):
         super().__init__(name="execution_summary_evidence", *args, **kwargs)
 
     def execute(self, ctx: dict[str, Any]) -> dict[str, Any]:
+        package = load_phase2_execution_package(self.artifacts)
+        if package:
+            effective = manifest_from_phase2_package(package)
+            raw_manifest = self.artifacts.read_json("execution/executor_outputs/run_manifest.json")
+            conflicts = self._package_conflicts_with_raw_manifest(effective, raw_manifest)
+            summary_text = ""
+            summary_file = self.artifacts.path(PHASE2_RESULTS_PATH)
+            if summary_file.exists():
+                summary_text = summary_file.read_text(encoding="utf-8", errors="ignore")
+            evidence = {
+                "same_origin_note": SUMMARY_PRIORITY_NOTE,
+                "priority_order": [
+                    PHASE2_PACKAGE_PATH,
+                    PHASE2_RESULTS_PATH,
+                    "execution/executor_outputs/executor_results.json",
+                    "execution/executor_outputs/run_manifest.json",
+                    "execution/executor_outputs/EXECUTION_COMPLETE.md",
+                    "execution/executor_outputs/EXECUTION_SUMMARY_FINAL.md",
+                ],
+                "phase2_package_path": PHASE2_PACKAGE_PATH,
+                "phase2_results_path": PHASE2_RESULTS_PATH,
+                "summary_path": PHASE2_RESULTS_PATH if summary_text else None,
+                "summary_text": summary_text[:20000],
+                "summary_runs": [],
+                "package_experiments": self._slim_package_experiments(package),
+                "executor_results_path": "execution/executor_outputs/executor_results.json",
+                "raw_manifest_path": "execution/executor_outputs/run_manifest.json",
+                "effective_manifest_path": "results/effective_run_manifest.json",
+                "conflicts": conflicts,
+                "reason_codes": ["PHASE2_PACKAGE_PRIORITY_EVIDENCE_LAYER_BUILT"],
+            }
+            self.artifacts.write_json("results/execution_summary_evidence.json", evidence)
+            self.artifacts.write_json("results/effective_run_manifest.json", effective)
+            return {"execution_summary_evidence": evidence, "effective_run_manifest": effective}
+
         raw_manifest = self.artifacts.read_json("execution/executor_outputs/run_manifest.json")
         executor_results = self.artifacts.read_json("execution/executor_outputs/executor_results.json")
         summary_path, summary_text = self._read_summary_text()
@@ -75,6 +221,56 @@ class ExecutionSummaryEvidenceAgent(BaseAgent):
         self.artifacts.write_json("results/execution_summary_evidence.json", evidence)
         self.artifacts.write_json("results/effective_run_manifest.json", effective)
         return {"execution_summary_evidence": evidence, "effective_run_manifest": effective}
+
+    @staticmethod
+    def _slim_package_experiments(package: dict[str, Any]) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        for experiment in package.get("experiments", []):
+            if not isinstance(experiment, dict):
+                continue
+            rows.append(
+                {
+                    "experiment_id": experiment.get("experiment_id"),
+                    "name": experiment.get("name"),
+                    "aliases": experiment.get("aliases", []),
+                    "attempt_count": len(experiment.get("attempts", []) if isinstance(experiment.get("attempts"), list) else []),
+                    "best_attempts_by_scope": experiment.get("best_attempts_by_scope", {}),
+                    "metrics": experiment.get("metrics", [])[:20],
+                    "summary_for_llm": experiment.get("summary_for_llm"),
+                }
+            )
+        return rows
+
+    @staticmethod
+    def _package_conflicts_with_raw_manifest(effective: dict[str, Any], raw_manifest: dict[str, Any]) -> list[dict[str, Any]]:
+        if not isinstance(raw_manifest, dict):
+            return []
+        raw_by_experiment = {
+            str(run.get("experiment_id") or run.get("run_id") or ""): run
+            for run in raw_manifest.get("runs", [])
+            if isinstance(run, dict)
+        }
+        conflicts: list[dict[str, Any]] = []
+        for run in effective.get("runs", []):
+            if not isinstance(run, dict):
+                continue
+            raw = raw_by_experiment.get(str(run.get("experiment_id") or ""))
+            if not raw:
+                continue
+            for field in ("status", "fidelity", "execution_outcome", "evidence_source", "stop_reason"):
+                if raw.get(field) != run.get(field):
+                    conflicts.append(
+                        {
+                            "run_id": run.get("run_id"),
+                            "experiment_id": run.get("experiment_id"),
+                            "field": field,
+                            "lower_priority_value": raw.get(field),
+                            "higher_priority_value": run.get(field),
+                            "higher_priority_source": PHASE2_PACKAGE_PATH,
+                            "reason_code": "CONFLICT_WITH_RAW_RUN_MANIFEST",
+                        }
+                    )
+        return conflicts
 
     def _read_summary_text(self) -> tuple[str | None, str]:
         for rel in (

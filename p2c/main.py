@@ -39,6 +39,14 @@ def ensure_phase_prereq(phase: int, artifacts: ArtifactManager) -> None:
                 "Run: python -m p2c.main --phase 1 ..."
             )
     if phase == 3:
+        phase2_package = artifacts.path("execution/executor_outputs/phase2_execution_package.json")
+        if phase2_package.exists() and phase2_package.stat().st_size > 0:
+            try:
+                package_payload = json.loads(phase2_package.read_text(encoding="utf-8"))
+                if package_payload.get("experiments"):
+                    return
+            except Exception:
+                pass
         run_manifest = artifacts.path("execution/executor_outputs/run_manifest.json")
         executor_results = artifacts.path("execution/executor_outputs/executor_results.json")
         if not run_manifest.exists() or run_manifest.stat().st_size == 0:

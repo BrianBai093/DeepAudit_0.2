@@ -230,6 +230,144 @@ def test_executor_agent_writes_experiment_scoped_manifest_and_logs(tmp_path: Pat
     assert "claim_ids" not in run
     assert run["commands_attempted"] == ["python train.py", "python eval.py"]
     assert run["logs"]["activity"] == "execution/executor_outputs/executor_activity.jsonl"
+    package = artifacts.read_json("execution/executor_outputs/phase2_execution_package.json")
+    assert package["schema_version"] == "phase2_execution_package.v1"
+    assert package["experiments"][0]["attempts"][0]["attempt_id"].startswith("exp_01")
+    assert artifacts.path("execution/executor_outputs/PHASE2_RESULTS.md").is_file()
+
+
+def test_phase2_execution_package_preserves_duplicate_executor_runs(tmp_path: Path, monkeypatch) -> None:
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    (repo_dir / "README.md").write_text("python main_pytorch.py\n", encoding="utf-8")
+    (repo_dir / "main_pytorch.py").write_text("print('ok')\n", encoding="utf-8")
+
+    artifacts = make_artifacts(tmp_path, "phase2_package")
+    artifacts.write_json(
+        "fingerprint/claims_ir.json",
+        {
+            "experiments": [
+                {
+                    "experiment_id": "exp_02",
+                    "name": "Table 1 convolutional benchmark",
+                    "description": "conv benchmark",
+                    "dataset": "MNIST/CIFAR10",
+                    "table_anchor": "Table 1",
+                    "primary_metrics": ["accuracy"],
+                    "is_primary": True,
+                    "notes": None,
+                }
+            ],
+            "claims": [
+                {
+                    "claim_id": "claim_01",
+                    "type": "result",
+                    "predicate": "accuracy = 98.86+/-0.04%",
+                    "metric": "accuracy",
+                    "target": 0.9886,
+                    "conditions": {"experiment_id": "exp_02", "scope": "BP, convolutional model, MNIST"},
+                    "tolerance_policy": {"abs_eps": 0.005},
+                }
+            ],
+            "reason_codes": [],
+        },
+    )
+    artifacts.write_json("task/repo_analysis.json", {"dependency_profiles": [], "entrypoint_candidates": [], "reason_codes": []})
+    artifacts.write_json("task/metric_contract.json", {"required_metrics": ["accuracy"], "parsers": [], "normalization": {}, "reason_codes": []})
+
+    def fake_session(env_mgr, prompt, cwd, timeout_sec=600):
+        for suffix, value in (("smoke_MNIST_Conv_BP", "91.41"), ("trend_MNIST_Conv_BP", "91.94"), ("full_MNIST_Conv_BP", "90.55")):
+            artifacts.write_text(f"execution/executor_outputs/experiment_exp_02_bp_{suffix}_stdout.log", f"METRIC:test_accuracy={value}\n")
+            artifacts.write_text(f"execution/executor_outputs/experiment_exp_02_bp_{suffix}_stderr.log", "")
+            artifacts.write_text(f"execution/executor_outputs/experiment_exp_02_bp_{suffix}_narrative.log", suffix)
+        artifacts.write_json(
+            "execution/executor_outputs/executor_results.json",
+            {
+                "runs": [
+                    {
+                        "experiment_id": "exp_02_bp",
+                        "experiment_name": "Table 1 convolutional BP benchmark",
+                        "config_name": "MNIST_Conv_BP",
+                        "command": "python main_pytorch.py --learn_type BP --dataset mn --train_epochs 1 --model Net1conv1fcXL",
+                        "commands_attempted": ["python main_pytorch.py --learn_type BP --dataset mn --train_epochs 1 --model Net1conv1fcXL"],
+                        "cwd": ".",
+                        "exit_code": 0,
+                        "status": "ok",
+                        "fidelity": "smoke",
+                        "evidence_source": "fresh_run",
+                        "metrics": {"test_accuracy": 91.41},
+                        "logs": {
+                            "stdout": "execution/executor_outputs/experiment_exp_02_bp_smoke_MNIST_Conv_BP_stdout.log",
+                            "stderr": "execution/executor_outputs/experiment_exp_02_bp_smoke_MNIST_Conv_BP_stderr.log",
+                            "narrative": "execution/executor_outputs/experiment_exp_02_bp_smoke_MNIST_Conv_BP_narrative.log",
+                        },
+                    },
+                    {
+                        "experiment_id": "exp_02_bp",
+                        "experiment_name": "Table 1 convolutional BP benchmark",
+                        "config_name": "MNIST_Conv_BP",
+                        "command": "python main_pytorch.py --learn_type BP --dataset mn --train_epochs 10 --model Net1conv1fcXL",
+                        "commands_attempted": ["python main_pytorch.py --learn_type BP --dataset mn --train_epochs 10 --model Net1conv1fcXL"],
+                        "cwd": ".",
+                        "exit_code": 0,
+                        "status": "ok",
+                        "fidelity": "trend",
+                        "evidence_source": "fresh_run",
+                        "metrics": {"test_accuracy": 91.94},
+                        "logs": {
+                            "stdout": "execution/executor_outputs/experiment_exp_02_bp_trend_MNIST_Conv_BP_stdout.log",
+                            "stderr": "execution/executor_outputs/experiment_exp_02_bp_trend_MNIST_Conv_BP_stderr.log",
+                            "narrative": "execution/executor_outputs/experiment_exp_02_bp_trend_MNIST_Conv_BP_narrative.log",
+                        },
+                    },
+                    {
+                        "experiment_id": "exp_02_bp",
+                        "experiment_name": "Table 1 convolutional BP benchmark",
+                        "config_name": "MNIST_Conv_BP",
+                        "command": "python main_pytorch.py --learn_type BP --dataset mn --train_epochs 100 --model Net1conv1fcXL",
+                        "commands_attempted": ["python main_pytorch.py --learn_type BP --dataset mn --train_epochs 100 --model Net1conv1fcXL"],
+                        "cwd": ".",
+                        "exit_code": 0,
+                        "status": "ok",
+                        "fidelity": "full",
+                        "evidence_source": "fresh_run",
+                        "metrics": {"test_accuracy": 90.55},
+                        "logs": {
+                            "stdout": "execution/executor_outputs/experiment_exp_02_bp_full_MNIST_Conv_BP_stdout.log",
+                            "stderr": "execution/executor_outputs/experiment_exp_02_bp_full_MNIST_Conv_BP_stderr.log",
+                            "narrative": "execution/executor_outputs/experiment_exp_02_bp_full_MNIST_Conv_BP_narrative.log",
+                        },
+                    },
+                ]
+            },
+        )
+        return ExecutorSessionResult(stdout="", stderr="", returncode=0, narrative="done")
+
+    monkeypatch.setattr(ExecutorAgent, "_run_executor_session", staticmethod(fake_session))
+
+    agent = ExecutorAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
+    result = agent.execute(
+        {
+            "repo_dir": str(repo_dir),
+            "_p2_env_mgr": DummyEnvMgr(),
+            "_p2_remaining_sec": 60,
+            "_p2_attempt": 1,
+        }
+    )
+
+    assert result["success"] is True
+    package = artifacts.read_json("execution/executor_outputs/phase2_execution_package.json")
+    exp = package["experiments"][0]
+    assert exp["experiment_id"] == "exp_02"
+    assert exp["aliases"] == ["exp_02_bp"]
+    assert len(exp["attempts"]) == 3
+    metric_names = {metric["metric_name"] for metric in exp["metrics"]}
+    assert "bp_mnist_conv_smoke_test_accuracy" in metric_names
+    assert "bp_mnist_conv_trend_test_accuracy" in metric_names
+    assert "bp_mnist_conv_full_test_accuracy" in metric_names
+    values = {metric["metric_name"]: metric["value_ratio"] for metric in exp["metrics"]}
+    assert values["bp_mnist_conv_full_test_accuracy"] == 0.9055
+    assert exp["best_attempts_by_scope"]["bp|mnist|conv|test_accuracy"].endswith("100ep")
 
 
 def test_executor_agent_recovers_results_written_under_target_repo_artifacts(tmp_path: Path, monkeypatch) -> None:

@@ -89,6 +89,19 @@ _ALLOWED_OVERRIDE_PATTERNS = [
 ]
 _SUSPICIOUS_OVERRIDE_KEYWORDS = ("epoch", "step", "iter", "subset", "debug", "dev", "sample", "fast_dev_run", "n_batch")
 _ARTIFACT_EVIDENCE_SOURCES = {"checkpoint_eval", "existing_logs", "existing_results", "mixed"}
+_BOUNDED_PACKAGE_METRIC_TOKENS = {
+    "accuracy",
+    "acc",
+    "auc",
+    "bleu",
+    "f1",
+    "precision",
+    "pr_auc",
+    "recall",
+    "roc_auc",
+    "rouge",
+}
+_PACKAGE_FIDELITY_RANK = {None: 0, "smoke": 1, "trend": 2, "artifact": 2, "full": 3}
 
 
 @dataclass
@@ -430,6 +443,25 @@ class ExecutorAgent(BaseAgent):
         self._backfill_activity_from_runs(runs)
         manifest = build_run_manifest(runs, reason_codes=["EXECUTOR_AGENT_RUN"])
         self.artifacts.write_json("execution/executor_outputs/run_manifest.json", manifest.model_dump())
+        raw_runs = self._load_raw_executor_result_runs(result_path)
+        claims = [
+            claim.model_dump() if hasattr(claim, "model_dump") else claim
+            for claim in claims_ir.claims
+        ]
+        phase2_package = self._build_phase2_execution_package(
+            raw_runs=raw_runs,
+            experiments=experiments,
+            claims=claims,
+            contract=contract,
+            raw_manifest=manifest.model_dump(),
+            repo_dir=repo_dir,
+            observed_commands=live_sink.observed_bash_commands,
+        )
+        self.artifacts.write_json("execution/executor_outputs/phase2_execution_package.json", phase2_package)
+        self.artifacts.write_text(
+            "execution/executor_outputs/PHASE2_RESULTS.md",
+            self._render_phase2_results_markdown(phase2_package),
+        )
 
         all_metrics = {
             metric_name: value
@@ -446,7 +478,11 @@ class ExecutorAgent(BaseAgent):
             status="ok" if runs else "failed",
             exit_code=session_result.returncode,
             duration_sec=runtime_sec,
-            artifacts=["execution/executor_outputs/run_manifest.json"],
+            artifacts=[
+                "execution/executor_outputs/run_manifest.json",
+                "execution/executor_outputs/phase2_execution_package.json",
+                "execution/executor_outputs/PHASE2_RESULTS.md",
+            ],
             message=f"Recorded {len(runs)} experiment runs.",
         )
 
@@ -454,6 +490,7 @@ class ExecutorAgent(BaseAgent):
             return {
                 "success": True,
                 "run_manifest": manifest,
+                "phase2_execution_package": phase2_package,
                 "metrics": all_metrics,
             }
 
@@ -1273,6 +1310,661 @@ class ExecutorAgent(BaseAgent):
             )
         return normalized_runs
 
+    @staticmethod
+    def _load_raw_executor_result_runs(result_path: Path) -> list[dict[str, Any]]:
+        """Read executor_results.json without collapsing duplicate experiment ids."""
+        if not result_path.is_file():
+            return []
+        try:
+            payload = json.loads(result_path.read_text(encoding="utf-8"))
+        except Exception:  # noqa: BLE001
+            return []
+        rows = payload.get("runs") if isinstance(payload, dict) else None
+        if not isinstance(rows, list):
+            return []
+        return [dict(row) for row in rows if isinstance(row, dict)]
+
+    def _build_phase2_execution_package(
+        self,
+        *,
+        raw_runs: list[dict[str, Any]],
+        experiments: list[dict[str, Any]],
+        claims: list[dict[str, Any]],
+        contract: MetricContract,
+        raw_manifest: dict[str, Any],
+        repo_dir: Path,
+        observed_commands: list[str],
+    ) -> dict[str, Any]:
+        """Build the single canonical Phase2 package consumed by Phase3."""
+        experiment_by_id = {
+            str(exp.get("experiment_id") or "").strip(): exp
+            for exp in experiments
+            if str(exp.get("experiment_id") or "").strip()
+        }
+        package_experiments: dict[str, dict[str, Any]] = {}
+        for experiment_id, exp in experiment_by_id.items():
+            package_experiments[experiment_id] = {
+                "experiment_id": experiment_id,
+                "name": exp.get("name"),
+                "description": exp.get("description"),
+                "dataset": exp.get("dataset"),
+                "table_anchor": exp.get("table_anchor"),
+                "primary_metrics": list(exp.get("primary_metrics", []) or []),
+                "aliases": [],
+                "paper_target_refs": self._paper_target_refs_for_experiment(experiment_id, claims),
+                "attempts": [],
+                "best_attempts_by_scope": {},
+                "metrics": [],
+                "failures": [],
+                "logs": [],
+                "summary_for_llm": "",
+            }
+
+        source_files = {
+            "claims_ir": "fingerprint/claims_ir.json",
+            "executor_results": "execution/executor_outputs/executor_results.json",
+            "raw_run_manifest": "execution/executor_outputs/run_manifest.json",
+            "phase2_results": "execution/executor_outputs/PHASE2_RESULTS.md",
+            "raw_summaries": [
+                rel for rel in (
+                    "execution/executor_outputs/EXECUTION_COMPLETE.md",
+                    "execution/executor_outputs/EXECUTION_SUMMARY_FINAL.md",
+                    "execution/executor_outputs/EXECUTION_SUMMARY.md",
+                    "execution/executor_outputs/PHASE2_EXECUTION_SUMMARY.md",
+                )
+                if self.artifacts.path(rel).exists() and self.artifacts.path(rel).stat().st_size > 0
+            ],
+        }
+
+        observed_command_set = {_normalize_shell_command(command) for command in observed_commands if command}
+        used_attempt_ids: set[str] = set()
+        for index, raw in enumerate(raw_runs, start=1):
+            raw_experiment_id = str(raw.get("experiment_id") or raw.get("run_id") or f"raw_{index}").strip()
+            scope = self._infer_attempt_scope(raw)
+            canonical_experiment_id = self._canonical_phase2_experiment_id(
+                raw_experiment_id,
+                raw,
+                scope,
+                experiment_by_id,
+            )
+            if canonical_experiment_id not in package_experiments:
+                package_experiments[canonical_experiment_id] = {
+                    "experiment_id": canonical_experiment_id,
+                    "name": raw.get("experiment_name") or canonical_experiment_id,
+                    "description": None,
+                    "dataset": raw.get("dataset"),
+                    "table_anchor": None,
+                    "primary_metrics": [],
+                    "aliases": [],
+                    "paper_target_refs": self._paper_target_refs_for_experiment(canonical_experiment_id, claims),
+                    "attempts": [],
+                    "best_attempts_by_scope": {},
+                    "metrics": [],
+                    "failures": [],
+                    "logs": [],
+                    "summary_for_llm": "",
+                }
+            experiment_row = package_experiments[canonical_experiment_id]
+            if raw_experiment_id and raw_experiment_id != canonical_experiment_id:
+                aliases = experiment_row.setdefault("aliases", [])
+                if raw_experiment_id not in aliases:
+                    aliases.append(raw_experiment_id)
+
+            commands_attempted = [
+                _normalize_shell_command(cmd)
+                for cmd in raw.get("commands_attempted", [])
+                if str(cmd).strip()
+            ]
+            primary_command = _normalize_shell_command(raw.get("command", ""))
+            if primary_command and not commands_attempted:
+                commands_attempted = [primary_command]
+            if not primary_command and commands_attempted:
+                primary_command = commands_attempted[0]
+
+            override_args = self._extract_override_args_from_commands(commands_attempted)
+            explicit_override_args: list[str] = []
+            for entry in raw.get("override_args", []) if isinstance(raw.get("override_args"), list) else []:
+                normalized_entry = str(entry).strip()
+                if normalized_entry:
+                    explicit_override_args.append(normalized_entry)
+                if normalized_entry and normalized_entry not in override_args:
+                    override_args.append(normalized_entry)
+
+            raw_logs = raw.get("logs") if isinstance(raw.get("logs"), dict) else {}
+            stdout_log = self._existing_executor_log_or_fallback(
+                raw_logs.get("stdout") or f"execution/executor_outputs/experiment_{raw_experiment_id}_stdout.log",
+                raw_experiment_id,
+                "stdout",
+            )
+            stderr_log = self._existing_executor_log_or_fallback(
+                raw_logs.get("stderr") or f"execution/executor_outputs/experiment_{raw_experiment_id}_stderr.log",
+                raw_experiment_id,
+                "stderr",
+            )
+            narrative_log = self._existing_executor_log_or_fallback(
+                raw_logs.get("narrative") or f"execution/executor_outputs/experiment_{raw_experiment_id}_narrative.log",
+                raw_experiment_id,
+                "narrative",
+            )
+            activity_log = self._existing_executor_log_or_fallback(
+                raw_logs.get("activity") or "execution/executor_outputs/executor_activity.jsonl",
+                raw_experiment_id,
+                "activity",
+            )
+
+            raw_artifacts = [str(path) for path in raw.get("artifacts", []) if str(path).strip()]
+            existing_artifacts = [path for path in raw_artifacts if self._artifact_exists(path, repo_dir=repo_dir)]
+            status = self._normalize_run_status(raw.get("status"), raw.get("exit_code", 1), True)
+            raw_metrics = raw.get("metrics") if isinstance(raw.get("metrics"), dict) else {}
+            observed_signals = [
+                str(signal_name)
+                for signal_name in raw.get("observed_signals", [])
+                if str(signal_name).strip()
+            ]
+            fidelity = self._normalize_fidelity(
+                raw.get("fidelity"),
+                self._normalize_evidence_source(raw.get("evidence_source"), "", existing_artifacts, commands_attempted),
+                override_args,
+                raw_metrics,
+                observed_signals,
+            )
+            attempt_id = self._unique_attempt_id(
+                canonical_experiment_id=canonical_experiment_id,
+                scope=scope,
+                fidelity=fidelity,
+                used=used_attempt_ids,
+                fallback_index=index,
+            )
+            log_stem = self._safe_identifier(attempt_id)
+            stdout_log, stderr_log, narrative_log, synthetic_reason = self._ensure_per_run_logs(
+                experiment_id=raw_experiment_id,
+                raw=raw,
+                stdout_log=stdout_log,
+                stderr_log=stderr_log,
+                narrative_log=narrative_log,
+                log_stem=log_stem,
+            )
+            stdout_text = self._read_log(stdout_log)
+            stderr_text = self._read_log(stderr_log)
+            traceable_stdout_text = "" if stdout_log.endswith("/session_stdout.log") else stdout_text
+            metrics_from_stdout = (
+                extract_metrics_from_stdout(traceable_stdout_text, contract, command=primary_command)
+                if traceable_stdout_text else {}
+            )
+            merged_metrics = dict(metrics_from_stdout)
+            for name, value in raw_metrics.items():
+                merged_metrics.setdefault(str(name), value)
+
+            evidence_source = self._normalize_evidence_source(
+                raw.get("evidence_source"),
+                traceable_stdout_text,
+                existing_artifacts,
+                commands_attempted,
+            )
+            observed_signals = self._merge_signal_hints(
+                observed_signals,
+                stdout_text=traceable_stdout_text,
+                metrics=merged_metrics,
+                artifacts=existing_artifacts,
+            )
+            fidelity = self._normalize_fidelity(raw.get("fidelity"), evidence_source, override_args, merged_metrics, observed_signals)
+            stop_reason = self._normalize_stop_reason(raw.get("stop_reason"), status, fidelity, evidence_source, observed_signals)
+            reason_codes = [str(code) for code in raw.get("reason_codes", []) if str(code).strip()]
+            if synthetic_reason and synthetic_reason not in reason_codes:
+                reason_codes.append(synthetic_reason)
+
+            unobserved_commands = [
+                command for command in commands_attempted
+                if command and not self._command_was_observed(command, observed_command_set, observed_commands)
+            ]
+            if observed_command_set and unobserved_commands and "COMMAND_NOT_OBSERVED" not in reason_codes:
+                reason_codes.append("COMMAND_NOT_OBSERVED")
+
+            if fidelity == "full" and explicit_override_args:
+                reason_codes.append("FULL_WITH_OVERRIDE_ARGS")
+                fidelity = "trend" if merged_metrics or observed_signals else "smoke"
+
+            outcome_override_args = explicit_override_args if fidelity == "full" else override_args
+            execution_outcome = self._compute_execution_outcome(
+                fidelity=fidelity,
+                status=status,
+                evidence_source=evidence_source,
+                override_args=outcome_override_args,
+                metrics=merged_metrics,
+                observed_signals=observed_signals,
+            )
+            if execution_outcome == "FULLY_REPRODUCED" and evidence_source != "fresh_run":
+                reason_codes.append("FULLY_REPRODUCED_REQUIRES_FRESH_RUN")
+                execution_outcome = "TREND_SUPPORTED" if status in {"ok", "partial"} else None
+
+            metric_entries = self._package_metric_entries(
+                metrics=merged_metrics,
+                scope=scope,
+                fidelity=fidelity,
+                attempt_id=attempt_id,
+            )
+            logs = {
+                "stdout": stdout_log,
+                "stderr": stderr_log,
+                "narrative": narrative_log,
+                "activity": activity_log,
+            }
+            attempt = {
+                "attempt_id": attempt_id,
+                "experiment_id": canonical_experiment_id,
+                "source_experiment_id": raw_experiment_id,
+                "experiment_name": raw.get("experiment_name") or experiment_row.get("name"),
+                "config_name": raw.get("config_name"),
+                "scope": scope,
+                "command": primary_command,
+                "commands_attempted": commands_attempted,
+                "cwd": raw.get("cwd", "."),
+                "exit_code": self._safe_int(raw.get("exit_code"), 0 if status in {"ok", "partial", "skipped"} else 1),
+                "status": status,
+                "fidelity": fidelity,
+                "execution_outcome": execution_outcome,
+                "evidence_source": evidence_source,
+                "override_args": override_args,
+                "observed_signals": observed_signals,
+                "stop_reason": stop_reason,
+                "runtime_sec": raw.get("runtime_sec"),
+                "artifacts": raw_artifacts,
+                "metrics": metric_entries,
+                "logs": logs,
+                "stdout_tail": stdout_text[-2000:],
+                "stderr_tail": stderr_text[-2000:],
+                "notes": raw.get("notes"),
+                "reason_codes": list(dict.fromkeys(reason_codes)),
+            }
+            experiment_row["attempts"].append(attempt)
+            for log_ref in logs.values():
+                if log_ref and log_ref not in experiment_row["logs"]:
+                    experiment_row["logs"].append(log_ref)
+            for metric in metric_entries:
+                experiment_row["metrics"].append(metric)
+                scope_key = self._metric_scope_key(metric)
+                current = experiment_row["best_attempts_by_scope"].get(scope_key)
+                if not current or self._attempt_preferred(attempt, current, experiment_row["attempts"]):
+                    experiment_row["best_attempts_by_scope"][scope_key] = attempt_id
+            if status in {"failed", "skipped"}:
+                experiment_row["failures"].append(
+                    {
+                        "attempt_id": attempt_id,
+                        "status": status,
+                        "fidelity": fidelity,
+                        "stop_reason": stop_reason,
+                        "reason_codes": attempt["reason_codes"],
+                        "stderr_tail": attempt["stderr_tail"],
+                        "notes": raw.get("notes"),
+                    }
+                )
+
+        for experiment_row in package_experiments.values():
+            experiment_row["metrics"] = self._dedupe_package_metrics(experiment_row["metrics"])
+            experiment_row["summary_for_llm"] = self._package_experiment_summary(experiment_row)
+
+        return {
+            "schema_version": "phase2_execution_package.v1",
+            "source_files": source_files,
+            "experiments": list(package_experiments.values()),
+            "raw_manifest_reason_codes": list(raw_manifest.get("reason_codes", [])) if isinstance(raw_manifest, dict) else [],
+            "reason_codes": ["PHASE2_EXECUTION_PACKAGE_BUILT"],
+        }
+
+    @staticmethod
+    def _paper_target_refs_for_experiment(experiment_id: str, claims: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        refs: list[dict[str, Any]] = []
+        for claim in claims:
+            conditions = claim.get("conditions", {}) if isinstance(claim.get("conditions"), dict) else {}
+            if str(conditions.get("experiment_id") or "").strip() != experiment_id:
+                continue
+            if claim.get("type") != "result":
+                continue
+            refs.append(
+                {
+                    "claim_id": claim.get("claim_id"),
+                    "predicate": claim.get("predicate"),
+                    "metric": claim.get("metric"),
+                    "target": claim.get("target"),
+                    "scope": conditions.get("scope"),
+                    "tolerance_policy": claim.get("tolerance_policy", {}),
+                }
+            )
+        return refs
+
+    @classmethod
+    def _canonical_phase2_experiment_id(
+        cls,
+        raw_experiment_id: str,
+        raw: dict[str, Any],
+        scope: dict[str, Any],
+        experiment_by_id: dict[str, dict[str, Any]],
+    ) -> str:
+        if raw_experiment_id in experiment_by_id:
+            return raw_experiment_id
+        match = re.match(r"^(exp)_(\d+)", raw_experiment_id.lower())
+        if match:
+            padded = f"exp_{int(match.group(2)):02d}"
+            if padded in experiment_by_id:
+                return padded
+            unpadded = f"exp_{int(match.group(2))}"
+            if unpadded in experiment_by_id:
+                return unpadded
+        text = cls._scope_text(raw, scope)
+        if ("conv" in text or "convolutional" in text) and "exp_02" in experiment_by_id:
+            return "exp_02"
+        if ("fc" in text or "fully connected" in text or "fully_connected" in text) and "exp_01" in experiment_by_id:
+            return "exp_01"
+        return raw_experiment_id or "unknown_experiment"
+
+    @classmethod
+    def _infer_attempt_scope(cls, raw: dict[str, Any]) -> dict[str, Any]:
+        text = cls._scope_text(raw, {})
+        dataset = cls._infer_dataset(raw, text)
+        algorithm = cls._infer_algorithm(text)
+        model_family = cls._infer_model_family(text, raw)
+        epochs = cls._infer_epochs(text)
+        return {
+            "algorithm": algorithm,
+            "dataset": dataset,
+            "model_family": model_family,
+            "epochs": epochs,
+        }
+
+    @staticmethod
+    def _scope_text(raw: dict[str, Any], scope: dict[str, Any]) -> str:
+        values = [
+            raw.get("experiment_id"),
+            raw.get("experiment_name"),
+            raw.get("config_name"),
+            raw.get("dataset"),
+            raw.get("command"),
+            " ".join(raw.get("commands_attempted", []) or []) if isinstance(raw.get("commands_attempted"), list) else "",
+            raw.get("notes"),
+            scope.get("algorithm"),
+            scope.get("dataset"),
+            scope.get("model_family"),
+        ]
+        text = " ".join(str(value or "") for value in values).lower()
+        return (
+            text.replace("cifar-10", "cifar10")
+            .replace("cifar 10", "cifar10")
+            .replace("cifar-100", "cifar100")
+            .replace("cifar 100", "cifar100")
+            .replace("fully-connected", "fully connected")
+            .replace("fully_connected", "fully connected")
+        )
+
+    @staticmethod
+    def _infer_dataset(raw: dict[str, Any], text: str) -> str | None:
+        explicit = str(raw.get("dataset") or "").strip().lower()
+        explicit = explicit.replace("cifar-10", "cifar10").replace("cifar-100", "cifar100")
+        if explicit in {"mnist", "cifar10", "cifar100"}:
+            return explicit
+        if "cifar100" in text or "--dataset cif100" in text:
+            return "cifar100"
+        if "cifar10" in text or "--cifar10" in text or "--dataset cif" in text:
+            return "cifar10"
+        if "mnist" in text or "--mnist" in text or "--dataset mn" in text:
+            return "mnist"
+        return None
+
+    @staticmethod
+    def _infer_algorithm(text: str) -> str | None:
+        learn_type = re.search(r"--learn[_-]?type\s+([a-z0-9_]+)", text)
+        if learn_type:
+            return "pepita" if learn_type.group(1) == "erin" else learn_type.group(1)
+        tokens = {tok for tok in re.split(r"[^a-z0-9]+", text) if tok}
+        for name in ("pepita", "erin", "drtp", "dfa", "bp", "fa"):
+            if name in tokens:
+                return "pepita" if name == "erin" else name
+        return None
+
+    @staticmethod
+    def _infer_model_family(text: str, raw: dict[str, Any]) -> str | None:
+        if "conv" in text or "convolutional" in text or "main_pytorch.py" in text:
+            return "conv"
+        if " fc" in f" {text} " or "_fc" in text or "fully connected" in text or "main.py" in text:
+            return "fc"
+        model = str(raw.get("model") or "").lower()
+        if "conv" in model:
+            return "conv"
+        return None
+
+    @staticmethod
+    def _infer_epochs(text: str) -> int | None:
+        for pattern in (r"--train[_-]?epochs\s+(\d+)", r"--epochs\s+(\d+)", r"with\s+(\d+)\s+epochs?"):
+            match = re.search(pattern, text)
+            if match:
+                return int(match.group(1))
+        return None
+
+    @classmethod
+    def _unique_attempt_id(
+        cls,
+        *,
+        canonical_experiment_id: str,
+        scope: dict[str, Any],
+        fidelity: str | None,
+        used: set[str],
+        fallback_index: int,
+    ) -> str:
+        parts = [
+            canonical_experiment_id,
+            scope.get("algorithm") or "unknown",
+            scope.get("dataset") or "unknown",
+            scope.get("model_family") or "model",
+            fidelity or "unknown",
+        ]
+        if scope.get("epochs") is not None:
+            parts.append(f"{scope['epochs']}ep")
+        base = ".".join(cls._safe_identifier(part) for part in parts if part)
+        if not base or base in {"unknown"}:
+            base = f"{canonical_experiment_id}.attempt_{fallback_index}"
+        candidate = base
+        suffix = 2
+        while candidate in used:
+            candidate = f"{base}.{suffix}"
+            suffix += 1
+        used.add(candidate)
+        return candidate
+
+    @staticmethod
+    def _safe_identifier(value: Any) -> str:
+        return re.sub(r"[^a-zA-Z0-9_.-]+", "_", str(value or "").strip()).strip("_.") or "unknown"
+
+    @classmethod
+    def _package_metric_entries(
+        cls,
+        *,
+        metrics: dict[str, Any],
+        scope: dict[str, Any],
+        fidelity: str | None,
+        attempt_id: str,
+    ) -> list[dict[str, Any]]:
+        entries: list[dict[str, Any]] = []
+        seen: set[tuple[str, float | None, str]] = set()
+        for raw_name, raw_value in metrics.items():
+            if str(raw_name).endswith("_all"):
+                continue
+            raw_metric_name = cls._normalize_package_metric_name(str(raw_name))
+            metric_name = cls._scoped_package_metric_name(raw_metric_name, scope, fidelity)
+            parsed_value = cls._to_metric_float(raw_value)
+            bounded = cls._is_bounded_package_metric(metric_name) or cls._is_bounded_package_metric(raw_metric_name)
+            value_ratio = parsed_value
+            if bounded and value_ratio is not None and value_ratio > 1.0:
+                value_ratio = value_ratio / 100.0
+            key = (metric_name, value_ratio, str(raw_value))
+            if key in seen:
+                continue
+            seen.add(key)
+            entries.append(
+                {
+                    "metric_name": metric_name,
+                    "raw_metric_name": raw_metric_name,
+                    "value_ratio": value_ratio if bounded else None,
+                    "value": value_ratio if bounded else parsed_value,
+                    "raw_value": raw_value,
+                    "unit": "ratio" if bounded else "raw",
+                    "algorithm": scope.get("algorithm"),
+                    "dataset": scope.get("dataset"),
+                    "model_family": scope.get("model_family"),
+                    "fidelity": fidelity,
+                    "source_attempt_id": attempt_id,
+                }
+            )
+        return entries
+
+    @staticmethod
+    def _normalize_package_metric_name(metric_name: str) -> str:
+        normalized = re.sub(r"[\s\-]+", "_", metric_name.strip().lower()).strip("_")
+        aliases = {"acc": "accuracy", "f1_score": "f1", "f1score": "f1", "f1-score": "f1"}
+        return aliases.get(normalized, normalized)
+
+    @classmethod
+    def _scoped_package_metric_name(cls, raw_metric_name: str, scope: dict[str, Any], fidelity: str | None) -> str:
+        pieces = [scope.get("algorithm"), scope.get("dataset"), scope.get("model_family")]
+        if not all(pieces):
+            return raw_metric_name
+        metric_tail = raw_metric_name
+        if raw_metric_name in {"accuracy", "acc"}:
+            metric_tail = "test_accuracy"
+        prefix = [str(piece) for piece in pieces if piece]
+        if fidelity:
+            prefix.append(fidelity)
+        return "_".join(prefix + [metric_tail])
+
+    @staticmethod
+    def _to_metric_float(raw_value: Any) -> float | None:
+        if raw_value is None or isinstance(raw_value, bool):
+            return None
+        try:
+            return float(str(raw_value).strip().rstrip("%"))
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _safe_int(raw_value: Any, default: int) -> int:
+        try:
+            return int(raw_value)
+        except (TypeError, ValueError):
+            return default
+
+    @staticmethod
+    def _is_bounded_package_metric(metric_name: str | None) -> bool:
+        lowered = str(metric_name or "").lower()
+        if lowered in _BOUNDED_PACKAGE_METRIC_TOKENS:
+            return True
+        tokens = {tok for tok in re.split(r"[^a-z0-9]+", lowered) if tok}
+        return bool(tokens & _BOUNDED_PACKAGE_METRIC_TOKENS)
+
+    @staticmethod
+    def _metric_scope_key(metric: dict[str, Any]) -> str:
+        return "|".join(
+            str(metric.get(name) or "")
+            for name in ("algorithm", "dataset", "model_family", "raw_metric_name")
+        )
+
+    @staticmethod
+    def _attempt_preferred(
+        incoming: dict[str, Any],
+        current_attempt_id: str,
+        attempts: list[dict[str, Any]],
+    ) -> bool:
+        current = next((attempt for attempt in attempts if attempt.get("attempt_id") == current_attempt_id), None)
+        if current is None:
+            return True
+
+        def rank(attempt: dict[str, Any]) -> tuple[int, int, float]:
+            status_rank = 2 if attempt.get("status") == "ok" else 1 if attempt.get("status") == "partial" else 0
+            fidelity_rank = _PACKAGE_FIDELITY_RANK.get(attempt.get("fidelity"), 0)
+            runtime = float(attempt.get("runtime_sec") or 0.0)
+            return status_rank, fidelity_rank, runtime
+
+        return rank(incoming) > rank(current)
+
+    @staticmethod
+    def _dedupe_package_metrics(metrics: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        deduped: list[dict[str, Any]] = []
+        seen: set[tuple[str, Any, str]] = set()
+        for metric in metrics:
+            key = (
+                str(metric.get("metric_name") or ""),
+                metric.get("value_ratio") if metric.get("value_ratio") is not None else metric.get("value"),
+                str(metric.get("source_attempt_id") or ""),
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(metric)
+        return deduped
+
+    @staticmethod
+    def _package_experiment_summary(experiment: dict[str, Any]) -> str:
+        attempts = experiment.get("attempts", [])
+        if not attempts:
+            return "No Phase 2 execution attempt was recorded for this experiment."
+        ok = [attempt for attempt in attempts if attempt.get("status") in {"ok", "partial"}]
+        metrics = experiment.get("metrics", [])
+        metric_bits = []
+        for metric in metrics[:5]:
+            value = metric.get("value_ratio") if metric.get("value_ratio") is not None else metric.get("value")
+            if value is None:
+                continue
+            metric_bits.append(f"{metric.get('metric_name')}={value}")
+        return (
+            f"{len(attempts)} attempts recorded; {len(ok)} produced executable evidence. "
+            f"Best scoped attempts: {json.dumps(experiment.get('best_attempts_by_scope', {}), ensure_ascii=False)}. "
+            f"Metrics: {', '.join(metric_bits) if metric_bits else 'none'}."
+        )
+
+    @staticmethod
+    def _render_phase2_results_markdown(package: dict[str, Any]) -> str:
+        lines = [
+            "# Phase 2 Results",
+            "",
+            "Canonical source: `execution/executor_outputs/phase2_execution_package.json`.",
+            "Raw executor summaries and manifests are same-origin debug/audit evidence only.",
+            "",
+            "| Experiment | Scope | Attempt | Status | Fidelity | Metric | Value | Notes |",
+            "|------------|-------|---------|--------|----------|--------|-------|-------|",
+        ]
+        for experiment in package.get("experiments", []):
+            experiment_label = experiment.get("name") or experiment.get("experiment_id")
+            attempts = experiment.get("attempts", [])
+            if not attempts:
+                lines.append(
+                    f"| {experiment_label} | - | - | not_run | - | - | - | No Phase 2 attempt recorded. |"
+                )
+                continue
+            for attempt in attempts:
+                scope = attempt.get("scope", {})
+                scope_label = "/".join(
+                    str(scope.get(key) or "-")
+                    for key in ("algorithm", "dataset", "model_family")
+                )
+                metrics = attempt.get("metrics", [])
+                if not metrics:
+                    reason = ",".join(attempt.get("reason_codes", []) or [])
+                    lines.append(
+                        f"| {experiment_label} | {scope_label} | {attempt.get('attempt_id')} | "
+                        f"{attempt.get('status')} | {attempt.get('fidelity')} | - | - | "
+                        f"{attempt.get('stop_reason') or reason or attempt.get('notes') or ''} |"
+                    )
+                    continue
+                for metric in metrics:
+                    value = metric.get("value_ratio") if metric.get("value_ratio") is not None else metric.get("value")
+                    if metric.get("unit") == "ratio" and isinstance(value, (int, float)):
+                        value_text = f"{value * 100:.2f}%"
+                    else:
+                        value_text = str(value)
+                    lines.append(
+                        f"| {experiment_label} | {scope_label} | {attempt.get('attempt_id')} | "
+                        f"{attempt.get('status')} | {attempt.get('fidelity')} | {metric.get('metric_name')} | "
+                        f"{value_text} | {attempt.get('notes') or ''} |"
+                    )
+        return "\n".join(lines) + "\n"
+
     def _recover_misplaced_executor_outputs(self, repo_dir: Path, outputs_dir: Path) -> Path | None:
         """Recover result files when the executor writes artifacts relative to the target repo."""
         canonical_results = outputs_dir / "executor_results.json"
@@ -1356,10 +2048,12 @@ class ExecutorAgent(BaseAgent):
         stdout_log: str,
         stderr_log: str,
         narrative_log: str,
+        log_stem: str | None = None,
     ) -> tuple[str, str, str, str | None]:
-        expected_stdout = f"execution/executor_outputs/experiment_{experiment_id}_stdout.log"
-        expected_stderr = f"execution/executor_outputs/experiment_{experiment_id}_stderr.log"
-        expected_narrative = f"execution/executor_outputs/experiment_{experiment_id}_narrative.log"
+        stem = log_stem or experiment_id
+        expected_stdout = f"execution/executor_outputs/experiment_{stem}_stdout.log"
+        expected_stderr = f"execution/executor_outputs/experiment_{stem}_stderr.log"
+        expected_narrative = f"execution/executor_outputs/experiment_{stem}_narrative.log"
 
         needs_synthetic = (
             not stdout_log

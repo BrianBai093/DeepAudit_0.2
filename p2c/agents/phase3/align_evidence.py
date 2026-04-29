@@ -6,7 +6,7 @@ from typing import Any
 
 from p2c.agents.base import BaseAgent
 from p2c.agents.phase3.claim_inputs import load_effective_claims_ir
-from p2c.agents.phase3.execution_summary_evidence import load_effective_run_manifest
+from p2c.agents.phase3.execution_summary_evidence import PHASE2_PACKAGE_PATH, load_effective_run_manifest
 from p2c.schemas import (
     ClaimEvidence,
     EvaluabilityDoc,
@@ -23,7 +23,7 @@ dataset (MNIST/CIFAR10/CIFAR100), and architecture (fully connected/FC vs convol
 must match the metric provenance when those qualifiers are present.
 """
 USER_PROMPT_TEMPLATE = (
-    "Input: results/effective_claims_ir.json + results/effective_run_manifest.json + results/metrics.json. "
+    "Input: results/effective_claims_ir.json + phase2_execution_package-derived metrics + results/metrics.json. "
     "Output: results/parsed_evidence.json and results/evaluability.json"
 )
 
@@ -165,6 +165,9 @@ class AlignEvidenceAgent(BaseAgent):
     def _candidate_sources(candidate_runs: list[Any]) -> list[str]:
         sources: list[str] = []
         for run in candidate_runs:
+            package_source = f"{PHASE2_PACKAGE_PATH}:{run.run_id}"
+            if package_source not in sources:
+                sources.append(package_source)
             effective_source = f"results/effective_run_manifest.json:{run.run_id}"
             if effective_source not in sources:
                 sources.append(effective_source)
