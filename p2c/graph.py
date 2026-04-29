@@ -18,6 +18,7 @@ from p2c.agents.phase2.orchestrator import Phase2Orchestrator
 from p2c.agents.phase2.tool_agent import ToolAgent
 from p2c.agents.phase3.align_evidence import AlignEvidenceAgent
 from p2c.agents.phase3.audit_report import AuditReportAgent
+from p2c.agents.phase3.execution_summary_evidence import ExecutionSummaryEvidenceAgent
 from p2c.agents.phase3.observe_metrics import ObserveMetricsAgent
 from p2c.agents.phase3.reproduce_figures import ReproduceFiguresAgent
 from p2c.agents.phase3.score_and_diagnose import ScoreAndDiagnoseAgent
@@ -70,6 +71,7 @@ def run_phase_2(ctx: dict[str, Any], agents: dict[str, Any]) -> None:
 
 
 def run_phase_3(ctx: dict[str, Any], agents: dict[str, Any]) -> None:
+    agents["execution_summary_evidence"].run(ctx)
     agents["observe_metrics"].run(ctx)
     agents["align_evidence"].run(ctx)
     agents["verify_claims"].run(ctx)
@@ -122,15 +124,18 @@ def build_agents(llm, artifacts) -> dict[str, Any]:
 
     # Phase 3
     phase3 = {
-        "observe_metrics": ObserveMetricsAgent(llm=llm, artifacts=artifacts, step_index=13, step_total=_STEP_TOTAL),
-        "align_evidence": AlignEvidenceAgent(llm=llm, artifacts=artifacts, step_index=14, step_total=_STEP_TOTAL),
-        "verify_claims": VerifyClaimsAgent(llm=llm, artifacts=artifacts, step_index=15, step_total=_STEP_TOTAL),
-        "score_and_diagnose": ScoreAndDiagnoseAgent(llm=llm, artifacts=artifacts, step_index=16, step_total=_STEP_TOTAL),
-        "visual_to_repo_alignment": VisualToRepoAlignmentAgent(
-            llm=llm, artifacts=artifacts, step_index=17, step_total=_STEP_TOTAL,
+        "execution_summary_evidence": ExecutionSummaryEvidenceAgent(
+            llm=llm, artifacts=artifacts, step_index=13, step_total=_STEP_TOTAL,
         ),
-        "reproduce_figures": ReproduceFiguresAgent(llm=llm, artifacts=artifacts, step_index=18, step_total=_STEP_TOTAL),
-        "audit_report": AuditReportAgent(llm=llm, artifacts=artifacts, step_index=19, step_total=_STEP_TOTAL),
+        "observe_metrics": ObserveMetricsAgent(llm=llm, artifacts=artifacts, step_index=14, step_total=_STEP_TOTAL),
+        "align_evidence": AlignEvidenceAgent(llm=llm, artifacts=artifacts, step_index=15, step_total=_STEP_TOTAL),
+        "verify_claims": VerifyClaimsAgent(llm=llm, artifacts=artifacts, step_index=16, step_total=_STEP_TOTAL),
+        "score_and_diagnose": ScoreAndDiagnoseAgent(llm=llm, artifacts=artifacts, step_index=17, step_total=_STEP_TOTAL),
+        "visual_to_repo_alignment": VisualToRepoAlignmentAgent(
+            llm=llm, artifacts=artifacts, step_index=18, step_total=_STEP_TOTAL,
+        ),
+        "reproduce_figures": ReproduceFiguresAgent(llm=llm, artifacts=artifacts, step_index=19, step_total=_STEP_TOTAL),
+        "audit_report": AuditReportAgent(llm=llm, artifacts=artifacts, step_index=20, step_total=_STEP_TOTAL),
     }
 
     return {**phase1, **phase2, **phase3}

@@ -123,9 +123,25 @@ def test_report_prompt_includes_executor_activity_and_new_manifest(tmp_path: Pat
             }
         ],
     )
+    artifacts.write_text(
+        "execution/executor_outputs/EXECUTION_SUMMARY_FINAL.md",
+        "#### Exp_01: Table 1\n**Status:** OK | **Fidelity:** Artifact Evaluation\n",
+    )
+    artifacts.write_json(
+        "results/execution_summary_evidence.json",
+        {
+            "summary_path": "execution/executor_outputs/EXECUTION_SUMMARY_FINAL.md",
+            "summary_runs": [],
+            "conflicts": [],
+            "reason_codes": [],
+        },
+    )
 
     prompt = _build_report_prompt({"run_id": "run_prompt", "repo_dir": "/tmp/repo"}, artifacts)
 
+    assert prompt.index("# EXECUTION SUMMARY FINAL") < prompt.index("# RUN MANIFEST")
+    assert "same-origin" in prompt
+    assert "highest priority" in prompt
     assert "# RUN MANIFEST" in prompt
     assert "# EXECUTOR ACTIVITY" in prompt
     assert "python train.py" in prompt

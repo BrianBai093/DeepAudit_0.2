@@ -6,6 +6,8 @@ import re
 from typing import Any
 
 from p2c.agents.base import BaseAgent
+from p2c.agents.phase3.claim_inputs import load_effective_claims_ir
+from p2c.agents.phase3.execution_summary_evidence import load_effective_run_manifest
 from p2c.schemas import (
     DimensionScore,
     GapDiagnosis,
@@ -77,17 +79,17 @@ class ScoreAndDiagnoseAgent(BaseAgent):
     def execute(self, ctx: dict[str, Any]) -> dict[str, Any]:
         # Load all required artifacts
         verdict = self._safe_read("results/verdict.json")
-        manifest = self._safe_read("execution/executor_outputs/run_manifest.json")
+        manifest = load_effective_run_manifest(self.artifacts)
         env_result = self._safe_read("execution/env_setup_result.json")
         repo_analysis = self._safe_read("task/repo_analysis.json")
-        claims_ir = self._safe_read("fingerprint/claims_ir.json")
+        claims_ir = load_effective_claims_ir(self.artifacts)
         failures = self._safe_read("execution/execution_failures.json")
 
         # Compute dimension scores
         env_score = self._score_environment(env_result, repo_analysis)
         data_score = self._score_data_availability(manifest, claims_ir, repo_analysis)
         exec_score = self._score_execution_success(manifest)
-        claim_score = self._score_claim_match(verdict)
+        claim_score = self._score_claim_match(verdict, claims_ir)
 
         dimensions = [env_score, data_score, exec_score, claim_score]
 
@@ -315,20 +317,22 @@ class ScoreAndDiagnoseAgent(BaseAgent):
             reason_codes=reason_codes,
         )
 
-    def _score_claim_match(self, verdict: dict) -> DimensionScore:
+    def _score_claim_match(self, verdict: dict, claims_ir: dict | None = None) -> DimensionScore:
         """Claim match dimension (30%): reproduced results match paper."""
         evidence: list[str] = []
         reason_codes: list[str] = []
 
         claim_verdicts = verdict.get("claim_verdicts", [])
-        # Only score result claims (not config)
+        claims_by_id = {
+            str(row.get("claim_id") or ""): row
+            for row in (claims_ir or {}).get("claims", [])
+            if isinstance(row, dict) and row.get("claim_id")
+        }
         result_verdicts = [
             cv for cv in claim_verdicts
-            if cv.get("status") != "INCONCLUSIVE" or cv.get("compared_value") is not None
+            if claims_by_id.get(str(cv.get("claim_id") or ""), {}).get("type") != "config"
         ]
-
-        if not result_verdicts:
-            # Use all verdicts if filtering is too aggressive
+        if not claims_by_id:
             result_verdicts = claim_verdicts
 
         if not result_verdicts:

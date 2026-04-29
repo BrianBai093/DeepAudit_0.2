@@ -549,6 +549,70 @@ def test_executor_load_runs_normalizes_progressive_fidelity_fields(tmp_path: Pat
     assert run["override_args"] == ["--epochs=1"]
 
 
+def test_executor_load_runs_keeps_traceable_executor_result_success_and_synthesizes_logs(tmp_path: Path) -> None:
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    (repo_dir / "res_exp_01").mkdir()
+
+    artifacts = make_artifacts(tmp_path, "traceable_success")
+    outputs_dir = artifacts.path("execution/executor_outputs")
+    outputs_dir.mkdir(parents=True, exist_ok=True)
+    artifacts.write_text(
+        "execution/executor_outputs/executor_activity.jsonl",
+        '{"event":"command_end","command":"mamba run -n test_env python train.py --epochs 1","status":"ok"}\n',
+    )
+    artifacts.write_json(
+        "execution/executor_outputs/executor_results.json",
+        {
+            "runs": [
+                {
+                    "experiment_id": "exp_01",
+                    "experiment_name": "traceable run",
+                    "command": "python train.py --epochs 1",
+                    "commands_attempted": ["python train.py --epochs 1"],
+                    "cwd": ".",
+                    "exit_code": 0,
+                    "status": "ok",
+                    "fidelity": "smoke+trend",
+                    "evidence_source": "fresh_runs",
+                    "artifacts": ["res_exp_01"],
+                    "metrics": {"accuracy": 0.91},
+                    "notes": "executor_results metrics are traceable",
+                    "logs": {},
+                    "reason_codes": [],
+                }
+            ]
+        },
+    )
+
+    agent = ExecutorAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
+    runs = agent._load_executor_runs(
+        artifacts.path("execution/executor_outputs/executor_results.json"),
+        contract=MetricContract(required_metrics=["accuracy"], parsers=[], normalization={}, reason_codes=[]),
+        session_stdout="",
+        experiments=[{"experiment_id": "exp_01", "name": "traceable run"}],
+        outputs_dir=outputs_dir,
+        repo_dir=repo_dir,
+        observed_commands=["mamba run -n test_env python train.py --epochs 1"],
+    )
+
+    run = runs[0]
+    assert run["status"] == "ok"
+    assert run["fidelity"] == "trend"
+    assert run["evidence_source"] == "fresh_run"
+    assert run["metrics"]["accuracy"] == 0.91
+    assert run["logs"]["stdout"] == "execution/executor_outputs/experiment_exp_01_stdout.log"
+    assert run["logs"]["stderr"] == "execution/executor_outputs/experiment_exp_01_stderr.log"
+    assert run["logs"]["narrative"] == "execution/executor_outputs/experiment_exp_01_narrative.log"
+    assert "SYNTHETIC_RUN_LOG_FROM_EXECUTOR_RESULTS" in run["reason_codes"]
+    assert "COMMAND_NOT_OBSERVED" not in run["reason_codes"]
+    assert "UNTRACEABLE_METRICS" not in run["reason_codes"]
+    assert artifacts.path("execution/executor_outputs/experiment_exp_01_stdout.log").is_file()
+    assert "METRIC:accuracy=0.91" in artifacts.path(
+        "execution/executor_outputs/experiment_exp_01_stdout.log"
+    ).read_text(encoding="utf-8")
+
+
 def test_executor_load_runs_synthesizes_missing_experiment_rows(tmp_path: Path) -> None:
     artifacts = make_artifacts(tmp_path, "missing_rows")
     outputs_dir = artifacts.path("execution/executor_outputs")

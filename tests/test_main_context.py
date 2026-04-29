@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import json
 
-from p2c.main import serializable_context
+from p2c.io_artifacts import ArtifactManager
+from p2c.main import ensure_phase_prereq, serializable_context
 
 
 class NonSerializableRuntimeObject:
@@ -21,3 +22,15 @@ def test_serializable_context_drops_internal_runtime_objects() -> None:
 
     assert payload == {"phase": 1, "repo_dir": "Target/code"}
     json.dumps(payload)
+
+
+def test_phase3_prereq_accepts_executor_results_when_manifest_is_placeholder(tmp_path) -> None:
+    artifacts = ArtifactManager(tmp_path / "artifacts", "run")
+    artifacts.ensure_tree()
+    artifacts.write_json("execution/executor_outputs/run_manifest.json", {"runs": [], "reason_codes": []})
+    artifacts.write_json(
+        "execution/executor_outputs/executor_results.json",
+        {"runs": [{"experiment_id": "exp_01", "command": "python train.py", "status": "ok"}]},
+    )
+
+    ensure_phase_prereq(3, artifacts)

@@ -424,6 +424,7 @@ class ExecutorAgent(BaseAgent):
             session_result.stdout,
             experiments,
             outputs_dir,
+            repo_dir=repo_dir,
             observed_commands=live_sink.observed_bash_commands,
         )
         self._backfill_activity_from_runs(runs)
@@ -594,7 +595,11 @@ class ExecutorAgent(BaseAgent):
             "     ]\n"
             "   }\n\n"
             "For each experiment, always emit exactly one result row even if the experiment is skipped or fails.\n"
-            "For each experiment, record command_start, command_end, artifact_recorded, metric_observed, and failure events when applicable."
+            "For each experiment, record command_start, command_end, artifact_recorded, metric_observed, and failure events when applicable.\n"
+            "For each experiment, write dedicated logs named "
+            "`experiment_<experiment_id>_stdout.log`, `experiment_<experiment_id>_stderr.log`, and "
+            "`experiment_<experiment_id>_narrative.log` under the output directory. "
+            "Do not point per-experiment logs to session_stdout.log or session_stderr.log; those files are global session logs only."
         )
 
     @staticmethod
@@ -1059,6 +1064,7 @@ class ExecutorAgent(BaseAgent):
         experiments: list[dict[str, Any]],
         outputs_dir: Path,
         *,
+        repo_dir: Path | None = None,
         observed_commands: list[str],
     ) -> list[dict[str, Any]]:
         payload = {}
@@ -1116,6 +1122,17 @@ class ExecutorAgent(BaseAgent):
                 "activity",
             )
 
+            if raw_present:
+                stdout_log, stderr_log, narrative_log, synthetic_reason = self._ensure_per_run_logs(
+                    experiment_id=experiment_id,
+                    raw=raw,
+                    stdout_log=stdout_log,
+                    stderr_log=stderr_log,
+                    narrative_log=narrative_log,
+                )
+            else:
+                synthetic_reason = None
+
             stdout_text = self._read_log(stdout_log)
             stderr_text = self._read_log(stderr_log)
             traceable_stdout_text = "" if stdout_log.endswith("/session_stdout.log") else stdout_text
@@ -1146,11 +1163,13 @@ class ExecutorAgent(BaseAgent):
                     override_args.append(normalized_entry)
 
             artifacts = [str(path) for path in raw.get("artifacts", []) if str(path).strip()]
-            existing_artifacts = [path for path in artifacts if self._artifact_exists(path)]
+            existing_artifacts = [path for path in artifacts if self._artifact_exists(path, repo_dir=repo_dir)]
             evidence_source = self._normalize_evidence_source(raw.get("evidence_source"), traceable_stdout_text, existing_artifacts, commands_attempted)
             status = self._normalize_run_status(raw.get("status"), raw.get("exit_code", 1), raw_present)
             exit_code = int(raw.get("exit_code")) if raw.get("exit_code") is not None else (0 if status in {"ok", "partial", "skipped"} else 1)
             reason_codes = [str(code) for code in raw.get("reason_codes", []) if str(code).strip()]
+            if synthetic_reason:
+                reason_codes.append(synthetic_reason)
             observed_signals = [
                 str(signal_name)
                 for signal_name in raw.get("observed_signals", [])
@@ -1173,7 +1192,7 @@ class ExecutorAgent(BaseAgent):
 
             missing_logs = [
                 path for path in (stdout_log, stderr_log, narrative_log, activity_log)
-                if path and not self._artifact_exists(path)
+                if path and not self._artifact_exists(path, repo_dir=repo_dir)
             ]
             if raw_present and missing_logs:
                 reason_codes.append("DECLARED_LOG_MISSING")
@@ -1187,7 +1206,8 @@ class ExecutorAgent(BaseAgent):
             ]
             if raw_present and observed_command_set and unobserved_commands:
                 reason_codes.append("COMMAND_NOT_OBSERVED")
-                if status in {"ok", "partial"}:
+                traceable_success_evidence = bool(metrics or metrics_from_stdout or existing_artifacts or traceable_stdout_text)
+                if status in {"ok", "partial"} and not traceable_success_evidence:
                     status = "failed" if evidence_source in {None, "fresh_run"} else "partial"
                     stop_reason = "guardrail_blocked"
 
@@ -1313,11 +1333,9 @@ class ExecutorAgent(BaseAgent):
         fallbacks_by_kind = {
             "stdout": [
                 f"execution/executor_outputs/experiment_{experiment_id}_stdout.log",
-                "execution/executor_outputs/session_stdout.log",
             ],
             "stderr": [
                 f"execution/executor_outputs/experiment_{experiment_id}_stderr.log",
-                "execution/executor_outputs/session_stderr.log",
             ],
             "narrative": [
                 f"execution/executor_outputs/experiment_{experiment_id}_narrative.log",
@@ -1329,6 +1347,51 @@ class ExecutorAgent(BaseAgent):
             if self._artifact_exists(fallback):
                 return fallback
         return candidate
+
+    def _ensure_per_run_logs(
+        self,
+        *,
+        experiment_id: str,
+        raw: dict[str, Any],
+        stdout_log: str,
+        stderr_log: str,
+        narrative_log: str,
+    ) -> tuple[str, str, str, str | None]:
+        expected_stdout = f"execution/executor_outputs/experiment_{experiment_id}_stdout.log"
+        expected_stderr = f"execution/executor_outputs/experiment_{experiment_id}_stderr.log"
+        expected_narrative = f"execution/executor_outputs/experiment_{experiment_id}_narrative.log"
+
+        needs_synthetic = (
+            not stdout_log
+            or stdout_log.endswith("/session_stdout.log")
+            or not self._artifact_exists(stdout_log)
+        )
+        if not needs_synthetic:
+            return stdout_log, stderr_log, narrative_log, None
+
+        metrics = raw.get("metrics") if isinstance(raw.get("metrics"), dict) else {}
+        stdout_lines: list[str] = []
+        notes = str(raw.get("notes") or "").strip()
+        if notes:
+            stdout_lines.append(notes)
+        for metric_name, value in metrics.items():
+            if isinstance(value, bool) or value is None:
+                continue
+            try:
+                float(value)
+            except (TypeError, ValueError):
+                continue
+            stdout_lines.append(f"METRIC:{metric_name}={value}")
+        if raw.get("stdout_tail"):
+            stdout_lines.append(str(raw.get("stdout_tail")))
+
+        stderr_text = str(raw.get("stderr_tail") or "")
+        narrative_text = notes or "Synthetic per-run narrative generated from executor_results.json."
+
+        self.artifacts.write_text(expected_stdout, "\n".join(stdout_lines).strip() + ("\n" if stdout_lines else ""))
+        self.artifacts.write_text(expected_stderr, stderr_text)
+        self.artifacts.write_text(expected_narrative, narrative_text + ("\n" if narrative_text else ""))
+        return expected_stdout, expected_stderr, expected_narrative, "SYNTHETIC_RUN_LOG_FROM_EXECUTOR_RESULTS"
 
     @staticmethod
     def _canonical_executor_output_ref(path_value: Any) -> str:
@@ -1353,7 +1416,35 @@ class ExecutorAgent(BaseAgent):
             return True
         if normalized in observed_command_set:
             return True
-        return any(normalized in observed for observed in observed_commands)
+        normalized_suffix = ExecutorAgent._runtime_stripped_command(normalized)
+        if normalized_suffix in observed_command_set:
+            return True
+        return any(
+            normalized in observed
+            or ExecutorAgent._command_suffix_match(normalized, observed)
+            for observed in observed_commands
+        )
+
+    @staticmethod
+    def _runtime_stripped_command(command: str) -> str:
+        try:
+            tokens = shlex.split(command)
+        except ValueError:
+            tokens = command.split()
+        if not tokens:
+            return ""
+        for idx, token in enumerate(tokens):
+            if Path(token).name in {"python", "python3", "pip"}:
+                return " ".join(tokens[idx:])
+        return " ".join(tokens)
+
+    @staticmethod
+    def _command_suffix_match(declared: str, observed: str) -> bool:
+        declared_suffix = ExecutorAgent._runtime_stripped_command(declared)
+        observed_suffix = ExecutorAgent._runtime_stripped_command(observed)
+        if not declared_suffix or not observed_suffix:
+            return False
+        return declared_suffix == observed_suffix or declared_suffix in observed_suffix or observed_suffix in declared_suffix
 
     def _read_log(self, path_value: str) -> str:
         if not path_value:
@@ -1365,28 +1456,38 @@ class ExecutorAgent(BaseAgent):
             return ""
         return path.read_text(encoding="utf-8", errors="ignore")
 
-    def _artifact_exists(self, path_value: str) -> bool:
+    def _artifact_exists(self, path_value: str, *, repo_dir: Path | None = None) -> bool:
         if not path_value:
             return False
         path = Path(path_value)
-        if not path.is_absolute():
-            path = self.artifacts.path(path_value)
-        return path.exists()
+        if path.is_absolute():
+            return path.exists()
+        if self.artifacts.path(path_value).exists():
+            return True
+        return bool(repo_dir and (repo_dir / path_value).exists())
 
     @staticmethod
     def _normalize_run_status(raw_status: Any, exit_code: Any, raw_present: bool) -> str:
         candidate = str(raw_status or "").strip().lower()
         if candidate in {"ok", "partial", "failed", "skipped"}:
             return candidate
+        if candidate in {"success", "succeeded", "complete", "completed", "pass", "passed"}:
+            return "ok"
+        if candidate in {"partially_successful", "degraded_success"}:
+            return "partial"
+        if candidate in {"skip", "not_run"}:
+            return "skipped"
         if not raw_present:
             return "failed"
         return "ok" if int(exit_code or 1) == 0 else "failed"
 
     @staticmethod
     def _normalize_evidence_source(raw_value: Any, stdout_text: str, existing_artifacts: list[str], commands_attempted: list[str]) -> str | None:
-        candidate = str(raw_value or "").strip()
-        if candidate == "existing_artifact":
+        candidate = re.sub(r"[^a-z0-9]+", "_", str(raw_value or "").strip().lower()).strip("_")
+        if candidate in {"existing_artifact", "existing_artifacts"}:
             return "existing_results"
+        if candidate == "fresh_runs":
+            return "fresh_run"
         if candidate in {"fresh_run", "checkpoint_eval", "existing_logs", "existing_results", "mixed"}:
             return candidate
         if existing_artifacts and stdout_text:
@@ -1424,9 +1525,21 @@ class ExecutorAgent(BaseAgent):
         metrics: dict[str, Any],
         observed_signals: list[str],
     ) -> str | None:
-        candidate = str(raw_value or "").strip()
+        candidate = str(raw_value or "").strip().lower()
+        compact = re.sub(r"[^a-z0-9]+", "_", candidate).strip("_")
         if candidate in {"artifact", "smoke", "trend", "full"}:
             return candidate
+        if candidate in {"smoke+trend", "mixed_smoke_trend", "mixed (smoke + trend)"} or compact in {
+            "smoke_trend",
+            "mixed_smoke_trend",
+            "trend_smoke",
+        }:
+            return "trend"
+        if candidate in {"smoke+artifact", "artifact_evaluation", "mixed_artifact"} or compact in {
+            "smoke_artifact",
+            "mixed_artifact",
+        }:
+            return "artifact"
         if evidence_source in _ARTIFACT_EVIDENCE_SOURCES:
             return "artifact"
         if override_args:
@@ -1441,7 +1554,7 @@ class ExecutorAgent(BaseAgent):
         evidence_source: str | None,
         observed_signals: list[str],
     ) -> str | None:
-        candidate = str(raw_value or "").strip()
+        candidate = str(raw_value or "").strip().lower()
         if candidate in {
             "checkpoint_eval",
             "existing_artifact",
@@ -1454,6 +1567,12 @@ class ExecutorAgent(BaseAgent):
             "skipped_nonessential",
         }:
             return candidate
+        if "budget" in candidate:
+            return "budget_bound"
+        if "artifact" in candidate:
+            return "existing_artifact"
+        if "implementation" in candidate or "guardrail" in candidate:
+            return "guardrail_blocked"
         if status == "skipped":
             return "skipped_nonessential"
         if evidence_source == "checkpoint_eval":

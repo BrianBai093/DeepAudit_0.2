@@ -128,6 +128,16 @@ STANDARD_TABLE_HTML = """
 </table>
 """
 
+PEPITA_TABLE_HTML = """
+Table 1. Test accuracy [%] achieved by BP, FA, DRTP and PEPITA in the experiments.
+<table>
+<tr><td></td><td colspan="3">FULLY CONNECTED MODELS</td><td colspan="3">CONVOLUTIONAL MODELS</td></tr>
+<tr><td></td><td>MNIST</td><td>CIFAR10</td><td>CIFAR100</td><td>MNIST</td><td>CIFAR10</td><td>CIFAR100</td></tr>
+<tr><td>BP</td><td>98.63±0.03</td><td>55.27±0.32</td><td>27.58±0.09</td><td>98.86±0.04</td><td>64.99±0.32</td><td>34.20±0.20</td></tr>
+<tr><td>PEPITA</td><td>98.01±0.09</td><td>52.57±0.36</td><td>24.91±0.22</td><td>98.29±0.13</td><td>56.33±1.35</td><td>27.56±0.60</td></tr>
+</table>
+"""
+
 
 def test_standard_table_extraction():
     """Standard comparison tables (Method | Accuracy | F1) should still work correctly."""
@@ -143,6 +153,35 @@ def test_standard_table_extraction():
     baseline_facts = [f for f in facts if "Baseline" in f or "baseline" in f.lower()]
     ours_facts = [f for f in facts if "Ours" in f or "ours" in f.lower()]
     assert baseline_facts or ours_facts, f"Expected model-specific facts, got: {facts}"
+
+
+def test_caption_metric_matrix_extracts_mean_std_cells_with_scope():
+    agent = _make_agent()
+    unit = {"unit_id": "table_pepita", "text": PEPITA_TABLE_HTML, "type": "table_block"}
+    accepted, rejected = agent._expand_table_unit(unit)
+
+    assert not rejected
+    assert len(accepted) == 12
+
+    bp_mnist = next(
+        item
+        for item in accepted
+        if item["entity"] == "BP"
+        and item["dataset_scope"] == "MNIST"
+        and "fully connected" in item["scope"].lower()
+    )
+    assert bp_mnist["fact"] == "BP accuracy = 98.63±0.03"
+    assert bp_mnist["metric_name"] == "accuracy"
+    assert bp_mnist["metric_unit"] == "%"
+
+    conv = next(
+        item
+        for item in accepted
+        if item["entity"] == "PEPITA"
+        and item["dataset_scope"] == "CIFAR10"
+        and "convolutional" in item["scope"].lower()
+    )
+    assert conv["fact"] == "PEPITA accuracy = 56.33±1.35"
 
 
 def test_table_block_llm_fallback_when_deterministic_parser_extracts_zero():
@@ -228,6 +267,18 @@ def test_claims_ir_extracts_valid_percentage():
     metric, target = BuildClaimsIRAgent._extract_metric_and_target("accuracy = 96.85%")
     assert metric == "accuracy"
     assert abs(target - 0.9685) < 0.001
+
+
+def test_claims_ir_extracts_mean_as_target_and_std_as_tolerance():
+    """mean±std should use the mean target, not the std value."""
+    from p2c.agents.phase1.build_claims_ir import BuildClaimsIRAgent
+
+    parsed = BuildClaimsIRAgent._extract_metric_target_stats("accuracy = 98.63±0.03")
+
+    assert parsed["metric"] == "accuracy"
+    assert abs(parsed["target"] - 0.9863) < 1e-6
+    assert abs(parsed["std_eps"] - 0.0003) < 1e-9
+    assert "MEAN_STD_TARGET_NORMALIZED" in parsed["reason_codes"]
 
 
 def test_claims_ir_extracts_valid_decimal():

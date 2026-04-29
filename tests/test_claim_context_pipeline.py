@@ -65,6 +65,47 @@ def test_build_claims_ir_preserves_table_anchor_from_fingerprint():
     assert claims[0].conditions["scope"] == "from classification report in paper"
 
 
+def test_build_claims_ir_infers_pepita_table_experiment_ids_without_llm():
+    from p2c.agents.phase1.build_claims_ir import BuildClaimsIRAgent
+
+    fingerprint = {
+        "claims": [
+            {
+                "id": "claim_fc",
+                "claim_type": "result",
+                "fact": "BP accuracy = 98.63±0.03",
+                "scope": "BP, fully connected models, MNIST, from Table 1 in paper",
+                "evidence_anchors": {"text_anchor": "a1", "visual_anchor": "Table 1"},
+                "reason_codes": [],
+            },
+            {
+                "id": "claim_conv",
+                "claim_type": "result",
+                "fact": "PEPITA accuracy = 98.29±0.13",
+                "scope": "PEPITA, convolutional models, MNIST, from Table 1 in paper",
+                "evidence_anchors": {"text_anchor": "a2", "visual_anchor": "Table 1"},
+                "reason_codes": [],
+            },
+            {
+                "id": "claim_ablation",
+                "claim_type": "result",
+                "fact": "PEPITA WHITENED INPUT accuracy = 92.08±0.14",
+                "scope": "PEPITA WHITENED INPUT, fully connected models, MNIST, from Table 4 in paper",
+                "evidence_anchors": {"text_anchor": "a3", "visual_anchor": "Table 4"},
+                "reason_codes": [],
+            },
+        ],
+        "reason_codes": [],
+    }
+
+    agent = BuildClaimsIRAgent.__new__(BuildClaimsIRAgent)
+    claims, _ = agent._claims_from_fingerprint(fingerprint)
+
+    assert claims[0].conditions["experiment_id"] == "exp_01"
+    assert claims[1].conditions["experiment_id"] == "exp_02"
+    assert claims[2].conditions["experiment_id"] == "exp_04"
+
+
 def test_build_experiment_prompt_is_paper_only():
     from p2c.agents.phase1.build_claims_ir import _build_experiment_user_prompt
 
@@ -166,6 +207,64 @@ def test_build_claims_ir_attaches_experiment_rollups_without_repo_fields():
     assert not hasattr(exp, "claim_ids")
     assert not hasattr(exp, "repo_coverage")
     assert not hasattr(exp, "repo_entrypoint")
+
+
+def test_build_claims_ir_overrides_llm_std_target_for_mean_std_claim():
+    from p2c.agents.phase1.build_claims_ir import BuildClaimsIRAgent
+
+    fingerprint = {
+        "claims": [
+            {
+                "id": "claim_01",
+                "claim_type": "result",
+                "fact": "accuracy = 98.63±0.03",
+                "scope": "paper table",
+                "evidence_anchors": {"text_anchor": "a1", "visual_anchor": "Table 1"},
+                "reason_codes": [],
+            }
+        ],
+        "reason_codes": [],
+    }
+
+    agent = BuildClaimsIRAgent.__new__(BuildClaimsIRAgent)
+    base_claims, _ = agent._claims_from_fingerprint(fingerprint)
+    base_claims[0] = base_claims[0].model_copy(update={"target": None})
+    agent.safe_chat_json = lambda schema, system, user: (
+        {
+            "experiments": [
+                {
+                    "experiment_id": "exp_01",
+                    "name": "table 1",
+                    "description": "mean/std result",
+                    "dataset": None,
+                    "table_anchor": "Table 1",
+                    "notes": None,
+                }
+            ],
+            "claims": [
+                {
+                    "claim_id": "claim_01",
+                    "type": "result",
+                    "predicate": "accuracy = 98.63±0.03",
+                    "metric": "accuracy",
+                    "target": 0.03,
+                    "experiment_id": "exp_01",
+                    "table_anchor": "Table 1",
+                    "scope": "evaluation",
+                    "is_primary": True,
+                    "reason": "LLM mistakenly returned std",
+                }
+            ],
+        },
+        None,
+    )
+
+    claims_ir = agent._build_claims_ir_via_llm(fingerprint=fingerprint, base_claims=base_claims)
+    claim = claims_ir.claims[0]
+
+    assert abs(claim.target - 0.9863) < 1e-6
+    assert abs(claim.tolerance_policy["std_eps"] - 0.0003) < 1e-9
+    assert "MEAN_STD_TARGET_NORMALIZED" in claim.reason_codes
 
 
 def test_build_claims_ir_drops_empty_experiments_after_rollup():

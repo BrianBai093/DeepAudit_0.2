@@ -4,6 +4,8 @@ import json
 from typing import Any
 
 from p2c.agents.base import BaseAgent
+from p2c.agents.phase3.claim_inputs import load_effective_claims_ir
+from p2c.agents.phase3.execution_summary_evidence import load_effective_run_manifest
 from p2c.schemas import (
     ClaimVerdict,
     EvaluabilityDoc,
@@ -18,7 +20,8 @@ _ARTIFACT_PROVENANCE = {"checkpoint_eval", "existing_logs", "existing_results", 
 SYSTEM_PROMPT = """\
 You are an expert ML reproducibility auditor. You will receive:
 
-1. **Paper claims** (claims_ir.json): what the paper says — each claim has a type \
+1. **Paper claims** (effective_claims_ir.json): what the paper says after deterministic \
+Phase 3 normalization of mean±std targets — each claim has a type \
 (result or config), metric name, target value, and conditions (scope, table_anchor).
 2. **Execution metrics** (parsed_evidence.json): what we actually measured by running \
 the repository code — matched metric records with values and sources.
@@ -230,11 +233,11 @@ class VerifyClaimsAgent(BaseAgent):
         super().__init__(name="verify_claims", *args, **kwargs)
 
     def execute(self, ctx: dict) -> dict:
-        claims_doc = self.artifacts.read_json("fingerprint/claims_ir.json")
+        claims_doc = load_effective_claims_ir(self.artifacts)
         parsed_doc = self.artifacts.read_json("results/parsed_evidence.json")
         evaluability_doc_raw = self.artifacts.read_json("results/evaluability.json")
         evaluability_doc = EvaluabilityDoc(**evaluability_doc_raw)
-        run_manifest = self.artifacts.read_json("execution/executor_outputs/run_manifest.json")
+        run_manifest = load_effective_run_manifest(self.artifacts)
         evidence_map: dict[str, list[MetricRecord]] = {}
         missing_reason_map: dict[str, str | None] = {}
         for row in parsed_doc.get("claim_evidence", []):

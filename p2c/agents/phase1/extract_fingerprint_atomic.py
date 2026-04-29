@@ -19,9 +19,10 @@ PERCENT_RE = re.compile(r"(\d+(?:\.\d+)?)\s*%")
 DECIMAL_RE = re.compile(r"\b(0\.\d+|1\.0+)\b")
 NUMBER_RE = re.compile(r"\d+(?:\.\d+)?")
 TR_RE = re.compile(r"<tr>(.*?)</tr>", flags=re.I | re.S)
-TD_RE = re.compile(r"<t[dh]>(.*?)</t[dh]>", flags=re.I | re.S)
+CELL_RE = re.compile(r"<t[dh]\b([^>]*)>(.*?)</t[dh]>", flags=re.I | re.S)
 TAG_RE = re.compile(r"<[^>]+>")
 TABLE_ID_RE = re.compile(r"\btable\s+([ivxlcdm\d]+)", flags=re.I)
+COLSPAN_RE = re.compile(r"\bcolspan\s*=\s*[\"']?(\d+)", flags=re.I)
 
 FACET_KEYWORDS = {
     "metric_result": [
@@ -45,6 +46,20 @@ class ExtractFingerprintAtomicAgent(BaseAgent):
         text = TAG_RE.sub("", text)
         text = text.replace("&nbsp;", " ")
         return re.sub(r"\s+", " ", text).strip()
+
+    @classmethod
+    def _parse_table_rows(cls, text: str) -> list[list[str]]:
+        parsed_rows: list[list[str]] = []
+        for row in TR_RE.findall(text):
+            cells: list[str] = []
+            for attrs, body in CELL_RE.findall(row):
+                colspan_m = COLSPAN_RE.search(attrs or "")
+                colspan = int(colspan_m.group(1)) if colspan_m else 1
+                cell = cls._clean_cell(body)
+                cells.extend([cell] * max(1, colspan))
+            if cells:
+                parsed_rows.append(cells)
+        return parsed_rows
 
     @staticmethod
     def _extract_table_anchor(text: str) -> str | None:
@@ -113,6 +128,50 @@ class ExtractFingerprintAtomicAgent(BaseAgent):
         ]:
             if name in lower:
                 return name
+        return None
+
+    @staticmethod
+    def _value_from_cell(value_raw: str, metric_name: str) -> tuple[float | None, str | None]:
+        mean_std = re.search(r"(\d+(?:\.\d+)?)\s*(?:±|\+/-|\\pm)\s*(\d+(?:\.\d+)?)\s*%?", value_raw)
+        if mean_std:
+            value = float(mean_std.group(1))
+            bounded_percent = metric_name in {"accuracy", "f1", "auc", "precision", "recall", "bleu", "rouge"}
+            return value, "%" if bounded_percent and value > 1.0 else "value"
+        value, unit_name = ExtractFingerprintAtomicAgent._extract_metric_value(value_raw)
+        if value is not None:
+            return value, unit_name
+        raw_num = NUMBER_RE.search(value_raw)
+        if not raw_num:
+            return None, None
+        value = float(raw_num.group(0))
+        bounded_percent = metric_name in {"accuracy", "f1", "auc", "precision", "recall", "bleu", "rouge"}
+        return value, "%" if bounded_percent and value > 1.0 else "value"
+
+    @staticmethod
+    def _is_numeric_metric_cell(text: str) -> bool:
+        return bool(NUMBER_RE.search(text or ""))
+
+    @staticmethod
+    def _infer_architecture(labels: list[str], context: str) -> str | None:
+        joined = " ".join(labels).lower()
+        if "fully connected" in joined or "fully-connected" in joined:
+            return "fully connected models"
+        if "convolutional" in joined or "conv" in joined:
+            return "convolutional models"
+        joined = context.lower()
+        if "fully connected" in joined or "fully-connected" in joined:
+            return "fully connected models"
+        if "convolutional" in joined or "conv" in joined:
+            return "convolutional models"
+        return None
+
+    @staticmethod
+    def _infer_dataset(labels: list[str]) -> str | None:
+        joined = " ".join(labels).lower().replace("cifar-10", "cifar10").replace("cifar 10", "cifar10")
+        joined = joined.replace("cifar-100", "cifar100").replace("cifar 100", "cifar100")
+        for dataset in ("cifar100", "cifar10", "mnist"):
+            if dataset in joined:
+                return dataset.upper() if dataset.startswith("cifar") else "MNIST"
         return None
 
     @staticmethod
@@ -217,12 +276,7 @@ class ExtractFingerprintAtomicAgent(BaseAgent):
 
     def _expand_table_unit(self, unit: dict) -> tuple[list[dict], list[dict]]:
         text = str(unit.get("text") or "")
-        rows = TR_RE.findall(text)
-        parsed_rows: list[list[str]] = []
-        for row in rows:
-            cells = [self._clean_cell(c) for c in TD_RE.findall(row)]
-            if cells:
-                parsed_rows.append(cells)
+        parsed_rows = self._parse_table_rows(text)
 
         if not parsed_rows:
             return [], [
@@ -255,6 +309,18 @@ class ExtractFingerprintAtomicAgent(BaseAgent):
                 m = self._extract_metric_name(cell)
                 if m and cell.lower().strip() not in COUNT_COLUMNS:
                     header_metric_cols[col_idx] = m
+
+        caption_metric = self._extract_metric_name(text)
+        if caption_metric and not header_metric_cols and not is_clf_report:
+            caption_rows, caption_rej = self._expand_caption_metric_matrix(
+                unit=unit,
+                parsed_rows=parsed_rows,
+                metric_name=caption_metric,
+                table_anchor=table_anchor,
+                context=text,
+            )
+            if caption_rows:
+                return caption_rows, caption_rej
 
         for i, row in enumerate(parsed_rows):
             # Skip the header row itself
@@ -406,6 +472,83 @@ class ExtractFingerprintAtomicAgent(BaseAgent):
                         "reason_codes": ["TABLE_EXPANDED"],
                     }
                 )
+
+        return out, rej
+
+    def _expand_caption_metric_matrix(
+        self,
+        *,
+        unit: dict,
+        parsed_rows: list[list[str]],
+        metric_name: str,
+        table_anchor: str | None,
+        context: str,
+    ) -> tuple[list[dict], list[dict]]:
+        """Extract numeric matrix tables whose metric is named in the caption."""
+        out: list[dict] = []
+        rej: list[dict] = []
+        header_rows: list[list[str]] = []
+
+        for row in parsed_rows:
+            has_row_label = bool(row and row[0].strip())
+            has_numeric_values = any(self._is_numeric_metric_cell(cell) for cell in row[1:])
+            if has_row_label and has_numeric_values:
+                entity = row[0].strip()
+                for col in range(1, len(row)):
+                    value_raw = row[col].strip()
+                    if not value_raw:
+                        continue
+                    value, unit_name = self._value_from_cell(value_raw, metric_name)
+                    if value is None:
+                        continue
+                    if not self._is_plausible_metric_value(value, metric_name):
+                        rej.append(
+                            {
+                                "unit_id": unit.get("unit_id"),
+                                "raw": f"{entity} {metric_name} = {value}",
+                                "reason_codes": ["IMPLAUSIBLE_METRIC_VALUE"],
+                            }
+                        )
+                        continue
+
+                    labels = [
+                        header[col].strip()
+                        for header in header_rows
+                        if col < len(header) and header[col].strip()
+                    ]
+                    dataset = self._infer_dataset(labels)
+                    architecture = self._infer_architecture(labels, context)
+                    scope_parts = [entity]
+                    if architecture:
+                        scope_parts.append(architecture)
+                    if dataset:
+                        scope_parts.append(dataset)
+                    if table_anchor:
+                        scope_parts.append(f"from {table_anchor} in paper")
+                    else:
+                        scope_parts.append("from table in paper")
+
+                    fact = f"{entity} {metric_name} = {value_raw if unit_name == '%' else value}"
+                    out.append(
+                        {
+                            "criterion": f"<fact>{fact}</fact> <scope>{', '.join(scope_parts)}</scope>",
+                            "fact": fact,
+                            "scope": ", ".join(scope_parts),
+                            "facet": "metric_result",
+                            "source_type": "table_metric",
+                            "metric_name": metric_name,
+                            "metric_value": value,
+                            "metric_unit": unit_name,
+                            "entity": entity,
+                            "comparator": None,
+                            "dataset_scope": dataset,
+                            "table_anchor": table_anchor,
+                            "input_unit_id": unit.get("unit_id"),
+                            "reason_codes": ["TABLE_EXPANDED", "CAPTION_METRIC_MATRIX"],
+                        }
+                    )
+                continue
+            header_rows.append(row)
 
         return out, rej
 

@@ -40,20 +40,33 @@ def ensure_phase_prereq(phase: int, artifacts: ArtifactManager) -> None:
             )
     if phase == 3:
         run_manifest = artifacts.path("execution/executor_outputs/run_manifest.json")
+        executor_results = artifacts.path("execution/executor_outputs/executor_results.json")
         if not run_manifest.exists() or run_manifest.stat().st_size == 0:
             raise RuntimeError(
                 "Phase 3 requires phase 2 artifacts. Run: python -m p2c.main --phase 2 ..."
             )
+        manifest_has_runs = False
         try:
             manifest_payload = json.loads(run_manifest.read_text(encoding="utf-8"))
+            manifest_has_runs = bool(manifest_payload.get("runs"))
         except Exception as e:  # noqa: BLE001
             raise RuntimeError(
                 "Phase 3 requires a valid execution/executor_outputs/run_manifest.json from phase 2. "
                 "Run: python -m p2c.main --phase 2 ..."
             ) from e
-        if not manifest_payload.get("runs"):
+        if manifest_has_runs:
+            return
+        executor_results_has_runs = False
+        if executor_results.exists() and executor_results.stat().st_size > 0:
+            try:
+                executor_payload = json.loads(executor_results.read_text(encoding="utf-8"))
+                executor_results_has_runs = bool(executor_payload.get("runs"))
+            except Exception:
+                executor_results_has_runs = False
+        if not executor_results_has_runs:
             raise RuntimeError(
-                "Phase 3 requires phase 2 run_manifest runs. Run: python -m p2c.main --phase 2 ..."
+                "Phase 3 requires phase 2 run_manifest runs or executor_results runs. "
+                "Run: python -m p2c.main --phase 2 ..."
             )
 
 

@@ -96,6 +96,32 @@ def test_score_execution_success_prefers_full_over_reduced_fidelity() -> None:
     assert full_score.score > trend_score.score > smoke_score.score
 
 
+def test_score_claim_match_counts_inconclusive_result_claims_in_denominator() -> None:
+    agent = ScoreAndDiagnoseAgent.__new__(ScoreAndDiagnoseAgent)
+    verdict = {
+        "claim_verdicts": [
+            {"claim_id": "claim_01", "status": "SUPPORTED", "compared_value": 0.98},
+            {"claim_id": "claim_02", "status": "NOT_SUPPORTED", "compared_value": 0.8},
+            {"claim_id": "claim_03", "status": "INCONCLUSIVE", "compared_value": None},
+            {"claim_id": "claim_cfg", "status": "INCONCLUSIVE", "compared_value": None},
+        ]
+    }
+    claims_ir = {
+        "claims": [
+            {"claim_id": "claim_01", "type": "result"},
+            {"claim_id": "claim_02", "type": "result"},
+            {"claim_id": "claim_03", "type": "result"},
+            {"claim_id": "claim_cfg", "type": "config"},
+        ]
+    }
+
+    score = agent._score_claim_match(verdict, claims_ir)
+
+    assert score.score == 42
+    assert score.evidence == ["1 supported, 0 partial, 1 not supported, 1 inconclusive out of 3 claims"]
+    assert "CLAIMS_INCONCLUSIVE" in score.reason_codes
+
+
 def test_compute_ecr_requires_full_fidelity_supported_claims() -> None:
     verdict = {
         "claim_verdicts": [

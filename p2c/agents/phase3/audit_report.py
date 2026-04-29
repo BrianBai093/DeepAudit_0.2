@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 
 from p2c.agents.base import BaseAgent
+from p2c.agents.phase3.claim_inputs import load_effective_claims_ir
+from p2c.agents.phase3.execution_summary_evidence import SUMMARY_PRIORITY_NOTE, load_effective_run_manifest
 from p2c.agents.phase2.result_extraction import is_static_inspection_command
 
 SYSTEM_PROMPT = """\
@@ -57,6 +59,10 @@ The Result column MUST summarize status, fidelity, execution_outcome, evidence_s
 - NO verbose paragraphs. Use tables and single-sentence bullets ONLY.
 - Max 2 sentences per section OUTSIDE of tables.
 - Every number MUST come from the provided artifacts.
+- Use the effective claims and effective run manifest supplied in the prompt. The effective claims
+  normalize mean±std paper values so the mean is the target and std is tolerance context.
+- If EXECUTION_SUMMARY_FINAL.md conflicts with lower-priority execution evidence, treat it as
+  same-origin highest-priority evidence and mention conflicts rather than silently downgrading it.
 - Do NOT fabricate metrics, file paths, or results.
 - Do NOT repeat information across sections.
 - Do NOT use bare claim IDs as the primary label; always show the concrete claim text first.
@@ -166,14 +172,14 @@ def _build_report_prompt(ctx: dict, artifacts) -> str:
     sections = []
 
     # ── Paper claims + experiments ──────────────────────────────
-    claims_ir = artifacts.read_json("fingerprint/claims_ir.json")
+    claims_ir = load_effective_claims_ir(artifacts)
 
     experiments = claims_ir.get("experiments", [])
     if experiments:
         sections.append("# PAPER EXPERIMENTS (identified by LLM)")
         sections.append(json.dumps(experiments, indent=2, ensure_ascii=False)[:3000])
 
-    sections.append("\n# PAPER CLAIMS (claims_ir.json)")
+    sections.append("\n# PAPER CLAIMS (effective_claims_ir.json)")
     sections.append(json.dumps(claims_ir.get("claims", []), indent=2, ensure_ascii=False)[:5000])
 
     # ── Fingerprint configurations ───────────────────────────────
@@ -194,9 +200,21 @@ def _build_report_prompt(ctx: dict, artifacts) -> str:
     except Exception:  # noqa: BLE001
         pass
 
-    # ── Run manifest ─────────────────────────────────────────────
-    manifest = artifacts.read_json("execution/executor_outputs/run_manifest.json")
-    sections.append("\n# RUN MANIFEST (execution results)")
+    # ── Highest-priority execution summary and effective manifest ──
+    try:
+        summary_evidence = artifacts.read_json("results/execution_summary_evidence.json")
+        summary_path = summary_evidence.get("summary_path")
+        if summary_path:
+            summary_file = artifacts.path(summary_path)
+            summary_text = summary_file.read_text(encoding="utf-8", errors="ignore") if summary_file.exists() else ""
+            sections.append("\n# EXECUTION SUMMARY FINAL (same-origin, highest priority)")
+            sections.append(SUMMARY_PRIORITY_NOTE)
+            sections.append(summary_text[:6000])
+    except Exception:  # noqa: BLE001
+        pass
+
+    manifest = load_effective_run_manifest(artifacts)
+    sections.append("\n# RUN MANIFEST (effective Phase 3 execution results)")
     for run in manifest.get("runs", []):
         sections.append(f"\n## Experiment: {run.get('experiment_name') or run.get('run_id')}")
         sections.append(f"- status: {run.get('status')}")
@@ -218,6 +236,14 @@ def _build_report_prompt(ctx: dict, artifacts) -> str:
         logs = run.get("logs") or {}
         if logs:
             sections.append(f"- logs: {json.dumps(logs, ensure_ascii=False)}")
+
+    try:
+        raw_manifest = artifacts.read_json("execution/executor_outputs/run_manifest.json")
+        if raw_manifest and raw_manifest != manifest:
+            sections.append("\n# RAW RUN MANIFEST (lower-priority audit context)")
+            sections.append(json.dumps(raw_manifest, indent=2, ensure_ascii=False)[:3000])
+    except Exception:  # noqa: BLE001
+        pass
 
     # ── Execution failures ───────────────────────────────────────
     try:
@@ -342,8 +368,8 @@ class AuditReportAgent(BaseAgent):
         verdict = self.artifacts.read_json("results/verdict.json")
         eval_verdict = self.artifacts.read_json("results/evaluability_verdict.json")
         metrics = self.artifacts.read_json("results/metrics.json")
-        claims_doc = self.artifacts.read_json("fingerprint/claims_ir.json")
-        manifest = self.artifacts.read_json("execution/executor_outputs/run_manifest.json")
+        claims_doc = load_effective_claims_ir(self.artifacts)
+        manifest = load_effective_run_manifest(self.artifacts)
         reproduced_figures = self.artifacts.read_json("results/reproduced_figures.json")
         try:
             visual_alignment = self.artifacts.read_json("results/visual_to_repo_alignment.json")
