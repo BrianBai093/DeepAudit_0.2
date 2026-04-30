@@ -96,6 +96,39 @@ def test_score_execution_success_prefers_full_over_reduced_fidelity() -> None:
     assert full_score.score > trend_score.score > smoke_score.score
 
 
+def test_successful_smoke_run_applies_total_score_floor() -> None:
+    exec_score = ScoreAndDiagnoseAgent.__new__(ScoreAndDiagnoseAgent)._score_execution_success(
+        {"runs": [{"run_id": "exp_01", "status": "ok", "fidelity": "smoke", "execution_outcome": "EXECUTABLE"}]}
+    )
+
+    total, notes, reason_codes = ScoreAndDiagnoseAgent._calibrate_total_score(
+        37.5,
+        {"runs": [{"run_id": "exp_01", "status": "ok", "fidelity": "smoke", "execution_outcome": "EXECUTABLE"}]},
+        exec_score,
+    )
+
+    assert total == 50.0
+    assert notes
+    assert "SMOKE_EXECUTION_SCORE_FLOOR_50" in reason_codes
+    assert "SMOKE_EXECUTION_SCORE_FLOOR_50" in exec_score.reason_codes
+
+
+def test_trend_floor_is_higher_than_smoke_floor() -> None:
+    exec_score = ScoreAndDiagnoseAgent.__new__(ScoreAndDiagnoseAgent)._score_execution_success(
+        {"runs": [{"run_id": "exp_01", "status": "ok", "fidelity": "trend", "execution_outcome": "TREND_SUPPORTED"}]}
+    )
+
+    total, notes, reason_codes = ScoreAndDiagnoseAgent._calibrate_total_score(
+        50.0,
+        {"runs": [{"run_id": "exp_01", "status": "ok", "fidelity": "trend", "execution_outcome": "TREND_SUPPORTED"}]},
+        exec_score,
+    )
+
+    assert total == 65.0
+    assert notes
+    assert "TREND_EXECUTION_SCORE_FLOOR_65" in reason_codes
+
+
 def test_score_claim_match_counts_inconclusive_result_claims_in_denominator() -> None:
     agent = ScoreAndDiagnoseAgent.__new__(ScoreAndDiagnoseAgent)
     verdict = {

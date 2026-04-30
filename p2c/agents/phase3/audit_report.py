@@ -47,7 +47,9 @@ claims such as dropout or data split unless there are no result claims at all.
 
 ### 3. Reproduced Figures/Tables
 For each reproduced figure or table image: embed ![caption](path) and add ONE sentence comparison note.
+That sentence MUST include the figure's match_level: EXACT, PARTIAL, RELATED, or NO_EVIDENCE.
 If no figures or tables were generated, write "No figures/tables reproduced."
+Only include entries with reproduction_status="REPRODUCED"; do not include audit-only charts.
 
 ### 4. Gap Diagnosis (table only)
 
@@ -66,6 +68,8 @@ The Result column MUST summarize status, fidelity, execution_outcome, evidence_s
 - NO verbose paragraphs. Use tables and single-sentence bullets ONLY.
 - Max 2 sentences per section OUTSIDE of tables.
 - Every number MUST come from the provided artifacts.
+- If REPRODUCIBILITY SCORE contains raw_total_score/calibration_notes, use total_score as the final calibrated
+  score and mention the calibration note once in the Score Card evidence.
 - Use the Phase 2 execution package first. The effective run manifest is a compatibility projection
   derived from that package when the package exists.
 - PHASE2_RESULTS.md is a deterministic same-origin summary of the package; raw EXECUTION_*.md files
@@ -122,6 +126,14 @@ def _report_image_path(image_path: str) -> str:
     if path.startswith("results/"):
         return path[len("results/"):]
     return path
+
+
+def _is_reportable_reproduced_figure(fig: dict) -> bool:
+    if not fig.get("image_path"):
+        return False
+    if fig.get("reproduction_status", "REPRODUCED") != "REPRODUCED":
+        return False
+    return str(fig.get("element_id") or "") != "verdict_comparison"
 
 
 def _plan_step_map(plan: dict) -> dict[str, dict]:
@@ -364,11 +376,38 @@ def _build_report_prompt(ctx: dict, artifacts) -> str:
         if figs.get("figures"):
             sections.append("\n# REPRODUCED FIGURES")
             for fig in figs["figures"]:
-                if fig.get("image_path"):
+                if _is_reportable_reproduced_figure(fig):
+                    metadata = {
+                        "element_id": fig.get("element_id"),
+                        "visual_anchor": fig.get("visual_anchor"),
+                        "image_path": _report_image_path(fig.get("image_path", "")),
+                        "comparison_notes": fig.get("comparison_notes"),
+                        "match_level": fig.get("match_level", "EXACT"),
+                        "matched_scope": fig.get("matched_scope", {}),
+                        "coverage_note": fig.get("coverage_note", ""),
+                        "evidence_sources": fig.get("evidence_sources", [])[:8],
+                        "reason_codes": fig.get("reason_codes", []),
+                    }
                     sections.append(
-                        f"- {fig['element_id']}: "
-                        f"![{fig.get('comparison_notes', '')}]({_report_image_path(fig['image_path'])})"
+                        f"- {metadata['element_id']}: "
+                        f"![{metadata.get('comparison_notes', '')}]({metadata['image_path']}) "
+                        f"{json.dumps(metadata, ensure_ascii=False)}"
                     )
+        reportable = [fig for fig in figs.get("figures", []) if isinstance(fig, dict) and _is_reportable_reproduced_figure(fig)]
+        partial_related_count = sum(
+            1 for fig in reportable
+            if str(fig.get("match_level") or "EXACT").upper() in {"PARTIAL", "RELATED", "NO_EVIDENCE"}
+        )
+        skipped_count = len(figs.get("skipped_targets", []))
+        if partial_related_count or skipped_count:
+            summary_parts = []
+            if partial_related_count:
+                summary_parts.append(f"{partial_related_count} reproduced visuals have only partial/related Phase2 evidence")
+            if skipped_count:
+                summary_parts.append(f"{skipped_count} result-related visual targets lacked executable phase2 evidence and were skipped")
+            sections.append(
+                "\n# VISUAL EVIDENCE COVERAGE\n" + "; ".join(summary_parts) + "."
+            )
     except Exception:  # noqa: BLE001
         pass
 
@@ -438,12 +477,13 @@ class AuditReportAgent(BaseAgent):
 
         figures = [
             fig for fig in reproduced_figures.get("figures", [])
-            if fig.get("image_path")
+            if _is_reportable_reproduced_figure(fig)
         ]
         if figures:
             for fig in figures:
                 image_path = _report_image_path(fig.get("image_path", ""))
                 caption = fig.get("comparison_notes") or fig.get("element_id") or "reproduced figure"
+                match_level = str(fig.get("match_level") or "EXACT").upper()
                 lines.append(f"![{caption}]({image_path})")
                 lines.append("")
                 element_id = str(fig.get("element_id") or "")
@@ -454,10 +494,25 @@ class AuditReportAgent(BaseAgent):
                     reasons = alignment.get("mismatch_reasons") or []
                     reason = f" ({reasons[0]})" if reasons else ""
                     alignment_note = f" visual alignment={status}{reason}."
-                lines.append(f"- {element_id}: {caption}.{alignment_note}")
+                coverage_note = str(fig.get("coverage_note") or "").strip()
+                coverage_text = f" {coverage_note}" if coverage_note else ""
+                lines.append(f"- {element_id}: match_level={match_level}; {caption}.{coverage_text}{alignment_note}")
                 lines.append("")
         else:
             lines.extend(["No figures reproduced.", ""])
+        partial_related_count = sum(
+            1 for fig in figures
+            if str(fig.get("match_level") or "EXACT").upper() in {"PARTIAL", "RELATED", "NO_EVIDENCE"}
+        )
+        skipped_count = len(reproduced_figures.get("skipped_targets", []))
+        if partial_related_count or skipped_count:
+            parts = []
+            if partial_related_count:
+                parts.append(f"{partial_related_count} visuals have only partial/related Phase2 evidence")
+            if skipped_count:
+                parts.append(f"{skipped_count} result-related visual targets lacked executable phase2 evidence and were skipped")
+            lines.append("; ".join(parts) + ".")
+            lines.append("")
 
         lines.extend([
             "## Claim Verdicts",

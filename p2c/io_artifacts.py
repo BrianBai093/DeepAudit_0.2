@@ -39,6 +39,7 @@ REQUIRED_FILES = [
     "execution/env_lock/pip_freeze.txt",
     # Phase 3 — verification
     "results/execution_summary_evidence.json",
+    "results/execution_log_evidence.json",
     "results/effective_run_manifest.json",
     "results/effective_claims_ir.json",
     "results/metrics.json",
@@ -87,6 +88,8 @@ class ArtifactManager:
                                                "reason_codes": [_P]},
             "execution_summary_evidence.json": {"priority_order": [], "summary_runs": [],
                                                 "conflicts": [], "reason_codes": [_P]},
+            "execution_log_evidence.json": {"schema_version": "execution_log_evidence.v1",
+                                            "logs": [], "reason_codes": [_P]},
             "effective_run_manifest.json": {"runs": [], "reason_codes": [_P]},
             "effective_claims_ir.json": {"experiments": [], "claims": [], "reason_codes": [_P]},
             "evaluability.json": {"entries": [], "reason_codes": [_P]},

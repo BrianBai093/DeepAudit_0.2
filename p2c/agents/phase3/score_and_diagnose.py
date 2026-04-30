@@ -92,8 +92,8 @@ class ScoreAndDiagnoseAgent(BaseAgent):
         claim_score = self._score_claim_match(verdict, claims_ir)
 
         dimensions = [env_score, data_score, exec_score, claim_score]
-
-        total = sum(d.weighted_score for d in dimensions)
+        raw_total = round(sum(d.weighted_score for d in dimensions), 1)
+        total, calibration_notes, score_reason_codes = self._calibrate_total_score(raw_total, manifest, exec_score)
 
         # Classify gaps
         gaps = self._classify_gaps(
@@ -108,11 +108,13 @@ class ScoreAndDiagnoseAgent(BaseAgent):
 
         score = ReproducibilityScore(
             total_score=round(total, 1),
+            raw_total_score=raw_total,
+            calibration_notes=calibration_notes,
             dimensions=dimensions,
             ecr=ecr,
             ecr_reason=ecr_reason,
             gaps=gaps,
-            reason_codes=["SCORE_COMPUTED"],
+            reason_codes=score_reason_codes,
         )
 
         self.artifacts.write_json("results/reproducibility_score.json", score.model_dump())
@@ -385,6 +387,80 @@ class ScoreAndDiagnoseAgent(BaseAgent):
     # ------------------------------------------------------------------
     # ECR computation
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _calibrate_total_score(
+        raw_total: float,
+        manifest: dict,
+        exec_score: DimensionScore,
+    ) -> tuple[float, list[str], list[str]]:
+        """Apply a transparent floor for successful reduced-fidelity execution.
+
+        The dimension scores remain visible as raw evidence; total_score is calibrated so
+        a repository that at least executes a smoke run is not scored below the midpoint
+        purely because many paper claims remain inconclusive.
+        """
+        floor_info = ScoreAndDiagnoseAgent._execution_score_floor(manifest)
+        notes: list[str] = []
+        reason_codes = ["SCORE_COMPUTED"]
+        if not floor_info:
+            return raw_total, notes, reason_codes
+        floor = float(floor_info["floor"])
+        reason_code = str(floor_info["reason_code"])
+        if raw_total < floor:
+            note = (
+                f"Applied {floor_info['label']} execution floor: raw weighted score "
+                f"{raw_total:.1f}/100 -> {floor:.1f}/100 because {floor_info['evidence']}."
+            )
+            notes.append(note)
+            reason_codes.append(reason_code)
+            exec_score.evidence.append(note)
+            if reason_code not in exec_score.reason_codes:
+                exec_score.reason_codes.append(reason_code)
+            return floor, notes, reason_codes
+        reason_codes.append("SCORE_NO_CALIBRATION_NEEDED")
+        return raw_total, notes, reason_codes
+
+    @staticmethod
+    def _execution_score_floor(manifest: dict) -> dict[str, Any] | None:
+        runs = manifest.get("runs", []) if isinstance(manifest, dict) else []
+        successful = [
+            run for run in runs
+            if isinstance(run, dict) and str(run.get("status") or "") in {"ok", "partial"}
+        ]
+        if not successful:
+            return None
+
+        def has_run(*, outcomes: set[str], fidelities: set[str]) -> bool:
+            for run in successful:
+                outcome = str(run.get("execution_outcome") or "")
+                fidelity = str(run.get("fidelity") or "")
+                if outcome in outcomes or fidelity in fidelities:
+                    return True
+            return False
+
+        if has_run(outcomes={"FULLY_REPRODUCED"}, fidelities={"full"}):
+            return {
+                "floor": 80.0,
+                "label": "full-fidelity",
+                "reason_code": "FULL_EXECUTION_SCORE_FLOOR_80",
+                "evidence": "at least one full-fidelity run completed successfully",
+            }
+        if has_run(outcomes={"TREND_SUPPORTED"}, fidelities={"trend", "artifact"}):
+            return {
+                "floor": 65.0,
+                "label": "trend/artifact",
+                "reason_code": "TREND_EXECUTION_SCORE_FLOOR_65",
+                "evidence": "at least one trend or artifact-level run completed successfully",
+            }
+        if has_run(outcomes={"EXECUTABLE"}, fidelities={"smoke"}):
+            return {
+                "floor": 50.0,
+                "label": "smoke",
+                "reason_code": "SMOKE_EXECUTION_SCORE_FLOOR_50",
+                "evidence": "at least one smoke run completed successfully",
+            }
+        return None
 
     @staticmethod
     def _compute_ecr(verdict: dict, manifest: dict, exec_score: int, claims_ir: dict) -> tuple[bool, str]:

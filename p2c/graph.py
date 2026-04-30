@@ -18,6 +18,7 @@ from p2c.agents.phase2.orchestrator import Phase2Orchestrator
 from p2c.agents.phase2.tool_agent import ToolAgent
 from p2c.agents.phase3.align_evidence import AlignEvidenceAgent
 from p2c.agents.phase3.audit_report import AuditReportAgent
+from p2c.agents.phase3.execution_log_evidence import ExecutionLogEvidenceAgent
 from p2c.agents.phase3.execution_summary_evidence import ExecutionSummaryEvidenceAgent
 from p2c.agents.phase3.observe_metrics import ObserveMetricsAgent
 from p2c.agents.phase3.reproduce_figures import ReproduceFiguresAgent
@@ -25,7 +26,7 @@ from p2c.agents.phase3.score_and_diagnose import ScoreAndDiagnoseAgent
 from p2c.agents.phase3.verify_claims import VerifyClaimsAgent
 from p2c.agents.phase3.visual_to_repo_alignment import VisualToRepoAlignmentAgent
 
-_STEP_TOTAL = 20
+_STEP_TOTAL = 21
 
 
 def run_phase_1(ctx: dict[str, Any], agents: dict[str, Any]) -> None:
@@ -77,6 +78,7 @@ def run_phase_3(ctx: dict[str, Any], agents: dict[str, Any]) -> None:
     agents["verify_claims"].run(ctx)
     agents["score_and_diagnose"].run(ctx)
     agents["visual_to_repo_alignment"].run(ctx)
+    agents["execution_log_evidence"].run(ctx)
     agents["reproduce_figures"].run(ctx)
     agents["audit_report"].run(ctx)
 
@@ -134,8 +136,11 @@ def build_agents(llm, artifacts) -> dict[str, Any]:
         "visual_to_repo_alignment": VisualToRepoAlignmentAgent(
             llm=llm, artifacts=artifacts, step_index=18, step_total=_STEP_TOTAL,
         ),
-        "reproduce_figures": ReproduceFiguresAgent(llm=llm, artifacts=artifacts, step_index=19, step_total=_STEP_TOTAL),
-        "audit_report": AuditReportAgent(llm=llm, artifacts=artifacts, step_index=20, step_total=_STEP_TOTAL),
+        "execution_log_evidence": ExecutionLogEvidenceAgent(
+            llm=llm, artifacts=artifacts, step_index=19, step_total=_STEP_TOTAL,
+        ),
+        "reproduce_figures": ReproduceFiguresAgent(llm=llm, artifacts=artifacts, step_index=20, step_total=_STEP_TOTAL),
+        "audit_report": AuditReportAgent(llm=llm, artifacts=artifacts, step_index=21, step_total=_STEP_TOTAL),
     }
 
     return {**phase1, **phase2, **phase3}

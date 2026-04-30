@@ -53,10 +53,31 @@ def test_fallback_report_uses_claim_text_before_internal_id(tmp_path: Path, monk
         {
             "figures": [
                 {
-                    "element_id": "fig_2",
-                    "image_path": "results/figures/fig_2.png",
-                    "comparison_notes": "Figure 2. ROC curve",
+                    "element_id": "verdict_comparison",
+                    "image_path": "results/figures/verdict_comparison.png",
+                    "comparison_notes": "Audit-only claim comparison",
+                    "reproduction_status": "REPRODUCED",
                     "reason_codes": [],
+                },
+                {
+                    "element_id": "fig_2",
+                    "visual_anchor": "Figure 2",
+                    "image_path": "results/figures/fig_2_comparison.png",
+                    "comparison_notes": "Figure 2. ROC curve comparison",
+                    "reproduction_status": "REPRODUCED",
+                    "match_level": "RELATED",
+                    "coverage_note": "BP evidence only.",
+                    "evidence_sources": ["execution/executor_outputs/phase2_execution_package.json:exp_01"],
+                    "reason_codes": [],
+                }
+            ],
+            "skipped_targets": [
+                {
+                    "element_id": "fig_3",
+                    "visual_anchor": "Figure 3",
+                    "skip_reason": "No executable evidence.",
+                    "evidence_sources": [],
+                    "reason_codes": ["SKIP_NO_PHASE2_EVIDENCE"],
                 }
             ],
             "reason_codes": [],
@@ -72,8 +93,10 @@ def test_fallback_report_uses_claim_text_before_internal_id(tmp_path: Path, monk
     assert "**fraudulent:legit ratio = 1:1**" in report
     assert "**claim_01** [INCONCLUSIVE]" not in report
     assert "`claim_01, config, exp_01`" in report
-    assert "![Figure 2. ROC curve](figures/fig_2.png)" in report
+    assert "![Figure 2. ROC curve comparison](figures/fig_2_comparison.png)" in report
     assert "](results/figures/fig_2.png)" not in report
+    assert "verdict_comparison" not in report
+    assert "1 visuals have only partial/related Phase2 evidence; 1 result-related visual targets lacked executable phase2 evidence and were skipped." in report
 
 
 def test_report_prompt_includes_executor_activity_and_new_manifest(tmp_path: Path) -> None:
@@ -149,3 +172,58 @@ def test_report_prompt_includes_executor_activity_and_new_manifest(tmp_path: Pat
     assert "evidence_source: existing_logs" in prompt
     assert "# CLAIM ALIGNMENT" not in prompt
     assert "# EXECUTION PLAN" not in prompt
+
+
+def test_report_prompt_uses_reproduced_metadata_without_code(tmp_path: Path) -> None:
+    artifacts = ArtifactManager(tmp_path / "artifacts", "run_repro_prompt")
+    artifacts.ensure_tree()
+    artifacts.write_json("fingerprint/claims_ir.json", {"claims": [], "experiments": [], "reason_codes": []})
+    artifacts.write_json("results/verdict.json", {"status": "INCONCLUSIVE", "claim_verdicts": [], "reason_codes": []})
+    artifacts.write_json("results/evaluability_verdict.json", {"status": "PARTIAL", "claim_rows": [], "reason_codes": []})
+    artifacts.write_json("execution/executor_outputs/run_manifest.json", {"runs": [], "reason_codes": []})
+    artifacts.write_json(
+        "results/reproduced_figures.json",
+        {
+            "figures": [
+                {
+                    "element_id": "verdict_comparison",
+                    "image_path": "results/figures/verdict_comparison.png",
+                    "comparison_notes": "Audit-only chart",
+                    "reproduction_status": "REPRODUCED",
+                    "matplotlib_code": "SHOULD_NOT_APPEAR",
+                    "reason_codes": [],
+                },
+                {
+                    "element_id": "table_1",
+                    "visual_anchor": "Table 1",
+                    "image_path": "results/figures/table_1_comparison.png",
+                    "comparison_notes": "Table 1 comparison",
+                    "reproduction_status": "REPRODUCED",
+                    "match_level": "PARTIAL",
+                    "matched_scope": {"evidence_algorithms": ["bp"]},
+                    "coverage_note": "Missing target algorithm evidence for pepita.",
+                    "evidence_sources": ["phase2"],
+                    "matplotlib_code": "SHOULD_NOT_APPEAR",
+                    "reason_codes": ["LLM_PLOT_SPEC_RENDERED"],
+                },
+                {
+                    "element_id": "fig_failed",
+                    "image_path": "",
+                    "comparison_notes": "failed",
+                    "reproduction_status": "FAILED",
+                    "matplotlib_code": "SHOULD_NOT_APPEAR",
+                    "reason_codes": [],
+                },
+            ],
+            "skipped_targets": [],
+            "reason_codes": [],
+        },
+    )
+
+    prompt = _build_report_prompt({"run_id": "run_repro_prompt", "repo_dir": "/tmp/repo"}, artifacts)
+
+    assert "table_1_comparison.png" in prompt
+    assert '"match_level": "PARTIAL"' in prompt
+    assert "Missing target algorithm evidence for pepita." in prompt
+    assert "verdict_comparison.png" not in prompt
+    assert "SHOULD_NOT_APPEAR" not in prompt

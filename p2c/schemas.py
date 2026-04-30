@@ -566,11 +566,33 @@ class ReproducedFigure(BaseModel):
     matplotlib_code: str = ""
     image_path: str = ""                           # relative path to saved PNG
     comparison_notes: str = ""
+    visual_anchor: str = ""
+    reference_image_path: str | None = None
+    reproduced_image_path: str | None = None
+    evidence_sources: list[str] = Field(default_factory=list)
+    reproduction_status: Literal["REPRODUCED", "SKIPPED", "FAILED"] = "REPRODUCED"
+    plot_spec: dict[str, Any] = Field(default_factory=dict)
+    code_path: str | None = None
+    llm_decision_summary: str = ""
+    match_level: Literal["EXACT", "PARTIAL", "RELATED", "NO_EVIDENCE"] = "EXACT"
+    matched_scope: dict[str, Any] = Field(default_factory=dict)
+    coverage_note: str = ""
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+class SkippedReproducedTarget(BaseModel):
+    """A paper visual target that was intentionally not reproduced."""
+
+    element_id: str
+    visual_anchor: str = ""
+    skip_reason: str = ""
+    evidence_sources: list[str] = Field(default_factory=list)
     reason_codes: list[str] = Field(default_factory=list)
 
 
 class ReproducedFiguresDoc(BaseModel):
     figures: list[ReproducedFigure] = Field(default_factory=list)
+    skipped_targets: list[SkippedReproducedTarget] = Field(default_factory=list)
     reason_codes: list[str] = Field(default_factory=list)
 
 
@@ -634,6 +656,8 @@ class ReproducibilityScore(BaseModel):
     """Complete reproducibility assessment with 0-100 weighted score."""
 
     total_score: float = 0.0
+    raw_total_score: float | None = None
+    calibration_notes: list[str] = Field(default_factory=list)
     dimensions: list[DimensionScore] = Field(default_factory=list)
     ecr: bool = False                              # Executable-Claim Reproducible
     ecr_reason: str = ""
