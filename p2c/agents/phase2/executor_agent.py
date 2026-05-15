@@ -13,6 +13,7 @@ import shlex
 import shutil
 import signal
 import subprocess
+import tempfile
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -89,6 +90,7 @@ _ALLOWED_OVERRIDE_PATTERNS = [
 ]
 _SUSPICIOUS_OVERRIDE_KEYWORDS = ("epoch", "step", "iter", "subset", "debug", "dev", "sample", "fast_dev_run", "n_batch")
 _ARTIFACT_EVIDENCE_SOURCES = {"checkpoint_eval", "existing_logs", "existing_results", "mixed"}
+SMOKE_MIN_EPOCHS = 3
 _BOUNDED_PACKAGE_METRIC_TOKENS = {
     "accuracy",
     "acc",
@@ -130,6 +132,14 @@ def _compact_log_text(text: str, limit: int = 240) -> str:
 
 def _normalize_shell_command(command: str) -> str:
     return " ".join(str(command or "").split())
+
+
+def _path_is_relative_to(child: Path, parent: Path) -> bool:
+    try:
+        child.resolve().relative_to(parent.resolve())
+        return True
+    except ValueError:
+        return False
 
 
 @dataclass
@@ -325,7 +335,10 @@ class ExecutorAgent(BaseAgent):
         repo_analysis = self.artifacts.read_json("task/repo_analysis.json")
         readme_content = self._read_readme(repo_dir)
         dependency_files = self._dependency_file_contents(repo_dir, repo_analysis)
-        outputs_dir = self.artifacts.path("execution/executor_outputs")
+        canonical_outputs_dir = self.artifacts.path("execution/executor_outputs").resolve()
+        outputs_dir = self._executor_visible_outputs_dir(repo_dir, canonical_outputs_dir)
+        if outputs_dir != canonical_outputs_dir and outputs_dir.exists():
+            shutil.rmtree(outputs_dir)
         outputs_dir.mkdir(parents=True, exist_ok=True)
         model = (os.getenv("P2C_CLAUDE_MODEL") or DEFAULT_CLAUDE_MODEL).strip()
         soft_budget_sec_per_experiment = max(300, remaining_sec // max(1, len(experiments)))
@@ -355,7 +368,8 @@ class ExecutorAgent(BaseAgent):
             soft_budget_sec_per_experiment=soft_budget_sec_per_experiment,
         )
 
-        baseline = self._capture_repo_state(repo_dir)
+        repo_guard_ignore_roots = self._repo_guard_ignore_roots(repo_dir)
+        baseline = self._capture_repo_state(repo_dir, ignore_roots=repo_guard_ignore_roots)
         self._append_activity(
             event="session_start",
             experiment_id=None,
@@ -389,7 +403,7 @@ class ExecutorAgent(BaseAgent):
             live_sink.append_stderr(session_result.stderr)
         live_sink.write_runtime_snapshot(status="completed", message="Claude executor session returned to host.")
 
-        mutated_files = self._detect_repo_mutation(repo_dir, baseline)
+        mutated_files = self._detect_repo_mutation(repo_dir, baseline, ignore_roots=repo_guard_ignore_roots)
         self._append_activity(
             event="guard_check",
             experiment_id=None,
@@ -428,15 +442,17 @@ class ExecutorAgent(BaseAgent):
             self.artifacts.write_json("execution/execution_failures.json", [failure.model_dump()])
             return {"success": False, "failure": failure}
 
-        self._recover_misplaced_executor_outputs(repo_dir, outputs_dir)
+        if outputs_dir != canonical_outputs_dir:
+            self._sync_executor_outputs(outputs_dir, canonical_outputs_dir)
+        self._recover_misplaced_executor_outputs(repo_dir, canonical_outputs_dir)
 
-        result_path = outputs_dir / "executor_results.json"
+        result_path = canonical_outputs_dir / "executor_results.json"
         runs = self._load_executor_runs(
             result_path,
             contract,
             session_result.stdout,
             experiments,
-            outputs_dir,
+            canonical_outputs_dir,
             repo_dir=repo_dir,
             observed_commands=live_sink.observed_bash_commands,
         )
@@ -529,12 +545,70 @@ class ExecutorAgent(BaseAgent):
                     payload[rel] = path.read_text(encoding="utf-8", errors="ignore")[:8000]
         return payload
 
+    def _executor_visible_outputs_dir(self, repo_dir: Path, canonical_outputs_dir: Path) -> Path:
+        """Return the output directory shown to the executor session.
+
+        Downstream P2C stages still consume canonical artifacts under ArtifactManager.
+        This method only moves the executor-writable scratch directory out of the target
+        repo when the canonical artifact directory would otherwise be inside it.
+        """
+        repo_dir = repo_dir.resolve()
+        canonical_outputs_dir = canonical_outputs_dir.resolve()
+        if not _path_is_relative_to(canonical_outputs_dir, repo_dir):
+            return canonical_outputs_dir
+
+        override = os.getenv("P2C_EXECUTOR_OUTPUTS_DIR")
+        if override:
+            base = Path(override).expanduser().resolve()
+            if base.name == "executor_outputs":
+                return base
+            return base / self.artifacts.run_id / "execution" / "executor_outputs"
+        return Path(tempfile.gettempdir()) / "p2c_executor_outputs" / self.artifacts.run_id / "execution" / "executor_outputs"
+
+    def _sync_executor_outputs(self, source_dir: Path, canonical_outputs_dir: Path) -> None:
+        """Mirror externally written executor outputs back into canonical artifacts."""
+        if not source_dir.exists():
+            return
+        canonical_outputs_dir.mkdir(parents=True, exist_ok=True)
+        preserve_existing = {
+            "executor_agent.log",
+            "executor_runtime.json",
+            "session_stdout.log",
+            "session_stderr.log",
+        }
+        copied: list[str] = []
+        for child in source_dir.iterdir():
+            if not child.is_file():
+                continue
+            if child.stat().st_size > 20 * 1024 * 1024:
+                continue
+            dest = canonical_outputs_dir / child.name
+            if dest.exists() and child.name in preserve_existing:
+                continue
+            try:
+                shutil.copy2(child, dest)
+                copied.append(f"execution/executor_outputs/{child.name}")
+            except OSError:
+                continue
+        if copied:
+            self._append_activity(
+                event="executor_outputs_synced",
+                experiment_id=None,
+                cwd=str(source_dir),
+                command="sync_external_executor_outputs",
+                status="ok",
+                exit_code=0,
+                duration_sec=0.0,
+                artifacts=copied,
+                message=f"Synced executor outputs from external directory: {source_dir}",
+            )
+
     @staticmethod
     def _long_horizon_policy_text() -> str:
         return (
             "## Long-Horizon Training Policy\n"
             "- Treat runs with explicit 100+ epoch schedules, nominal epochs >= 50, or unknown per-epoch cost as long-horizon by default.\n"
-            "- If repo-supported budget flags exist, start with a smoke run using the smallest faithful budget, usually 1 epoch or <= 5% of the declared schedule.\n"
+            f"- If repo-supported budget flags exist, start with a smoke run using at least {SMOKE_MIN_EPOCHS} epochs when an epoch flag is available; otherwise use the smallest faithful budget >= 5% of the declared schedule when possible.\n"
             "- If smoke succeeds and logs or metrics move, run one trend pass using <= 10 epochs or <= 20% of the declared schedule, whichever is smaller.\n"
             "- Do not start a long full run until every experiment has at least one artifact, smoke, trend, or skipped record.\n"
             "- Estimate full runtime from observed wall-clock cost of smoke or trend runs when possible.\n"
@@ -570,7 +644,7 @@ class ExecutorAgent(BaseAgent):
             f"Managed pip command: {runtime_spec.pip_command}\n"
             f"Budget: {budget_sec} seconds\n"
             f"Soft budget per experiment: {soft_budget_sec_per_experiment} seconds\n"
-            f"Output directory: {outputs_dir}\n\n"
+            f"External output directory (outside repository): {outputs_dir}\n\n"
             "## Paper Experiments (authoritative)\n"
             f"```json\n{json.dumps(experiments, ensure_ascii=False, indent=2)}\n```\n\n"
             "## Repository Analysis\n"
@@ -592,9 +666,12 @@ class ExecutorAgent(BaseAgent):
             "10. Keep a clear audit trail.\n"
             f"11. For Python commands, always start with `{runtime_spec.python_command}`.\n"
             f"12. For pip commands, always start with `{runtime_spec.pip_command}`.\n"
-            "13. Never guess a different environment name or reuse an old environment from another run.\n\n"
+            "13. Never guess a different environment name or reuse an old environment from another run.\n"
+            "14. Write audit metadata, executor_results.json, activity logs, and per-experiment logs only to the external output directory above, never under the repository root.\n"
+            "15. If a training command supports output/log/checkpoint directory flags, point them to the external output directory; otherwise do not create extra audit directories inside the repo.\n\n"
             f"{ExecutorAgent._long_horizon_policy_text()}"
             "## Required Files To Write\n"
+            "Use the absolute external output directory below. Do not write these files to `./artifacts`, `./outputs`, or any path inside the repository root.\n"
             f"1. `{outputs_dir}/executor_activity.jsonl`\n"
             "   Each line is a JSON object with keys: "
             "`ts`, `event`, `experiment_id`, `cwd`, `command`, `status`, `exit_code`, "
@@ -635,7 +712,7 @@ class ExecutorAgent(BaseAgent):
             "For each experiment, record command_start, command_end, artifact_recorded, metric_observed, and failure events when applicable.\n"
             "For each experiment, write dedicated logs named "
             "`experiment_<experiment_id>_stdout.log`, `experiment_<experiment_id>_stderr.log`, and "
-            "`experiment_<experiment_id>_narrative.log` under the output directory. "
+            "`experiment_<experiment_id>_narrative.log` under the external output directory. "
             "Do not point per-experiment logs to session_stdout.log or session_stderr.log; those files are global session logs only."
         )
 
@@ -655,7 +732,7 @@ class ExecutorAgent(BaseAgent):
             "- Never claim reduced-fidelity or artifact evidence is full reproduction.\n\n"
             "Long-horizon training policy:\n"
             "- Treat runs with explicit 100+ epoch schedules, nominal epochs >= 50, or unknown per-epoch cost as long-horizon by default.\n"
-            "- If repo-supported budget flags exist, start with a smoke run using the smallest faithful budget, usually 1 epoch or <= 5% of the declared schedule.\n"
+            f"- If repo-supported budget flags exist, start with a smoke run using at least {SMOKE_MIN_EPOCHS} epochs when an epoch flag is available; otherwise use the smallest faithful budget >= 5% of the declared schedule when possible.\n"
             "- If smoke succeeds and logs or metrics move, run one trend pass using <= 10 epochs or <= 20% of the declared schedule, whichever is smaller.\n"
             "- Do not start a long full run until every experiment has at least one artifact, smoke, trend, or skipped record.\n"
             "- Estimate full runtime from observed wall-clock cost of smoke or trend runs when possible.\n"
@@ -671,7 +748,8 @@ class ExecutorAgent(BaseAgent):
             "- Never guess a different environment name or reuse a leftover environment from another run.\n\n"
             "Mutation policy:\n"
             "- Do NOT modify repository-tracked source, config, script, or notebook files.\n"
-            "- You may only create runtime outputs under the provided execution output directory.\n\n"
+            "- Write audit metadata and executor logs/results only to the provided external execution output directory, not under the repository root.\n"
+            "- If repo commands support output/log/checkpoint directory flags, direct those runtime outputs to the external output directory.\n\n"
             "Shell discipline:\n"
             "- Run commands in the foreground only.\n"
             "- No background jobs, no nohup, no screen, no tmux.\n"
@@ -2305,8 +2383,19 @@ class ExecutorAgent(BaseAgent):
     # Repo mutation guard
     # ------------------------------------------------------------------
 
+    def _repo_guard_ignore_roots(self, repo_dir: Path) -> list[Path]:
+        artifact_root = self.artifacts.run_root.resolve()
+        repo_dir = repo_dir.resolve()
+        return [artifact_root] if _path_is_relative_to(artifact_root, repo_dir) else []
+
     @staticmethod
-    def _capture_repo_state(repo_dir: Path) -> dict[str, str]:
+    def _capture_repo_state(repo_dir: Path, *, ignore_roots: list[Path] | None = None) -> dict[str, str]:
+        ignore_roots = [path.resolve() for path in (ignore_roots or [])]
+
+        def should_ignore(path: Path) -> bool:
+            resolved = path.resolve()
+            return any(_path_is_relative_to(resolved, root) for root in ignore_roots)
+
         if (repo_dir / ".git").exists():
             proc = subprocess.run(
                 ["git", "ls-files"],
@@ -2323,6 +2412,8 @@ class ExecutorAgent(BaseAgent):
             ]
         state: dict[str, str] = {}
         for path in files:
+            if should_ignore(path):
+                continue
             try:
                 state[str(path.relative_to(repo_dir))] = hashlib.sha256(path.read_bytes()).hexdigest()
             except Exception:  # noqa: BLE001
@@ -2330,8 +2421,14 @@ class ExecutorAgent(BaseAgent):
         return state
 
     @classmethod
-    def _detect_repo_mutation(cls, repo_dir: Path, baseline: dict[str, str]) -> list[str]:
-        current = cls._capture_repo_state(repo_dir)
+    def _detect_repo_mutation(
+        cls,
+        repo_dir: Path,
+        baseline: dict[str, str],
+        *,
+        ignore_roots: list[Path] | None = None,
+    ) -> list[str]:
+        current = cls._capture_repo_state(repo_dir, ignore_roots=ignore_roots)
         changed = []
         for rel_path, digest in baseline.items():
             if current.get(rel_path) != digest:

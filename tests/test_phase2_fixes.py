@@ -493,6 +493,7 @@ def test_executor_prompt_mentions_experiments_repo_and_readme_only(tmp_path: Pat
     assert "artifact -> smoke -> trend -> full" in prompt
     assert "Soft budget per experiment: 300 seconds" in prompt
     assert "100+ epoch schedules" in prompt
+    assert "at least 3 epochs" in prompt
     assert "estimated full runtime is <= 80% of the remaining global budget" in prompt
     assert runtime_spec.python_command in prompt
     assert "task_spec" not in prompt
@@ -506,7 +507,7 @@ def test_executor_system_prompt_mentions_long_horizon_policy() -> None:
     prompt = ExecutorAgent._build_system_prompt(runtime_spec)
 
     assert "100+ epoch schedules" in prompt
-    assert "<= 5% of the declared schedule" in prompt
+    assert "at least 3 epochs" in prompt
     assert "estimated full runtime is <= 80% of the remaining global budget" in prompt
     assert runtime_spec.python_command in prompt
 
