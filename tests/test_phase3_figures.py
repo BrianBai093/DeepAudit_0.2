@@ -4,7 +4,7 @@ import base64
 from pathlib import Path
 
 from p2c.agents.phase3.execution_log_evidence import ExecutionLogEvidenceAgent
-from p2c.agents.phase3.reproduce_figures import ReproduceFiguresAgent
+from p2c.agents.phase3.reproduce_figures import ReproduceFiguresAgent, _normalize_plot_spec, _render_plot_spec
 from p2c.io_artifacts import ArtifactManager
 
 
@@ -203,6 +203,75 @@ def test_llm_plot_spec_renders_line_bar_and_table(tmp_path: Path, monkeypatch) -
         assert "phase2" in figure["evidence_sources"]
         assert artifacts.path(figure["image_path"]).exists()
         assert artifacts.path(figure["reproduced_image_path"]).exists()
+
+
+def test_bar_renderer_accepts_data_point_series(tmp_path: Path) -> None:
+    output_path = tmp_path / "bar_from_data.png"
+    spec = {
+        "decision": "PLOT",
+        "chart_type": "bar",
+        "title": "Final loss",
+        "x_label": "Run",
+        "y_label": "Final loss",
+        "series": [
+            {"name": "run_a", "data": [{"x": "run_a", "y": 0.146}]},
+            {"name": "run_b", "data": [{"x": "run_b", "y": 0.288}]},
+            {"name": "run_c", "data": [{"x": "run_c", "y": 1.525}]},
+        ],
+        "table": {"columns": [], "rows": [], "source": None},
+        "unit": "raw",
+        "normalization": None,
+        "evidence_sources": ["phase2"],
+        "comparison_note": "Bar rendered from data point series.",
+        "confidence": 0.9,
+        "reason_codes": [],
+    }
+
+    assert _render_plot_spec(spec, output_path)
+
+    import matplotlib.image as mpimg
+
+    image = mpimg.imread(output_path)
+    blue_pixels = (
+        (image[..., 2] > 0.45)
+        & (image[..., 0] < 0.35)
+        & (image[..., 1] < 0.65)
+    )
+    assert int(blue_pixels.sum()) > 3000
+
+
+def test_numeric_chart_spec_repairs_missing_series_from_table_rows(tmp_path: Path) -> None:
+    output_path = tmp_path / "line_repaired_to_bar.png"
+    spec = _normalize_plot_spec(
+        {
+            "decision": "PLOT",
+            "chart_type": "line",
+            "title": "Related loss",
+            "x_label": "Epoch",
+            "y_label": "Loss",
+            "series": [{"name": "run_a"}, {"name": "run_b"}],
+            "table": {
+                "columns": ["series", "final_loss"],
+                "rows": [
+                    {"series": "run_a", "final_loss": 0.146},
+                    {"series": "run_b", "final_loss": 1.525},
+                ],
+            },
+            "unit": "raw",
+            "normalization": None,
+            "evidence_sources": ["phase2"],
+            "comparison_note": "Table rows contain the numeric evidence.",
+            "match_level": "RELATED",
+            "matched_scope": {},
+            "coverage_note": "",
+            "confidence": 0.6,
+            "reason_codes": [],
+        }
+    )
+
+    assert spec["chart_type"] == "bar"
+    assert "REPAIRED_SERIES_FROM_TABLE_ROWS" in spec["reason_codes"]
+    assert _render_plot_spec(spec, output_path)
 
 
 def test_result_scope_skips_diagram_and_labels_bp_for_pepita_as_related(tmp_path: Path) -> None:

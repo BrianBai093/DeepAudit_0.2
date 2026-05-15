@@ -371,6 +371,7 @@ def build_run_manifest(
     execution_runs = []
     for r in runs:
         log_payload = r.get("logs") if isinstance(r.get("logs"), dict) else {}
+        status = str(r.get("status") or ("ok" if _safe_int(r.get("exit_code"), 1) == 0 else "failed"))
         execution_runs.append(
             ExecutionRun(
                 run_id=r.get("run_id") or r.get("experiment_id") or f"run_{len(execution_runs)}",
@@ -380,9 +381,9 @@ def build_run_manifest(
                 command=r.get("command", ""),
                 commands_attempted=r.get("commands_attempted", []),
                 params=r.get("params", {}),
-                cwd=r.get("cwd", "."),
-                exit_code=int(r.get("exit_code", 1)),
-                status=str(r.get("status") or ("ok" if int(r.get("exit_code", 1)) == 0 else "failed")),
+                cwd=_safe_text(r.get("cwd"), "."),
+                exit_code=_safe_int(r.get("exit_code"), 0 if status in {"ok", "partial", "skipped"} else 1),
+                status=status,
                 fidelity=r.get("fidelity"),
                 execution_outcome=r.get("execution_outcome"),
                 evidence_source=r.get("evidence_source"),
@@ -400,3 +401,19 @@ def build_run_manifest(
             )
         )
     return RunManifestDoc(runs=execution_runs, reason_codes=reason_codes or [])
+
+
+def _safe_text(value: Any, default: str) -> str:
+    if value is None:
+        return default
+    text = str(value).strip()
+    return text or default
+
+
+def _safe_int(value: Any, default: int) -> int:
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default

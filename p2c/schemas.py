@@ -740,6 +740,7 @@ class ExecutorEnvSpec(BaseModel):
 
     env_name: str
     python_version: str = "3.10"
+    native_environment_file: str | None = None
     conda_dependencies: list[CondaDependency] = Field(default_factory=list)
     pip_dependencies: list[str] = Field(default_factory=list)
     system_packages: list[str] = Field(default_factory=list)

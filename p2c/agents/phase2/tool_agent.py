@@ -41,7 +41,9 @@ class ToolAgent(BaseAgent):
         env_spec_raw = ctx["_p2_env_spec"]
         env_spec = env_spec_raw if isinstance(env_spec_raw, ExecutorEnvSpec) else ExecutorEnvSpec(**env_spec_raw)
         repo_dir = Path(str(ctx["repo_dir"])).resolve()
-        self._augment_env_spec_dependencies(env_spec, repo_dir)
+        native_environment_file = self._resolve_native_environment_file(env_spec, repo_dir)
+        if native_environment_file is None:
+            self._augment_env_spec_dependencies(env_spec, repo_dir)
         self._env_mgr = CondaEnvManager(
             env_name=env_spec.env_name,
             python_version=env_spec.python_version,
@@ -54,10 +56,21 @@ class ToolAgent(BaseAgent):
         )
 
         self.log("PROGRESS", "creating environment...")
-        create_out = self._env_mgr.create()
-        result.install_commands.append(f"create env (ok={create_out['ok']})")
+        if native_environment_file is not None:
+            self.log("PROGRESS", f"using native conda environment file: {native_environment_file}")
+            create_out = self._env_mgr.create_from_environment_file(native_environment_file)
+            result.install_commands.append(f"conda env create -f {native_environment_file} (ok={create_out['ok']})")
+            if create_out["ok"]:
+                result.reason_codes.append("NATIVE_CONDA_ENV_CREATED")
+        else:
+            create_out = self._env_mgr.create()
+            result.install_commands.append(f"create env (ok={create_out['ok']})")
         if not create_out["ok"]:
             self.log("PROGRESS", f"env creation failed: {create_out['log'][:500]}")
+            if native_environment_file is not None:
+                result.reason_codes.append("NATIVE_CONDA_ENV_CREATE_FAILED")
+                self._persist(result)
+                return {"env_result": result}
             if env_spec.python_version != "3.10":
                 self.log("PROGRESS", "retrying with python=3.10")
                 self._env_mgr = CondaEnvManager(env_name=env_spec.env_name, python_version="3.10")
@@ -69,6 +82,10 @@ class ToolAgent(BaseAgent):
                     return {"env_result": result}
 
         result.env_path = self._env_mgr.env_path_actual()
+        if native_environment_file is not None:
+            actual_python = self._env_mgr.python_version_actual()
+            if actual_python:
+                result.python_version = actual_python.split()[0]
 
         if env_spec.system_packages:
             self.log("PROGRESS", f"installing {len(env_spec.system_packages)} system packages...")
@@ -84,7 +101,9 @@ class ToolAgent(BaseAgent):
                 result.reason_codes.append("PREINSTALL_FAILED")
 
         use_layered = os.getenv("P2C_LAYERED_INSTALL", "1") == "1"
-        if use_layered and (env_spec.conda_dependencies or env_spec.pip_dependencies):
+        if native_environment_file is not None:
+            self.log("PROGRESS", "native conda env created; skipping derived dependency install")
+        elif use_layered and (env_spec.conda_dependencies or env_spec.pip_dependencies):
             self._install_layered(env_spec, result)
         else:
             self._install_flat(env_spec, result)
@@ -139,8 +158,12 @@ class ToolAgent(BaseAgent):
         conda_dependencies: list[CondaDependency] = []
         pre_install_commands: list[str] = []
         reason_codes: list[str] = ["REPO_ENV_SPEC"]
+        native_environment_file = cls._find_native_environment_file(repo_dir, repo_analysis)
 
         for profile in repo_analysis.dependency_profiles:
+            if native_environment_file is not None and profile.manager == "conda":
+                reason_codes.append("ENV_SPEC_FROM_NATIVE_CONDA_FILE")
+                continue
             cls._merge_profile_dependencies(
                 repo_dir=repo_dir,
                 profile=profile,
@@ -154,6 +177,11 @@ class ToolAgent(BaseAgent):
         return ExecutorEnvSpec(
             env_name=env_name,
             python_version=python_version,
+            native_environment_file=(
+                cls._repo_relative_path(repo_dir, native_environment_file)
+                if native_environment_file is not None
+                else None
+            ),
             conda_dependencies=conda_dependencies,
             pip_dependencies=pip_dependencies,
             system_packages=[],
@@ -228,6 +256,33 @@ class ToolAgent(BaseAgent):
         return "3.10"
 
     @classmethod
+    def _find_native_environment_file(cls, repo_dir: Path, repo_analysis: RepoAnalysis) -> Path | None:
+        for profile in repo_analysis.dependency_profiles:
+            if profile.manager != "conda":
+                continue
+            for manifest_path in profile.manifest_paths:
+                path = repo_dir / manifest_path
+                if path.name in {"environment.yml", "environment.yaml"} and path.is_file():
+                    return path
+        return None
+
+    @staticmethod
+    def _repo_relative_path(repo_dir: Path, path: Path) -> str:
+        try:
+            return str(path.relative_to(repo_dir))
+        except ValueError:
+            return str(path)
+
+    @staticmethod
+    def _resolve_native_environment_file(env_spec: ExecutorEnvSpec, repo_dir: Path) -> Path | None:
+        if not env_spec.native_environment_file:
+            return None
+        path = Path(env_spec.native_environment_file)
+        if not path.is_absolute():
+            path = repo_dir / path
+        return path if path.is_file() else None
+
+    @classmethod
     def _python_version_from_pyproject(cls, path: Path) -> str | None:
         if tomllib is None or not path.is_file():
             return None
@@ -244,7 +299,9 @@ class ToolAgent(BaseAgent):
 
     @classmethod
     def _python_version_from_environment(cls, path: Path) -> str | None:
-        return cls._extract_python_minor(path.read_text(encoding="utf-8", errors="ignore"))
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        match = re.search(r"^\s*-\s*python\s*=\s*(3\.(?:8|9|10|11|12))", text, re.M)
+        return match.group(1) if match else cls._extract_python_minor(text)
 
     @staticmethod
     def _extract_python_minor(text: str) -> str | None:

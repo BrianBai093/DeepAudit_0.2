@@ -4,10 +4,12 @@ from collections.abc import AsyncIterable
 from pathlib import Path
 
 from p2c.agents.phase2.executor_agent import ExecutorAgent, ExecutorSessionResult
+from p2c.agents.phase2.orchestrator import Phase2Orchestrator
+from p2c.agents.phase2.result_extraction import build_run_manifest
 from p2c.agents.phase2.tool_agent import ToolAgent
 from p2c.io_artifacts import ArtifactManager
 from p2c.runtime.conda_env import CondaEnvManager
-from p2c.schemas import MetricContract
+from p2c.schemas import EnvSetupResult, ExecutorEnvSpec, MetricContract
 
 
 class DummyEnvMgr:
@@ -88,6 +90,187 @@ def test_tool_agent_builds_env_spec_from_repo_manifests_only(tmp_path: Path) -> 
     assert env_spec.pip_dependencies == ["numpy==1.26.4", "pandas"]
     assert "accuracy" not in " ".join(env_spec.pip_dependencies)
     assert env_spec.env_name == "env_spec_executor"
+
+
+def test_tool_agent_prefers_native_environment_yml(tmp_path: Path) -> None:
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    (repo_dir / "environment.yml").write_text(
+        "\n".join(
+            [
+                "name: final_env",
+                "channels:",
+                "  - pytorch",
+                "  - conda-forge",
+                "dependencies:",
+                "  - dbus=1.13.12=h746ee38_0",
+                "  - python=3.8.3=hcff3b4d_0",
+                "  - numpy=1.18.1=py38h4f9e942_0",
+                "  - pytorch=1.5.0=py3.8_cuda10.2.89_cudnn7.6.5_0",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    artifacts = make_artifacts(tmp_path, "native_env")
+    artifacts.write_json(
+        "task/repo_analysis.json",
+        {
+            "dependency_profiles": [
+                {
+                    "profile_id": "conda:.",
+                    "ecosystem": "conda",
+                    "manager": "conda",
+                    "cwd": ".",
+                    "manifest_paths": ["environment.yml"],
+                    "install_command": None,
+                    "auto_bootstrap_supported": False,
+                    "reason_codes": [],
+                }
+            ],
+            "entrypoint_candidates": [],
+            "primary_entrypoint_id": None,
+            "reason_codes": [],
+        },
+    )
+
+    agent = ToolAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
+    env_spec = agent.build_env_spec({"repo_dir": str(repo_dir), "run_id": "native_env"})
+
+    assert env_spec.native_environment_file == "environment.yml"
+    assert env_spec.python_version == "3.8"
+    assert env_spec.conda_dependencies == []
+    assert env_spec.pip_dependencies == []
+    assert "ENV_SPEC_FROM_NATIVE_CONDA_FILE" in env_spec.reason_codes
+
+
+def test_phase2_orchestrator_stops_after_native_env_create_failure(tmp_path: Path) -> None:
+    artifacts = make_artifacts(tmp_path, "native_env_fail")
+
+    class FailingToolAgent:
+        env_manager = None
+        cleanup_called = False
+
+        @staticmethod
+        def build_env_spec(ctx):
+            return ExecutorEnvSpec(
+                env_name="native_env_fail_executor",
+                python_version="3.8",
+                native_environment_file="environment.yml",
+            )
+
+        @staticmethod
+        def run(ctx):
+            return {
+                "env_result": EnvSetupResult(
+                    env_name="native_env_fail_executor",
+                    python_version="3.8",
+                    install_commands=["conda env create -f environment.yml (ok=False)"],
+                    reason_codes=["NATIVE_CONDA_ENV_CREATE_FAILED"],
+                )
+            }
+
+        def cleanup(self):
+            self.cleanup_called = True
+
+    class RecordingExecutorAgent:
+        called = False
+
+        def run(self, ctx):
+            self.called = True
+            return {"success": True}
+
+    tool_agent = FailingToolAgent()
+    executor_agent = RecordingExecutorAgent()
+    orchestrator = Phase2Orchestrator(
+        tool_agent=tool_agent,
+        executor_agent=executor_agent,
+        llm=None,
+        artifacts=artifacts,
+        step_index=1,
+        step_total=1,
+    )
+
+    result = orchestrator.execute({"repo_dir": str(tmp_path / "repo"), "run_id": "native_env_fail"})
+
+    assert result["status"] == "failed"
+    assert executor_agent.called is False
+    assert tool_agent.cleanup_called is True
+    assert result["failures"][0]["stage"] == "env_setup"
+    assert result["failures"][0]["reason_codes"] == ["NATIVE_CONDA_ENV_CREATE_FAILED"]
+    assert artifacts.read_json("execution/execution_failures.json")[0]["stage"] == "env_setup"
+
+
+def test_run_manifest_tolerates_null_cwd_and_exit_code_for_skipped_runs() -> None:
+    manifest = build_run_manifest(
+        [
+            {
+                "experiment_id": "exp_01",
+                "command": "skipped",
+                "cwd": None,
+                "exit_code": None,
+                "status": "skipped",
+                "reason_codes": ["SKIPPED_NONESSENTIAL"],
+            }
+        ],
+        reason_codes=["EXECUTOR_AGENT_RUN"],
+    )
+
+    run = manifest.runs[0]
+    assert run.cwd == "."
+    assert run.exit_code == 0
+    assert run.status == "skipped"
+
+
+def test_executor_load_runs_synthesizes_missing_stderr_when_stdout_exists(tmp_path: Path) -> None:
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    artifacts = make_artifacts(tmp_path, "missing_stderr")
+    outputs_dir = artifacts.path("execution/executor_outputs")
+    outputs_dir.mkdir(parents=True, exist_ok=True)
+    artifacts.write_text("execution/executor_outputs/experiment_exp_01_stdout.log", "METRIC:accuracy=0.91\n")
+    artifacts.write_text("execution/executor_outputs/executor_activity.jsonl", "{}\n")
+    artifacts.write_json(
+        "execution/executor_outputs/executor_results.json",
+        {
+            "runs": [
+                {
+                    "experiment_id": "exp_01",
+                    "command": "python train.py",
+                    "commands_attempted": ["python train.py"],
+                    "cwd": str(repo_dir),
+                    "exit_code": 0,
+                    "status": "ok",
+                    "fidelity": "full",
+                    "evidence_source": "fresh_run",
+                    "metrics": {"accuracy": 0.91},
+                    "logs": {
+                        "stdout": "execution/executor_outputs/experiment_exp_01_stdout.log",
+                        "stderr": "execution/executor_outputs/experiment_exp_01_stderr.log",
+                        "narrative": "execution/executor_outputs/experiment_exp_01_narrative.log",
+                    },
+                    "reason_codes": [],
+                }
+            ]
+        },
+    )
+
+    agent = ExecutorAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
+    runs = agent._load_executor_runs(
+        artifacts.path("execution/executor_outputs/executor_results.json"),
+        contract=MetricContract(required_metrics=["accuracy"], parsers=[], normalization={}, reason_codes=[]),
+        session_stdout="",
+        experiments=[{"experiment_id": "exp_01", "name": "run"}],
+        outputs_dir=outputs_dir,
+        repo_dir=repo_dir,
+        observed_commands=["python train.py"],
+    )
+
+    run = runs[0]
+    assert run["status"] == "ok"
+    assert "DECLARED_LOG_MISSING" not in run["reason_codes"]
+    assert artifacts.path("execution/executor_outputs/experiment_exp_01_stderr.log").is_file()
+    assert artifacts.path(run["logs"]["narrative"]).is_file()
 
 
 def test_executor_agent_detects_source_mutation(tmp_path: Path, monkeypatch) -> None:

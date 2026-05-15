@@ -7,6 +7,7 @@ import json
 import re
 import subprocess
 import sys
+import textwrap
 from pathlib import Path
 from typing import Any
 
@@ -1351,18 +1352,32 @@ def _render_plot_spec(spec: dict[str, Any], output_path: Path) -> bool:
             series = [s for s in spec.get("series", []) if isinstance(s, dict)]
             if not series:
                 return False
-            labels = [str(x) for x in series[0].get("x", [])]
-            x = np.arange(len(labels))
-            width = min(0.8 / max(1, len(series)), 0.35)
-            for idx, row in enumerate(series):
-                ys = [_numeric(v) or 0.0 for v in row.get("y", [])]
-                offset = (idx - (len(series) - 1) / 2.0) * width
-                ax.bar(x[: len(ys)] + offset, ys, width=width, label=_short(row.get("name"), 30))
+            series_xy = [(row, *_series_xy(row)) for row in series]
+            series_xy = [(row, xs, ys) for row, xs, ys in series_xy if xs and ys]
+            if not series_xy:
+                return False
+            if all(len(xs) == 1 and len(ys) == 1 for _, xs, ys in series_xy):
+                labels = [str(xs[0]) or str(row.get("name") or "") for row, xs, _ in series_xy]
+                values = [ys[0] for _, _, ys in series_xy]
+                x = np.arange(len(labels))
+                ax.bar(x, values, width=0.65)
+                ax.set_xticks(x)
+                ax.set_xticklabels([_short(label, 22) for label in labels], rotation=35, ha="right")
+            else:
+                labels = _dedupe_strings([str(x_value) for _, xs, _ in series_xy for x_value in xs])
+                x = np.arange(len(labels))
+                width = min(0.8 / max(1, len(series_xy)), 0.35)
+                for idx, (row, xs, ys) in enumerate(series_xy):
+                    by_label = {str(x_value): y_value for x_value, y_value in zip(xs, ys)}
+                    values = [by_label.get(label, 0.0) for label in labels]
+                    offset = (idx - (len(series_xy) - 1) / 2.0) * width
+                    ax.bar(x + offset, values, width=width, label=_short(row.get("name"), 30))
+                ax.set_xticks(x)
+                ax.set_xticklabels([_short(label, 18) for label in labels], rotation=35, ha="right")
+                ax.legend(fontsize=8)
             ax.set_xticks(x)
-            ax.set_xticklabels([_short(label, 18) for label in labels], rotation=35, ha="right")
             ax.set_ylabel(str(spec.get("y_label") or "value"))
             ax.grid(True, axis="y", alpha=0.3)
-            ax.legend(fontsize=8)
         elif chart_type == "heatmap":
             table = spec.get("table") or {}
             rows = table.get("rows") or []
@@ -1399,17 +1414,33 @@ def _render_table_spec(ax, spec: dict[str, Any]) -> None:
     if not columns or not rows:
         ax.text(0.5, 0.5, "No table rows available", ha="center", va="center")
         return
+    wrap_width = max(8, min(22, int(110 / max(1, len(columns)))))
     cell_text = []
+    max_lines = 1
     for row in rows:
         if isinstance(row, dict):
             values = [row.get(column, "") for column in columns]
         else:
             values = list(row) if isinstance(row, (list, tuple)) else [row]
-        cell_text.append([_short(cell, 28) for cell in values[: len(columns)]])
-    table = ax.table(cellText=cell_text, colLabels=columns, loc="center", cellLoc="center")
+        wrapped = [_wrap_table_cell(cell, wrap_width) for cell in values[: len(columns)]]
+        max_lines = max(max_lines, *(text.count("\n") + 1 for text in wrapped))
+        cell_text.append(wrapped)
+    col_labels = [_wrap_table_cell(column, wrap_width) for column in columns]
+    table = ax.table(cellText=cell_text, colLabels=col_labels, loc="center", cellLoc="center")
     table.auto_set_font_size(False)
-    table.set_fontsize(8)
-    table.scale(1.0, 1.35)
+    table.set_fontsize(8 if len(columns) <= 5 else 7)
+    table.scale(1.0, 1.15 + 0.22 * min(max_lines, 5))
+    try:
+        table.auto_set_column_width(col=list(range(len(columns))))
+    except Exception:
+        pass
+
+
+def _wrap_table_cell(value: Any, width: int) -> str:
+    text = _short(value, max(width * 3, 24))
+    if len(text) <= width:
+        return text
+    return textwrap.fill(text, width=width, break_long_words=False, break_on_hyphens=False)
 
 
 def _compose_comparison_image(
@@ -1450,8 +1481,12 @@ def _compose_comparison_image(
 
 
 def _series_xy(series: dict[str, Any]) -> tuple[list[Any], list[float]]:
-    xs = list(series.get("x", []))
-    ys = [_numeric(v) for v in series.get("y", [])]
+    if isinstance(series.get("data"), list) and not series.get("x") and not series.get("y"):
+        xs = [row.get("x") for row in series.get("data", []) if isinstance(row, dict)]
+        ys = [_numeric(row.get("y")) for row in series.get("data", []) if isinstance(row, dict)]
+    else:
+        xs = list(series.get("x", []))
+        ys = [_numeric(v) for v in series.get("y", [])]
     clean_x: list[Any] = []
     clean_y: list[float] = []
     for x, y in zip(xs, ys):
@@ -1544,6 +1579,7 @@ def _normalize_plot_spec(data: dict[str, Any]) -> dict[str, Any]:
     spec["chart_type"] = str(spec.get("chart_type") or "text-panel").lower()
     spec["series"] = spec.get("series") if isinstance(spec.get("series"), list) else []
     spec["table"] = spec.get("table") if isinstance(spec.get("table"), dict) else {"columns": [], "rows": [], "source": None}
+    _repair_numeric_chart_series_from_table(spec)
     spec["evidence_sources"] = _string_list(spec.get("evidence_sources"))
     level = str(spec.get("match_level") or "RELATED").upper()
     spec["match_level"] = level if level in {"EXACT", "PARTIAL", "RELATED", "NO_EVIDENCE"} else "RELATED"
@@ -1551,6 +1587,60 @@ def _normalize_plot_spec(data: dict[str, Any]) -> dict[str, Any]:
     spec["coverage_note"] = str(spec.get("coverage_note") or "")
     spec["reason_codes"] = _string_list(spec.get("reason_codes"))
     return spec
+
+
+def _repair_numeric_chart_series_from_table(spec: dict[str, Any]) -> None:
+    chart_type = str(spec.get("chart_type") or "").lower()
+    if chart_type not in {"line", "scatter", "bar"}:
+        return
+    series = [row for row in spec.get("series", []) if isinstance(row, dict)]
+    if any(_series_xy(row)[0] and _series_xy(row)[1] for row in series):
+        return
+    table = spec.get("table") if isinstance(spec.get("table"), dict) else {}
+    rows = table.get("rows") if isinstance(table.get("rows"), list) else []
+    if not rows or not all(isinstance(row, dict) for row in rows):
+        return
+
+    label_key = _first_present_key(rows, ("series", "name", "run", "attempt", "source", "label"))
+    numeric_key = _first_numeric_key(rows, exclude={label_key} if label_key else set())
+    if not numeric_key:
+        return
+    if not label_key:
+        label_key = "row"
+    spec["chart_type"] = "bar"
+    spec["series"] = [
+        {
+            "name": str(row.get(label_key) or f"row {idx}"),
+            "data": [{"x": str(row.get(label_key) or f"row {idx}"), "y": row.get(numeric_key)}],
+            "source": table.get("source"),
+            "style": {},
+        }
+        for idx, row in enumerate(rows, start=1)
+    ]
+    spec.setdefault("reason_codes", [])
+    if "REPAIRED_SERIES_FROM_TABLE_ROWS" not in spec["reason_codes"]:
+        spec["reason_codes"].append("REPAIRED_SERIES_FROM_TABLE_ROWS")
+
+
+def _first_present_key(rows: list[dict[str, Any]], candidates: tuple[str, ...]) -> str | None:
+    lowered = {
+        str(key).lower(): str(key)
+        for row in rows
+        for key in row.keys()
+    }
+    for candidate in candidates:
+        if candidate in lowered:
+            return lowered[candidate]
+    return None
+
+
+def _first_numeric_key(rows: list[dict[str, Any]], *, exclude: set[str | None]) -> str | None:
+    keys = [str(key) for row in rows for key in row.keys() if key not in exclude]
+    for key in dict.fromkeys(keys):
+        values = [_numeric(row.get(key)) for row in rows]
+        if any(value is not None for value in values):
+            return key
+    return None
 
 
 def _compact_bundle_for_llm(bundle: dict[str, Any]) -> dict[str, Any]:

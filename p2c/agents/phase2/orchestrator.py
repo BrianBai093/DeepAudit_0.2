@@ -12,6 +12,7 @@ from p2c.agents.phase2.executor_agent import ExecutorAgent
 from p2c.agents.phase2.tool_agent import ToolAgent
 from p2c.schemas import (
     CondaDependency,
+    EnvSetupResult,
     ExecutionFailure,
     Phase2State,
     RunManifestDoc,
@@ -61,6 +62,15 @@ class Phase2Orchestrator(BaseAgent):
                 state.env_result = env_result
                 self._persist_state(state, started)
 
+                env_failure = self._env_setup_failure(env_result, state.attempt)
+                if env_failure is not None:
+                    state.failures.append(env_failure)
+                    state.status = "failed"
+                    codes = ",".join(env_failure.reason_codes) or "unknown"
+                    self.log("PROGRESS", f"environment setup failed ({codes}); skipping executor")
+                    self._persist_state(state, started)
+                    break
+
                 state.status = "executing"
                 ctx["_p2_env_mgr"] = self.tool_agent.env_manager
                 ctx["_p2_remaining_sec"] = max(120, remaining - (time.time() - started - state.elapsed_sec))
@@ -102,6 +112,37 @@ class Phase2Orchestrator(BaseAgent):
                 self.tool_agent.cleanup()
 
         return state.model_dump()
+
+    @staticmethod
+    def _env_setup_failure(env_result: Any, attempt: int) -> ExecutionFailure | None:
+        if isinstance(env_result, dict):
+            env_result = EnvSetupResult(**env_result)
+        if not isinstance(env_result, EnvSetupResult):
+            return ExecutionFailure(
+                attempt=attempt,
+                stage="env_setup",
+                overall_error="tool agent did not return an environment setup result",
+                is_dependency_issue=True,
+                reason_codes=["ENV_SETUP_RESULT_MISSING"],
+            )
+
+        reason_codes = list(env_result.reason_codes)
+        hard_failure_codes = {
+            "ENV_CREATE_FAILED",
+            "NATIVE_CONDA_ENV_CREATE_FAILED",
+        }
+        matched_codes = [code for code in reason_codes if code in hard_failure_codes]
+        if not matched_codes:
+            return None
+
+        attempted = "; ".join(env_result.install_commands) or "environment creation command"
+        return ExecutionFailure(
+            attempt=attempt,
+            stage="env_setup",
+            overall_error=f"{attempted} failed; executor was not launched",
+            is_dependency_issue=True,
+            reason_codes=matched_codes,
+        )
 
     def _patch_env(self, failure: ExecutionFailure, env_mgr: Any) -> bool:
         patched_any = False

@@ -1357,7 +1357,7 @@ class ExecutorAgent(BaseAgent):
                     "dataset": raw.get("dataset") if raw.get("dataset") is not None else experiment.get("dataset"),
                     "command": primary_command,
                     "commands_attempted": commands_attempted,
-                    "cwd": raw.get("cwd", "."),
+                    "cwd": str(raw.get("cwd") or "."),
                     "exit_code": exit_code,
                     "status": status,
                     "fidelity": fidelity,
@@ -1636,7 +1636,7 @@ class ExecutorAgent(BaseAgent):
                 "scope": scope,
                 "command": primary_command,
                 "commands_attempted": commands_attempted,
-                "cwd": raw.get("cwd", "."),
+                "cwd": str(raw.get("cwd") or "."),
                 "exit_code": self._safe_int(raw.get("exit_code"), 0 if status in {"ok", "partial", "skipped"} else 1),
                 "status": status,
                 "fidelity": fidelity,
@@ -2139,6 +2139,19 @@ class ExecutorAgent(BaseAgent):
             or not self._artifact_exists(stdout_log)
         )
         if not needs_synthetic:
+            synthetic_reason = None
+            if not stderr_log or not self._artifact_exists(stderr_log):
+                self.artifacts.write_text(expected_stderr, str(raw.get("stderr_tail") or ""))
+                stderr_log = expected_stderr
+                synthetic_reason = "SYNTHETIC_RUN_LOG_FROM_EXECUTOR_RESULTS"
+            if not narrative_log or not self._artifact_exists(narrative_log):
+                notes = str(raw.get("notes") or "").strip()
+                narrative_text = notes or "Synthetic per-run narrative generated from executor_results.json."
+                self.artifacts.write_text(expected_narrative, narrative_text + ("\n" if narrative_text else ""))
+                narrative_log = expected_narrative
+                synthetic_reason = "SYNTHETIC_RUN_LOG_FROM_EXECUTOR_RESULTS"
+            if synthetic_reason:
+                return stdout_log, stderr_log, narrative_log, synthetic_reason
             return stdout_log, stderr_log, narrative_log, None
 
         metrics = raw.get("metrics") if isinstance(raw.get("metrics"), dict) else {}
