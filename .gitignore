@@ -14,6 +14,7 @@ venv/
 # Paper inputs / non-code working data
 /Target/
 /output/
+/paper_with_code/
 
 # Run artifacts
 /artifacts/
