@@ -20,6 +20,8 @@
 #   DRY_RUN=1                   print planned runs without executing p2c
 #   PYTHON_BIN=python           choose the Python executable
 #   BUDGET_MINUTES=180          phase budget passed through to p2c
+#   P2C_MIN_EXEC_TIMEOUT_SEC=10800
+#                               minimum phase2 executor session timeout, default 3h
 
 set -euo pipefail
 
@@ -29,7 +31,7 @@ PAPER_WITH_CODE_DIR="${2:-${PAPER_WITH_CODE_DIR:-${PROJECT_ROOT}/paper_with_code
 ARTIFACTS_DIR="${ARTIFACTS_DIR:-artifacts}"
 OUTPUT_ROOT="${OUTPUT_ROOT:-output/batch_papers}"
 BUDGET_MINUTES="${BUDGET_MINUTES:-180}"
-P2C_MIN_EXEC_TIMEOUT_SEC="${P2C_MIN_EXEC_TIMEOUT_SEC:-7200}"
+P2C_MIN_EXEC_TIMEOUT_SEC="${P2C_MIN_EXEC_TIMEOUT_SEC:-10800}"
 P2C_ATOMIC_LLM_SENTENCE_BUDGET="${P2C_ATOMIC_LLM_SENTENCE_BUDGET:-32}"
 P2C_ATOMIC_LLM_TABLE_BUDGET="${P2C_ATOMIC_LLM_TABLE_BUDGET:-20}"
 OPENAI_TIMEOUT_SEC="${OPENAI_TIMEOUT_SEC:-300}"
@@ -65,10 +67,6 @@ PHASES="${1:-1,2,3}"
 
 cd "$PROJECT_ROOT"
 
-if [[ "$DRY_RUN" != "1" ]]; then
-  : "${OPENAI_API_KEY:?OPENAI_API_KEY not set}"
-  : "${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY not set}"
-fi
 [[ -d "$PAPER_WITH_CODE_DIR" ]] || { echo "paper_with_code dir not found: $PAPER_WITH_CODE_DIR"; exit 1; }
 
 export P2C_MIN_EXEC_TIMEOUT_SEC
@@ -81,11 +79,28 @@ export PIP_NO_CACHE_DIR
 BATCH_STARTED_AT="$(date '+%Y%m%d_%H%M%S')"
 BATCH_LOG_DIR="${ARTIFACTS_DIR}/_batch_logs/${BATCH_STARTED_AT}"
 SUMMARY_TSV="${BATCH_LOG_DIR}/summary.tsv"
+RUN_LOG="${BATCH_LOG_DIR}/batch.log"
 mkdir -p "$BATCH_LOG_DIR" "$OUTPUT_ROOT"
+exec > >(tee -a "$RUN_LOG") 2>&1
 printf "run_id\tstatus\tfailed_phase\treport\n" > "$SUMMARY_TSV"
 
 IFS=',' read -ra PHASE_LIST <<< "$PHASES"
 IFS=',' read -ra SELECTED_RUN_IDS <<< "$RUN_IDS"
+
+if [[ "$DRY_RUN" != "1" ]]; then
+  NEED_OPENAI=0
+  NEED_ANTHROPIC=0
+  for phase in "${PHASE_LIST[@]}"; do
+    [[ "$phase" == "1" || "$phase" == "3" ]] && NEED_OPENAI=1
+    [[ "$phase" == "2" ]] && NEED_ANTHROPIC=1
+  done
+  if [[ "$NEED_OPENAI" == "1" ]]; then
+    : "${OPENAI_API_KEY:?OPENAI_API_KEY not set}"
+  fi
+  if [[ "$NEED_ANTHROPIC" == "1" ]]; then
+    : "${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY not set}"
+  fi
+fi
 
 selected_run_id() {
   local run_id="$1"
@@ -205,7 +220,10 @@ echo " cases root : $PAPER_WITH_CODE_DIR"
 echo " phases     : $PHASES"
 echo " artifacts  : $ARTIFACTS_DIR"
 echo " output     : $OUTPUT_ROOT"
+echo " budget     : ${BUDGET_MINUTES} minutes per phase"
+echo " min timeout: ${P2C_MIN_EXEC_TIMEOUT_SEC}s"
 echo " batch log  : $BATCH_LOG_DIR"
+echo " run log    : $RUN_LOG"
 echo " continue   : $CONTINUE_ON_ERROR"
 echo " dry run    : $DRY_RUN"
 echo " selected   : ${RUN_IDS:-all}"

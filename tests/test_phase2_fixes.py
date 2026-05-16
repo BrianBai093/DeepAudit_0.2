@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import os
+import subprocess
 from collections.abc import AsyncIterable
 from pathlib import Path
 
+from p2c.agents.phase1.repo_analysis import SystemRepoAnalyzer
 from p2c.agents.phase2.executor_agent import ExecutorAgent, ExecutorSessionResult
 from p2c.agents.phase2.orchestrator import Phase2Orchestrator
 from p2c.agents.phase2.result_extraction import build_run_manifest
@@ -144,6 +147,149 @@ def test_tool_agent_prefers_native_environment_yml(tmp_path: Path) -> None:
     assert "ENV_SPEC_FROM_NATIVE_CONDA_FILE" in env_spec.reason_codes
 
 
+def test_tool_agent_discovers_conda_env_yml_when_repo_analysis_misses_it(tmp_path: Path) -> None:
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    (repo_dir / "conda_env.yml").write_text(
+        "\n".join(
+            [
+                "name: legacy_env",
+                "channels:",
+                "  - conda-forge",
+                "  - pytorch",
+                "dependencies:",
+                "  - python=3.7.*",
+                "  - pytorch",
+                "  - torchvision",
+                "  - pip",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (repo_dir / "setup.py").write_text("from setuptools import setup\nsetup(name='legacy')\n", encoding="utf-8")
+
+    artifacts = make_artifacts(tmp_path, "native_conda_env")
+    artifacts.write_json(
+        "task/repo_analysis.json",
+        {
+            "dependency_profiles": [
+                {
+                    "profile_id": "python-setuptools:.",
+                    "ecosystem": "python",
+                    "manager": "pip_editable",
+                    "cwd": ".",
+                    "manifest_paths": ["setup.py"],
+                    "install_command": "python -m pip install -e .",
+                    "auto_bootstrap_supported": True,
+                    "reason_codes": [],
+                }
+            ],
+            "entrypoint_candidates": [],
+            "primary_entrypoint_id": None,
+            "reason_codes": [],
+        },
+    )
+
+    agent = ToolAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
+    env_spec = agent.build_env_spec({"repo_dir": str(repo_dir), "run_id": "native_conda_env"})
+
+    assert env_spec.native_environment_file == "conda_env.yml"
+    assert env_spec.python_version == "3.7"
+    assert env_spec.pre_install_commands == ["python -m pip install -e ."]
+    assert "ENV_SPEC_FROM_NATIVE_CONDA_FILE" in env_spec.reason_codes
+
+
+def test_repo_analysis_detects_common_conda_environment_filenames(tmp_path: Path) -> None:
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    (repo_dir / "conda_env.yml").write_text("name: old\ndependencies:\n  - python=3.7.*\n", encoding="utf-8")
+    (repo_dir / "environment-dev.yaml").write_text("name: dev\ndependencies:\n  - python=3.10\n", encoding="utf-8")
+
+    analysis = SystemRepoAnalyzer(repo_dir).analyze()
+    conda_manifests = {
+        tuple(profile.manifest_paths)
+        for profile in analysis.dependency_profiles
+        if profile.manager == "conda"
+    }
+
+    assert ("conda_env.yml",) in conda_manifests
+    assert ("environment-dev.yaml",) in conda_manifests
+
+
+def test_tool_agent_converts_pixi_pyproject_to_conda_forge_env_spec(tmp_path: Path) -> None:
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    (repo_dir / "pyproject.toml").write_text(
+        "\n".join(
+            [
+                "[build-system]",
+                'requires = ["setuptools", "wheel"]',
+                'build-backend = "setuptools.build_meta"',
+                "",
+                "[project]",
+                'name = "lagrangian_nns"',
+                'version = "0.1.0"',
+                'requires-python = ">=3.7,<3.8"',
+                "dependencies = []",
+                "",
+                "[tool.pixi.dependencies]",
+                'python = "3.7.*"',
+                'jax = "==0.1.55"',
+                'jaxlib = "==0.1.37"',
+                'numpy = "<=1.18.0"',
+                'scipy = "<=1.4.1"',
+                'matplotlib = "<=3.1.2"',
+                'pytest = "*"',
+                "",
+                "[tool.pixi.environments]",
+                'default = ["py37"]',
+                "",
+                "[tool.pixi.feature.py37.dependencies]",
+                'python = "3.7.*"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    artifacts = make_artifacts(tmp_path, "pixi_env")
+    artifacts.write_json(
+        "task/repo_analysis.json",
+        {
+            "dependency_profiles": [
+                {
+                    "profile_id": "python-pyproject:.",
+                    "ecosystem": "python",
+                    "manager": "pip_editable",
+                    "cwd": ".",
+                    "manifest_paths": ["pyproject.toml"],
+                    "install_command": "python -m pip install -e .",
+                    "auto_bootstrap_supported": True,
+                    "reason_codes": [],
+                }
+            ],
+            "entrypoint_candidates": [],
+            "primary_entrypoint_id": None,
+            "reason_codes": [],
+        },
+    )
+
+    agent = ToolAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
+    env_spec = agent.build_env_spec({"repo_dir": str(repo_dir), "run_id": "pixi_env"})
+    conda_specs = {
+        (dep.package, dep.version_constraint, dep.channel)
+        for dep in env_spec.conda_dependencies
+    }
+
+    assert env_spec.python_version == "3.7"
+    assert ("jax", "==0.1.55", "conda-forge") in conda_specs
+    assert ("jaxlib", "==0.1.37", "conda-forge") in conda_specs
+    assert ("numpy", "<=1.18.0", "conda-forge") in conda_specs
+    assert not any(dep.package == "python" for dep in env_spec.conda_dependencies)
+    assert env_spec.pre_install_commands == ["python -m pip install -e ."]
+    assert "ENV_SPEC_FROM_PIXI_PYPROJECT" in env_spec.reason_codes
+    assert ToolAgent._derive_key_imports(env_spec)[:3] == ["jax", "numpy", "scipy"]
+
+
 def test_phase2_orchestrator_stops_after_native_env_create_failure(tmp_path: Path) -> None:
     artifacts = make_artifacts(tmp_path, "native_env_fail")
 
@@ -271,6 +417,26 @@ def test_executor_load_runs_synthesizes_missing_stderr_when_stdout_exists(tmp_pa
     assert "DECLARED_LOG_MISSING" not in run["reason_codes"]
     assert artifacts.path("execution/executor_outputs/experiment_exp_01_stderr.log").is_file()
     assert artifacts.path(run["logs"]["narrative"]).is_file()
+
+
+def test_executor_selects_freshest_final_results_payload(tmp_path: Path) -> None:
+    artifacts = make_artifacts(tmp_path, "fresh_final")
+    outputs_dir = artifacts.path("execution/executor_outputs")
+    outputs_dir.mkdir(parents=True, exist_ok=True)
+    stale = outputs_dir / "executor_results.json"
+    final = outputs_dir / "executor_results_final.json"
+    stale.write_text(
+        '{"runs":[{"experiment_id":"exp_01","status":"skipped","metrics":{}}]}',
+        encoding="utf-8",
+    )
+    final.write_text(
+        '{"runs":[{"experiment_id":"exp_01","status":"partial","metrics":{"loss":4.5}}]}',
+        encoding="utf-8",
+    )
+    os.utime(stale, (1, 1))
+    os.utime(final, (2, 2))
+
+    assert ExecutorAgent._select_executor_results_path(outputs_dir) == final
 
 
 def test_executor_agent_detects_source_mutation(tmp_path: Path, monkeypatch) -> None:
@@ -716,6 +882,28 @@ def test_conda_env_manager_finds_absolute_conda_binary(monkeypatch) -> None:
 
     assert manager._use_venv_fallback is False
     assert manager.backend == "/home/test/miniconda3/bin/conda"
+
+
+def test_conda_env_manager_treats_absolute_mamba_as_mamba(monkeypatch) -> None:
+    monkeypatch.setattr(
+        CondaEnvManager,
+        "_resolve_binary",
+        staticmethod(lambda binary, explicit_env=None: "/home/test/miniconda3/bin/mamba" if binary == "mamba" else None),
+    )
+    calls: list[list[str]] = []
+
+    def fake_run(args, **kwargs):
+        calls.append(list(args))
+        return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr("p2c.runtime.conda_env.subprocess.run", fake_run)
+
+    manager = CondaEnvManager(env_name="phase2_env", python_version="3.10")
+    manager.run_in_env("python -V")
+
+    assert calls
+    assert calls[0][:2] == ["/home/test/miniconda3/bin/mamba", "run"]
+    assert "--no-capture-output" not in calls[0]
 
 
 def test_executor_guardrail_blocks_background_jobs_and_naked_python() -> None:

@@ -243,7 +243,7 @@ class CondaEnvManager:
                 env=env,
             )
         run_cmd = [self._conda_bin, "run"]
-        if self._conda_bin != "mamba":
+        if Path(self._conda_bin).name != "mamba":
             run_cmd.append("--no-capture-output")
         run_cmd.extend(["-n", self.env_name, *bash_cmd])
         return subprocess.run(

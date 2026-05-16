@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from p2c.agents.base import BaseAgent
+from p2c.env_detection import iter_conda_environment_files
 from p2c.schemas import DependencyProfile, Entrypoint, RepoAnalysis
 
 try:  # pragma: no cover - Python 3.11+
@@ -462,14 +463,15 @@ class SystemRepoAnalyzer:
                 profiles.append(profile)
                 seen.add(profile.profile_id)
 
-        for env_file in self._iter_roots("environment.yml"):
+        for env_file in iter_conda_environment_files(self.repo_dir, exclude_dirs=_EXCLUDE_DIRS):
             cwd = _safe_rel(env_file.parent, self.repo_dir) or "."
+            rel = _safe_rel(env_file, self.repo_dir)
             profile = DependencyProfile(
-                profile_id=f"conda:{cwd}",
+                profile_id=f"conda:{rel}",
                 ecosystem="conda",
                 manager="conda",
                 cwd=cwd,
-                manifest_paths=[_safe_rel(env_file, self.repo_dir)],
+                manifest_paths=[rel],
                 install_command=None,
                 auto_bootstrap_supported=False,
                 reason_codes=["DEPENDENCY_PROFILE_UNSUPPORTED"],

@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 import json
 import re
+import shutil
 import subprocess
 import sys
 import textwrap
@@ -46,13 +48,16 @@ Rules:
 
 
 FIGURE_CODEGEN_SYSTEM_PROMPT = """\
-You are a restricted matplotlib code generator for one reproduced figure panel.
+You are a restricted matplotlib rendering agent for one reproduced figure panel.
 
 Return strict JSON with a single field named code.
 The code must:
 - Use only the variables payload and output_path provided by the host.
 - Use matplotlib with the Agg backend and optionally numpy/math/statistics/json.
 - Save exactly one PNG to output_path.
+- Render only the reproduced Phase 2 evidence panel. The host will compose it with the paper crop.
+- Clearly label PARTIAL, RELATED, or NO_EVIDENCE coverage in the title or annotation when the payload says so.
+- Prefer readable, compact plots/tables over decorative styling.
 - Avoid all filesystem reads, network access, subprocesses, shell calls, eval/exec, imports outside plotting/numeric modules.
 """
 
@@ -239,6 +244,33 @@ class ReproduceFiguresAgent(BaseAgent):
 
         decision = str(plot_spec.get("decision") or "PLOT").upper()
         if decision == "SKIP":
+            fallback_spec = _deterministic_plot_spec_for_llm_skip(bundle, plot_spec)
+            if fallback_spec:
+                plot_spec = fallback_spec
+                llm_note = (
+                    f"{llm_note} LLM requested SKIP, but deterministic related-evidence "
+                    "fallback generated a clearly labeled comparison panel."
+                )
+                decision = "PLOT"
+            else:
+                return ReproducedFigure(
+                    element_id=element_id,
+                    visual_anchor=str(bundle.get("visual_anchor") or ""),
+                    reference_image_path=reference_path,
+                    reproduced_image_path=None,
+                    image_path="",
+                    comparison_notes=str(plot_spec.get("comparison_note") or "LLM skipped this target."),
+                    evidence_sources=_string_list(plot_spec.get("evidence_sources")),
+                    reproduction_status="SKIPPED",
+                    plot_spec=plot_spec,
+                    llm_decision_summary=llm_note,
+                    match_level=str(plot_spec.get("match_level") or bundle.get("match_level") or "NO_EVIDENCE"),
+                    matched_scope=plot_spec.get("matched_scope") if isinstance(plot_spec.get("matched_scope"), dict) else bundle.get("matched_scope", {}),
+                    coverage_note=str(plot_spec.get("coverage_note") or bundle.get("coverage_note") or ""),
+                    reason_codes=["LLM_SKIPPED_TARGET", *_string_list(plot_spec.get("reason_codes"))],
+                )
+
+        if decision == "SKIP":
             return ReproducedFigure(
                 element_id=element_id,
                 visual_anchor=str(bundle.get("visual_anchor") or ""),
@@ -256,17 +288,40 @@ class ReproduceFiguresAgent(BaseAgent):
                 reason_codes=["LLM_SKIPPED_TARGET", *_string_list(plot_spec.get("reason_codes"))],
             )
 
-        rendered = _render_plot_spec(plot_spec, right_path)
         code_path: str | None = None
         matplotlib_code = ""
-        reason_codes = ["LLM_PLOT_SPEC_RENDERED"] if rendered else []
+        reason_codes: list[str] = []
+        rendered = False
 
-        if not rendered:
-            code_result = self._render_with_codegen(bundle, plot_spec, right_path)
+        if self.llm is not None:
+            code_result = self._render_with_codegen(bundle, plot_spec, right_path, stage="primary")
             rendered = code_result["success"]
             code_path = code_result.get("code_path")
             matplotlib_code = code_result.get("code", "")
             reason_codes.append(code_result.get("reason_code", "CODEGEN_RENDER_FAILED"))
+            if not rendered and code_result.get("repairable"):
+                repair_result = self._render_with_codegen(
+                    bundle,
+                    plot_spec,
+                    right_path,
+                    stage="repair",
+                    diagnostic=str(code_result.get("error") or code_result.get("validation") or ""),
+                )
+                rendered = repair_result["success"]
+                code_path = repair_result.get("code_path") or code_path
+                matplotlib_code = repair_result.get("code", matplotlib_code)
+                reason_codes.append(repair_result.get("reason_code", "CODEGEN_REPAIR_FAILED"))
+        else:
+            reason_codes.append("CODEGEN_LLM_UNAVAILABLE")
+
+        if not rendered:
+            deterministic_rendered = _render_plot_spec(plot_spec, right_path)
+            rendered = deterministic_rendered
+            reason_codes.append(
+                "DETERMINISTIC_RENDERER_FALLBACK_RENDERED"
+                if deterministic_rendered
+                else "DETERMINISTIC_RENDERER_UNSUPPORTED"
+            )
 
         if not rendered:
             return _failed_figure(
@@ -336,10 +391,13 @@ class ReproduceFiguresAgent(BaseAgent):
         bundle: dict[str, Any],
         plot_spec: dict[str, Any],
         output_path: Path,
+        *,
+        stage: str,
+        diagnostic: str = "",
     ) -> dict[str, Any]:
         if self.llm is None:
             return {"success": False, "reason_code": "CODEGEN_LLM_UNAVAILABLE"}
-        prompt = _build_codegen_prompt(bundle, plot_spec, str(output_path))
+        prompt = _build_codegen_prompt(bundle, plot_spec, str(output_path), diagnostic=diagnostic)
         try:
             data, err = self.safe_chat_json(schema=CODEGEN_SCHEMA, system=FIGURE_CODEGEN_SYSTEM_PROMPT, user=prompt)
         except Exception as exc:  # noqa: BLE001
@@ -350,38 +408,116 @@ class ReproduceFiguresAgent(BaseAgent):
         code = str(data.get("code") or "")
         ok, reason = _validate_codegen_code(code)
         if not ok:
-            return {"success": False, "reason_code": "CODEGEN_REJECTED", "code": code, "error": reason}
+            audit_path = self._write_codegen_audit(
+                bundle=bundle,
+                stage=stage,
+                code=code,
+                status="rejected",
+                reason_code="CODEGEN_REJECTED",
+                error=reason,
+            )
+            return {
+                "success": False,
+                "reason_code": "CODEGEN_REJECTED",
+                "code": code,
+                "code_path": audit_path,
+                "error": reason,
+            }
 
-        code_rel = f"results/figures/{bundle.get('element_id')}_codegen.py"
         full_code = _wrap_codegen_code(code, bundle, plot_spec, str(output_path))
-        self.artifacts.write_text(code_rel, full_code)
-        success = self._run_python_code(full_code, output_path)
+        run_result = self._run_python_codegen(full_code, output_path, bundle=bundle, stage=stage)
+        success = bool(run_result.get("success"))
+        reason_code = "LLM_CODEGEN_RENDERED" if success else "CODEGEN_RENDER_FAILED"
+        audit_path = self._write_codegen_audit(
+            bundle=bundle,
+            stage=stage,
+            code=code,
+            status="rendered" if success else "failed",
+            reason_code=reason_code,
+            error=str(run_result.get("diagnostic") or ""),
+            validation=str(run_result.get("validation") or ""),
+        )
         return {
             "success": success,
-            "reason_code": "CODEGEN_RENDERED" if success else "CODEGEN_RENDER_FAILED",
+            "reason_code": reason_code,
             "code": code,
-            "code_path": code_rel,
+            "code_path": audit_path,
+            "error": run_result.get("diagnostic"),
+            "validation": run_result.get("validation"),
+            "repairable": not success,
         }
 
-    def _run_python_code(self, code: str, output_path: Path) -> bool:
+    def _run_python_codegen(
+        self,
+        code: str,
+        output_path: Path,
+        *,
+        bundle: dict[str, Any],
+        stage: str,
+    ) -> dict[str, Any]:
+        element_id = _safe_filename(str(bundle.get("element_id") or "visual"))
+        temp_dir = self.artifacts.path(f"results/figures/_codegen_tmp/{element_id}_{stage}").resolve()
+        script_path = temp_dir / "render.py"
         try:
             if output_path.exists():
                 output_path.unlink()
+            if temp_dir.exists():
+                shutil.rmtree(temp_dir, ignore_errors=True)
+            temp_dir.mkdir(parents=True, exist_ok=True)
+            script_path.write_text(code, encoding="utf-8")
             proc = subprocess.run(
-                [sys.executable, "-c", code],
+                [sys.executable, str(script_path)],
                 capture_output=True,
                 text=True,
                 timeout=30,
-                cwd=str(self.artifacts.path(".").resolve()),
+                cwd=str(temp_dir),
             )
-            if proc.returncode == 0 and output_path.exists() and output_path.stat().st_size > 0:
-                return True
             diagnostic = (proc.stderr or proc.stdout or "")[-1000:]
-            self.log("PROGRESS", f"figure codegen failed: {diagnostic}")
-            return False
+            if proc.returncode != 0:
+                self.log("PROGRESS", f"figure codegen failed: {diagnostic}")
+                return {"success": False, "diagnostic": diagnostic, "validation": "python process failed"}
+            ok, validation = _validate_rendered_image(output_path)
+            if not ok:
+                self.log("PROGRESS", f"figure codegen produced invalid image: {validation}")
+                return {"success": False, "diagnostic": diagnostic, "validation": validation}
+            return {"success": True, "diagnostic": diagnostic, "validation": validation}
         except Exception as exc:  # noqa: BLE001
             self.log("PROGRESS", f"figure codegen execution error: {exc}")
-            return False
+            return {"success": False, "diagnostic": str(exc), "validation": "execution exception"}
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            try:
+                temp_dir.parent.rmdir()
+            except OSError:
+                pass
+
+    def _write_codegen_audit(
+        self,
+        *,
+        bundle: dict[str, Any],
+        stage: str,
+        code: str,
+        status: str,
+        reason_code: str,
+        error: str = "",
+        validation: str = "",
+    ) -> str:
+        element_id = _safe_filename(str(bundle.get("element_id") or "visual"))
+        audit_rel = f"results/figures/{element_id}_codegen_{stage}_audit.json"
+        self.artifacts.write_json(
+            audit_rel,
+            {
+                "element_id": bundle.get("element_id"),
+                "stage": stage,
+                "status": status,
+                "reason_code": reason_code,
+                "code_sha256": hashlib.sha256(code.encode("utf-8", errors="ignore")).hexdigest(),
+                "temporary_code_cleaned": True,
+                "error_tail": error[-1200:],
+                "validation": validation,
+            },
+        )
+        return audit_rel
 
 
 def _elements_by_id(visual_elements_doc: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -1289,6 +1425,83 @@ def _deterministic_plot_spec(bundle: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
+def _deterministic_plot_spec_for_llm_skip(
+    bundle: dict[str, Any],
+    llm_skip_spec: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Recover a clearly labeled comparison panel when the LLM is too strict.
+
+    The matching policy for Phase 3 is intentionally permissive: related or
+    partial Phase 2 evidence should still be visualized as such. A SKIP from
+    the planner is appropriate only when no deterministic panel can honestly
+    represent the available evidence.
+    """
+    fallback = _deterministic_plot_spec(bundle)
+    if not fallback:
+        return None
+
+    fallback = dict(fallback)
+    llm_level = str(llm_skip_spec.get("match_level") or "").upper()
+    has_numeric = bool(bundle.get("candidate_metrics") or bundle.get("curves"))
+    has_skip_only = bool(bundle.get("skip_evidence")) and not has_numeric
+
+    if has_skip_only:
+        fallback["match_level"] = "NO_EVIDENCE"
+    elif llm_level in {"PARTIAL", "RELATED"}:
+        fallback["match_level"] = llm_level
+    elif str(fallback.get("match_level") or "").upper() == "EXACT":
+        fallback["match_level"] = "RELATED"
+
+    if isinstance(llm_skip_spec.get("matched_scope"), dict):
+        fallback["matched_scope"] = llm_skip_spec["matched_scope"]
+    if llm_skip_spec.get("coverage_note") and not fallback.get("coverage_note"):
+        fallback["coverage_note"] = str(llm_skip_spec.get("coverage_note") or "")
+
+    fallback["decision"] = "PLOT"
+    fallback["comparison_note"] = _comparison_note(
+        {**bundle, "match_level": fallback.get("match_level")},
+        _strip_match_prefix(
+            str(
+                fallback.get("comparison_note")
+                or "Available Phase 2 evidence is shown as a related comparison panel."
+            )
+        ),
+    )
+    fallback["evidence_sources"] = _dedupe_strings(
+        [
+            *_string_list(fallback.get("evidence_sources")),
+            *_string_list(llm_skip_spec.get("evidence_sources")),
+            *bundle.get("evidence_sources", []),
+        ]
+    )
+    fallback["reason_codes"] = _dedupe_strings(
+        [
+            "LLM_SKIP_OVERRIDDEN_BY_DETERMINISTIC_FALLBACK",
+            *_string_list(fallback.get("reason_codes")),
+            *_string_list(llm_skip_spec.get("reason_codes")),
+        ]
+    )
+    return _ensure_plot_spec_match_fields(fallback, bundle)
+
+
+def _strip_match_prefix(note: str) -> str:
+    note = note.strip()
+    prefixes = (
+        "Exact evidence: ",
+        "Partial evidence only: ",
+        "Related evidence only: ",
+        "No executable numeric evidence: ",
+    )
+    changed = True
+    while changed:
+        changed = False
+        for prefix in prefixes:
+            if note.startswith(prefix):
+                note = note[len(prefix) :].strip()
+                changed = True
+    return note
+
+
 def _preferred_curves(curves: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for metric in ("test_accuracy", "val_accuracy", "train_accuracy", "loss"):
         selected = [curve for curve in curves if curve.get("metric_name") == metric]
@@ -1509,6 +1722,10 @@ def _validate_codegen_code(code: str) -> tuple[bool, str]:
         "os.",
         "sys.",
         "open(",
+        "imread(",
+        "loadtxt(",
+        "genfromtxt(",
+        "fromfile(",
         "eval(",
         "exec(",
         "__import__",
@@ -1524,6 +1741,7 @@ def _validate_codegen_code(code: str) -> tuple[bool, str]:
         return False, f"syntax error: {exc}"
     allowed_imports = {"json", "math", "statistics", "matplotlib", "matplotlib.pyplot", "numpy"}
     forbidden_calls = {"eval", "exec", "open", "compile", "input", "__import__", "globals", "locals"}
+    savefig_calls = 0
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
@@ -1536,8 +1754,37 @@ def _validate_codegen_code(code: str) -> tuple[bool, str]:
             func = node.func
             if isinstance(func, ast.Name) and func.id in forbidden_calls:
                 return False, f"call not allowed: {func.id}"
-            if isinstance(func, ast.Attribute) and func.attr in {"system", "popen", "run", "remove", "unlink", "rmtree"}:
-                return False, f"attribute call not allowed: {func.attr}"
+            if isinstance(func, ast.Attribute):
+                if func.attr in {
+                    "system",
+                    "popen",
+                    "run",
+                    "remove",
+                    "unlink",
+                    "rmtree",
+                    "imread",
+                    "load",
+                    "loadtxt",
+                    "genfromtxt",
+                    "fromfile",
+                    "save",
+                    "savez",
+                    "savez_compressed",
+                }:
+                    return False, f"attribute call not allowed: {func.attr}"
+                if func.attr == "savefig":
+                    savefig_calls += 1
+                    if not node.args or not isinstance(node.args[0], ast.Name) or node.args[0].id != "output_path":
+                        return False, "savefig must write to output_path"
+        elif isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            for target in targets:
+                if isinstance(target, ast.Name) and target.id in {"payload", "output_path"}:
+                    return False, f"assignment not allowed: {target.id}"
+        elif isinstance(node, ast.Delete):
+            return False, "delete statements are not allowed"
+    if savefig_calls != 1:
+        return False, "code must call savefig(output_path) exactly once"
     return True, ""
 
 
@@ -1555,6 +1802,32 @@ def _wrap_codegen_code(code: str, bundle: dict[str, Any], plot_spec: dict[str, A
     )
 
 
+def _validate_rendered_image(output_path: Path) -> tuple[bool, str]:
+    if not output_path.exists():
+        return False, "output PNG was not created"
+    size = output_path.stat().st_size
+    if size < 1000:
+        return False, f"output PNG is unexpectedly small ({size} bytes)"
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.image as mpimg
+        import numpy as np
+
+        image = mpimg.imread(output_path)
+        if image.size == 0:
+            return False, "output image has no pixels"
+        rgb = image[..., :3] if image.ndim == 3 else image
+        finite = np.isfinite(rgb)
+        if not bool(finite.any()):
+            return False, "output image contains no finite pixels"
+        if float(np.nanstd(rgb)) < 0.002:
+            return False, "output image appears blank or nearly uniform"
+        return True, f"valid PNG ({size} bytes)"
+    except Exception as exc:  # noqa: BLE001
+        return False, f"could not inspect output image: {exc}"
+
+
 def _build_plot_spec_prompt(bundle: dict[str, Any]) -> str:
     compact = _compact_bundle_for_llm(bundle)
     return (
@@ -1564,11 +1837,26 @@ def _build_plot_spec_prompt(bundle: dict[str, Any]) -> str:
     )
 
 
-def _build_codegen_prompt(bundle: dict[str, Any], plot_spec: dict[str, Any], output_path: str) -> str:
+def _build_codegen_prompt(
+    bundle: dict[str, Any],
+    plot_spec: dict[str, Any],
+    output_path: str,
+    *,
+    diagnostic: str = "",
+) -> str:
     payload = {"bundle": _compact_bundle_for_llm(bundle), "plot_spec": plot_spec, "output_path": output_path}
+    diagnostic_section = (
+        "\nPrevious render attempt failed. Use this diagnostic to repair the code, while keeping the same evidence:\n"
+        f"{diagnostic[-1500:]}\n"
+        if diagnostic
+        else ""
+    )
     return (
-        "The deterministic renderer could not render this plot_spec. Generate restricted matplotlib code "
-        "for the reproduced panel only.\n\n"
+        "Generate restricted matplotlib code for the reproduced panel only. The host has already selected "
+        "the visual target and Phase 2 evidence; use only the payload values below.\n"
+        "Do not read input files. Do not call savefig more than once. Make the output legible as a standalone "
+        "right-hand evidence panel.\n"
+        f"{diagnostic_section}\n"
         f"Payload:\n{json.dumps(payload, ensure_ascii=False, indent=2)[:18000]}"
     )
 
@@ -1853,6 +2141,11 @@ def _format_number(value: Any) -> str:
 def _short(text: Any, max_len: int = 60) -> str:
     value = str(text or "")
     return value if len(value) <= max_len else value[: max_len - 3] + "..."
+
+
+def _safe_filename(text: str) -> str:
+    value = re.sub(r"[^A-Za-z0-9_.-]+", "_", text or "visual").strip("._")
+    return value or "visual"
 
 
 def _short_title(bundle: dict[str, Any]) -> str:

@@ -446,7 +446,7 @@ class ExecutorAgent(BaseAgent):
             self._sync_executor_outputs(outputs_dir, canonical_outputs_dir)
         self._recover_misplaced_executor_outputs(repo_dir, canonical_outputs_dir)
 
-        result_path = canonical_outputs_dir / "executor_results.json"
+        result_path = self._select_executor_results_path(canonical_outputs_dir)
         runs = self._load_executor_runs(
             result_path,
             contract,
@@ -472,6 +472,7 @@ class ExecutorAgent(BaseAgent):
             raw_manifest=manifest.model_dump(),
             repo_dir=repo_dir,
             observed_commands=live_sink.observed_bash_commands,
+            executor_results_rel_path=f"execution/executor_outputs/{result_path.name}",
         )
         self.artifacts.write_json("execution/executor_outputs/phase2_execution_package.json", phase2_package)
         self.artifacts.write_text(
@@ -1402,6 +1403,38 @@ class ExecutorAgent(BaseAgent):
             return []
         return [dict(row) for row in rows if isinstance(row, dict)]
 
+    @classmethod
+    def _select_executor_results_path(cls, outputs_dir: Path) -> Path:
+        """Choose the freshest executor results payload with runs.
+
+        Some executor sessions produce an improved final payload such as
+        ``executor_results_final.json`` after an initial diagnostic
+        ``executor_results.json``. Phase 3 should consume the best completed
+        payload, not a stale early diagnostic file.
+        """
+        candidates = [
+            outputs_dir / "executor_results.json",
+            outputs_dir / "executor_results_final.json",
+            *sorted(outputs_dir.glob("executor_results_*.json")),
+        ]
+        valid: list[Path] = []
+        seen: set[Path] = set()
+        for path in candidates:
+            if path in seen:
+                continue
+            seen.add(path)
+            if cls._load_raw_executor_result_runs(path):
+                valid.append(path)
+        if not valid:
+            return outputs_dir / "executor_results.json"
+        return max(
+            valid,
+            key=lambda path: (
+                path.stat().st_mtime,
+                1 if path.name != "executor_results.json" else 0,
+            ),
+        )
+
     def _build_phase2_execution_package(
         self,
         *,
@@ -1412,6 +1445,7 @@ class ExecutorAgent(BaseAgent):
         raw_manifest: dict[str, Any],
         repo_dir: Path,
         observed_commands: list[str],
+        executor_results_rel_path: str = "execution/executor_outputs/executor_results.json",
     ) -> dict[str, Any]:
         """Build the single canonical Phase2 package consumed by Phase3."""
         experiment_by_id = {
@@ -1440,7 +1474,7 @@ class ExecutorAgent(BaseAgent):
 
         source_files = {
             "claims_ir": "fingerprint/claims_ir.json",
-            "executor_results": "execution/executor_outputs/executor_results.json",
+            "executor_results": executor_results_rel_path,
             "raw_run_manifest": "execution/executor_outputs/run_manifest.json",
             "phase2_results": "execution/executor_outputs/PHASE2_RESULTS.md",
             "raw_summaries": [

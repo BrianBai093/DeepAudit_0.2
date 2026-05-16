@@ -240,6 +240,60 @@ def test_bar_renderer_accepts_data_point_series(tmp_path: Path) -> None:
     assert int(blue_pixels.sum()) > 3000
 
 
+def test_llm_codegen_is_primary_even_for_supported_plot_spec(tmp_path: Path, monkeypatch) -> None:
+    artifacts = _artifacts(tmp_path, "run_codegen_primary")
+    _write_phase2_package(artifacts, stdout_text="[1,  10] loss: 1.0\nTesting...\nTest accuracy: 80 %\n")
+    _write_single_target(artifacts)
+    calls = {"count": 0}
+
+    def fake_chat_json(schema, system, user):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            return (
+                {
+                    "decision": "PLOT",
+                    "chart_type": "line",
+                    "title": "Supported line",
+                    "x_label": "Epoch",
+                    "y_label": "Accuracy",
+                    "series": [{"name": "BP", "x": [1, 2], "y": [0.8, 0.9], "source": "phase2", "style": {}}],
+                    "table": {"columns": [], "rows": [], "source": None},
+                    "unit": "ratio",
+                    "normalization": None,
+                    "evidence_sources": ["phase2"],
+                    "comparison_note": "Uses primary codegen.",
+                    "confidence": 0.9,
+                    "reason_codes": ["LLM_SPEC"],
+                },
+                None,
+            )
+        return (
+            {
+                "code": (
+                    "import matplotlib.pyplot as plt\n"
+                    "fig, ax = plt.subplots(figsize=(4, 3))\n"
+                    "ax.plot(payload['plot_spec']['series'][0]['x'], payload['plot_spec']['series'][0]['y'], marker='o')\n"
+                    "ax.set_title('codegen primary')\n"
+                    "fig.savefig(output_path, dpi=120, bbox_inches='tight')\n"
+                )
+            },
+            None,
+        )
+
+    agent = ReproduceFiguresAgent(llm=object(), artifacts=artifacts, step_index=1, step_total=1)
+    monkeypatch.setattr(agent, "safe_chat_json", fake_chat_json)
+
+    result = agent.execute({})
+    figure = result["figures"]["figures"][0]
+
+    assert figure["reproduction_status"] == "REPRODUCED"
+    assert "LLM_CODEGEN_RENDERED" in figure["reason_codes"]
+    assert "DETERMINISTIC_RENDERER_FALLBACK_RENDERED" not in figure["reason_codes"]
+    assert figure["code_path"] == "results/figures/fig_curve_codegen_primary_audit.json"
+    assert artifacts.path(figure["reproduced_image_path"]).exists()
+    assert not artifacts.path("results/figures/_codegen_tmp").exists()
+
+
 def test_numeric_chart_spec_repairs_missing_series_from_table_rows(tmp_path: Path) -> None:
     output_path = tmp_path / "line_repaired_to_bar.png"
     spec = _normalize_plot_spec(
@@ -324,6 +378,52 @@ def test_result_scope_skips_diagram_and_labels_bp_for_pepita_as_related(tmp_path
     skipped = {row["element_id"]: row for row in result["figures"]["skipped_targets"]}
     assert "fig_diagram" in skipped
     assert "SKIP_DIAGRAM" in skipped["fig_diagram"]["reason_codes"]
+
+
+def test_llm_skip_is_overridden_when_related_evidence_can_be_plotted(tmp_path: Path, monkeypatch) -> None:
+    artifacts = _artifacts(tmp_path, "run_llm_skip_override")
+    _write_phase2_package(
+        artifacts,
+        stdout_text="[1,  10] loss: 1.0\nTesting...\nTest accuracy: 80 %\n[2,  10] loss: 0.9\nTesting...\nTest accuracy: 90 %\n",
+    )
+    _write_single_target(
+        artifacts,
+        element_id="fig_related",
+        caption="Figure 2. PEPITA training accuracy curve on MNIST.",
+        model_names=["PEPITA"],
+    )
+    skip_spec = {
+        "decision": "SKIP",
+        "chart_type": "text-panel",
+        "title": "Skipped by planner",
+        "x_label": "",
+        "y_label": "",
+        "series": [],
+        "table": {"columns": [], "rows": [], "source": None},
+        "unit": None,
+        "normalization": None,
+        "evidence_sources": ["phase2"],
+        "comparison_note": "Planner found only adjacent evidence.",
+        "match_level": "RELATED",
+        "matched_scope": {"algorithm": "related"},
+        "coverage_note": "BP evidence is adjacent to the PEPITA target.",
+        "confidence": 0.2,
+        "reason_codes": ["MISSING_FIGURE_SPECIFIC_CURVES"],
+    }
+
+    agent = ReproduceFiguresAgent(llm=object(), artifacts=artifacts, step_index=1, step_total=1)
+    monkeypatch.setattr(agent, "safe_chat_json", lambda schema, system, user: (skip_spec, None))
+
+    result = agent.execute({})
+    figure = result["figures"]["figures"][0]
+
+    assert figure["reproduction_status"] == "REPRODUCED"
+    assert figure["match_level"] == "RELATED"
+    assert "Related evidence only" in figure["comparison_notes"]
+    assert "LLM_SKIP_OVERRIDDEN_BY_DETERMINISTIC_FALLBACK" in figure["reason_codes"]
+    assert "MISSING_FIGURE_SPECIFIC_CURVES" in figure["reason_codes"]
+    assert artifacts.path(figure["image_path"]).exists()
+    assert result["figures"]["skipped_targets"] == []
 
 
 def test_log_evidence_generates_comparison_without_repo_figures_or_metrics(tmp_path: Path) -> None:
@@ -464,9 +564,11 @@ def test_codegen_fallback_renders_when_plot_spec_is_unsupported(tmp_path: Path, 
     figure = result["figures"]["figures"][0]
 
     assert figure["reproduction_status"] == "REPRODUCED"
-    assert "CODEGEN_RENDERED" in figure["reason_codes"]
-    assert figure["code_path"] == "results/figures/fig_curve_codegen.py"
+    assert "LLM_CODEGEN_RENDERED" in figure["reason_codes"]
+    assert figure["code_path"] == "results/figures/fig_curve_codegen_primary_audit.json"
     assert artifacts.path(figure["image_path"]).exists()
+    assert artifacts.path(figure["code_path"]).exists()
+    assert not artifacts.path("results/figures/_codegen_tmp").exists()
 
 
 def test_codegen_rejects_dangerous_code_and_records_failure(tmp_path: Path, monkeypatch) -> None:
