@@ -7,6 +7,10 @@ from pathlib import Path
 
 
 CONDA_ENVIRONMENT_FILENAMES = (
+    "p2c_env.yml",
+    "p2c_env.yaml",
+    "p2c-environment.yml",
+    "p2c-environment.yaml",
     "environment.yml",
     "environment.yaml",
     "conda_env.yml",

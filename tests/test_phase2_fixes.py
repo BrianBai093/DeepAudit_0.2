@@ -199,6 +199,28 @@ def test_tool_agent_discovers_conda_env_yml_when_repo_analysis_misses_it(tmp_pat
     assert "ENV_SPEC_FROM_NATIVE_CONDA_FILE" in env_spec.reason_codes
 
 
+def test_tool_agent_prefers_p2c_env_override_over_repo_conda_env(tmp_path: Path) -> None:
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    (repo_dir / "conda_env.yml").write_text(
+        "name: legacy\ndependencies:\n  - python=3.7.*\n",
+        encoding="utf-8",
+    )
+    (repo_dir / "p2c_env.yml").write_text(
+        "name: override\ndependencies:\n  - python=3.9\n",
+        encoding="utf-8",
+    )
+
+    artifacts = make_artifacts(tmp_path, "p2c_env_override")
+    artifacts.write_json("task/repo_analysis.json", {"dependency_profiles": [], "reason_codes": []})
+
+    agent = ToolAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
+    env_spec = agent.build_env_spec({"repo_dir": str(repo_dir), "run_id": "p2c_env_override"})
+
+    assert env_spec.native_environment_file == "p2c_env.yml"
+    assert env_spec.python_version == "3.9"
+
+
 def test_repo_analysis_detects_common_conda_environment_filenames(tmp_path: Path) -> None:
     repo_dir = tmp_path / "repo"
     repo_dir.mkdir()
@@ -489,6 +511,82 @@ def test_executor_agent_detects_source_mutation(tmp_path: Path, monkeypatch) -> 
     assert result["success"] is False
     failure = result["failure"]
     assert failure.reason_codes == ["SOURCE_MUTATION_DETECTED"]
+
+
+def test_executor_agent_allows_tracked_runtime_artifact_mutation(tmp_path: Path, monkeypatch) -> None:
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    (repo_dir / "README.md").write_text("python train.py\n", encoding="utf-8")
+    (repo_dir / "train.py").write_text("print('ok')\n", encoding="utf-8")
+    checkpoint = repo_dir / "model.tar"
+    checkpoint.write_text("before\n", encoding="utf-8")
+
+    artifacts = make_artifacts(tmp_path, "runtime_artifact_guard")
+    artifacts.write_json(
+        "fingerprint/claims_ir.json",
+        {
+            "experiments": [
+                {
+                    "experiment_id": "exp_01",
+                    "name": "checkpoint run",
+                    "description": "",
+                    "dataset": None,
+                    "table_anchor": None,
+                    "primary_metrics": ["loss"],
+                    "is_primary": True,
+                    "notes": None,
+                }
+            ],
+            "claims": [],
+            "reason_codes": [],
+        },
+    )
+    artifacts.write_json("task/repo_analysis.json", {"dependency_profiles": [], "entrypoint_candidates": [], "reason_codes": []})
+    artifacts.write_json("task/metric_contract.json", {"required_metrics": ["loss"], "parsers": [], "normalization": {}, "reason_codes": []})
+
+    def fake_session(env_mgr, prompt, cwd, timeout_sec=600):
+        checkpoint.write_text("after\n", encoding="utf-8")
+        artifacts.write_json(
+            "execution/executor_outputs/executor_results.json",
+            {
+                "runs": [
+                    {
+                        "experiment_id": "exp_01",
+                        "command": "python train.py",
+                        "commands_attempted": ["python train.py"],
+                        "cwd": ".",
+                        "exit_code": 0,
+                        "status": "ok",
+                        "fidelity": "trend",
+                        "metrics": {"loss": 0.25},
+                        "artifacts": ["model.tar"],
+                    }
+                ]
+            },
+        )
+        return ExecutorSessionResult(stdout="", stderr="", returncode=0, narrative="")
+
+    monkeypatch.setattr(ExecutorAgent, "_run_executor_session", staticmethod(fake_session))
+
+    agent = ExecutorAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
+    result = agent.execute(
+        {
+            "repo_dir": str(repo_dir),
+            "_p2_env_mgr": DummyEnvMgr(),
+            "_p2_remaining_sec": 60,
+            "_p2_attempt": 1,
+        }
+    )
+
+    assert result["success"] is True
+    manifest = artifacts.read_json("execution/executor_outputs/run_manifest.json")
+    assert manifest["runs"][0]["status"] == "ok"
+    assert "REPO_RUNTIME_ARTIFACT_MUTATION_RECORDED" in manifest["reason_codes"]
+
+    guard = artifacts.read_json("execution/repo_mutation_guard.json")
+    assert guard["status"] == "warning"
+    assert guard["runtime_artifact_mutations"] == ["model.tar"]
+    assert guard["blocking_mutations"] == []
 
 
 def test_executor_agent_writes_experiment_scoped_manifest_and_logs(tmp_path: Path, monkeypatch) -> None:

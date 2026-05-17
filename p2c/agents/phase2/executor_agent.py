@@ -104,6 +104,29 @@ _BOUNDED_PACKAGE_METRIC_TOKENS = {
     "rouge",
 }
 _PACKAGE_FIDELITY_RANK = {None: 0, "smoke": 1, "trend": 2, "artifact": 2, "full": 3}
+_RUNTIME_ARTIFACT_SUFFIXES = {
+    ".ckpt",
+    ".npy",
+    ".npz",
+    ".pickle",
+    ".pkl",
+    ".pt",
+    ".pth",
+    ".tar",
+}
+_RUNTIME_ARTIFACT_NAME_TOKENS = (
+    "checkpoint",
+    "checkpoints",
+    "model",
+    "models",
+    "output",
+    "outputs",
+    "result",
+    "results",
+    "stat",
+    "stats",
+)
+_REPO_MUTATION_GUARD_REL_PATH = "execution/repo_mutation_guard.json"
 
 
 @dataclass
@@ -404,18 +427,30 @@ class ExecutorAgent(BaseAgent):
         live_sink.write_runtime_snapshot(status="completed", message="Claude executor session returned to host.")
 
         mutated_files = self._detect_repo_mutation(repo_dir, baseline, ignore_roots=repo_guard_ignore_roots)
+        artifact_mutations, blocking_mutations = self._partition_repo_mutations(mutated_files)
+        self._write_repo_mutation_guard(
+            mutated_files=mutated_files,
+            artifact_mutations=artifact_mutations,
+            blocking_mutations=blocking_mutations,
+        )
         self._append_activity(
             event="guard_check",
             experiment_id=None,
             cwd=str(repo_dir),
             command="repo_guard",
-            status="failed" if mutated_files else "ok",
-            exit_code=1 if mutated_files else 0,
+            status="failed" if blocking_mutations else ("warning" if artifact_mutations else "ok"),
+            exit_code=1 if blocking_mutations else 0,
             duration_sec=0.0,
             artifacts=mutated_files[:20],
-            message="Tracked source mutation detected." if mutated_files else "Repository guard passed.",
+            message=(
+                "Tracked source/config mutation detected."
+                if blocking_mutations else
+                "Tracked runtime artifact mutation recorded; continuing."
+                if artifact_mutations else
+                "Repository guard passed."
+            ),
         )
-        if mutated_files:
+        if blocking_mutations:
             failure = ExecutionFailure(
                 attempt=int(ctx.get("_p2_attempt", 1)),
                 stage="execution",
@@ -426,7 +461,7 @@ class ExecutorAgent(BaseAgent):
                         exit_code=1,
                         error_type="runtime",
                         error_message="Tracked source files were modified during execution.",
-                        stdout_tail="\n".join(mutated_files[:20]),
+                        stdout_tail="\n".join(blocking_mutations[:20]),
                         stderr_tail="",
                         failure_code="SOURCE_MUTATION_DETECTED",
                         failure_layer="source_guard",
@@ -457,7 +492,10 @@ class ExecutorAgent(BaseAgent):
             observed_commands=live_sink.observed_bash_commands,
         )
         self._backfill_activity_from_runs(runs)
-        manifest = build_run_manifest(runs, reason_codes=["EXECUTOR_AGENT_RUN"])
+        manifest_reason_codes = ["EXECUTOR_AGENT_RUN"]
+        if artifact_mutations:
+            manifest_reason_codes.append("REPO_RUNTIME_ARTIFACT_MUTATION_RECORDED")
+        manifest = build_run_manifest(runs, reason_codes=manifest_reason_codes)
         self.artifacts.write_json("execution/executor_outputs/run_manifest.json", manifest.model_dump())
         raw_runs = self._load_raw_executor_result_runs(result_path)
         claims = [
@@ -1487,6 +1525,8 @@ class ExecutorAgent(BaseAgent):
                 if self.artifacts.path(rel).exists() and self.artifacts.path(rel).stat().st_size > 0
             ],
         }
+        if self.artifacts.path(_REPO_MUTATION_GUARD_REL_PATH).exists():
+            source_files["repo_mutation_guard"] = _REPO_MUTATION_GUARD_REL_PATH
 
         observed_command_set = {_normalize_shell_command(command) for command in observed_commands if command}
         used_attempt_ids: set[str] = set()
@@ -2481,6 +2521,63 @@ class ExecutorAgent(BaseAgent):
             if current.get(rel_path) != digest:
                 changed.append(rel_path)
         return changed
+
+    @staticmethod
+    def _is_runtime_artifact_mutation(rel_path: str) -> bool:
+        """Return true for common training outputs that repos may track.
+
+        Some older ML repos commit checkpoint/stat files, then overwrite those
+        paths during training. That is undesirable, but it is evidence-producing
+        runtime output rather than source/config mutation. Treating these as a
+        warning prevents a completed reproduction from being silently discarded
+        by the outer phase2 guard.
+        """
+        path = Path(rel_path)
+        suffix = path.suffix.lower()
+        if suffix in _RUNTIME_ARTIFACT_SUFFIXES:
+            return True
+        parts = {part.lower() for part in path.parts}
+        stem = path.stem.lower()
+        return bool(parts.intersection(_RUNTIME_ARTIFACT_NAME_TOKENS)) or any(
+            token in stem for token in _RUNTIME_ARTIFACT_NAME_TOKENS
+        )
+
+    @classmethod
+    def _partition_repo_mutations(cls, mutated_files: list[str]) -> tuple[list[str], list[str]]:
+        artifact_mutations: list[str] = []
+        blocking_mutations: list[str] = []
+        for rel_path in mutated_files:
+            if cls._is_runtime_artifact_mutation(rel_path):
+                artifact_mutations.append(rel_path)
+            else:
+                blocking_mutations.append(rel_path)
+        return artifact_mutations, blocking_mutations
+
+    def _write_repo_mutation_guard(
+        self,
+        *,
+        mutated_files: list[str],
+        artifact_mutations: list[str],
+        blocking_mutations: list[str],
+    ) -> None:
+        if not mutated_files:
+            return
+        reason_codes = []
+        if artifact_mutations:
+            reason_codes.append("REPO_RUNTIME_ARTIFACT_MUTATION_RECORDED")
+        if blocking_mutations:
+            reason_codes.append("SOURCE_MUTATION_DETECTED")
+        self.artifacts.write_json(
+            _REPO_MUTATION_GUARD_REL_PATH,
+            {
+                "schema_version": "repo_mutation_guard.v1",
+                "status": "failed" if blocking_mutations else "warning",
+                "mutated_files": mutated_files,
+                "runtime_artifact_mutations": artifact_mutations,
+                "blocking_mutations": blocking_mutations,
+                "reason_codes": reason_codes,
+            },
+        )
 
     @staticmethod
     def _collect_descendant_pids(root_pid: int) -> list[int]:
