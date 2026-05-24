@@ -116,6 +116,8 @@ All Pydantic schemas are in `p2c/schemas.py`. Key cross-phase models:
 |---|---|---|
 | `OPENAI_MODEL` | Phase 1/3 model | `gpt-5.4` |
 | `OPENAI_BASE_URL` | OpenAI-compatible endpoint | `https://api.openai.com/v1` |
+| `MINERU_API_TOKEN` | MinerU standard PDF parsing fallback for large/long PDFs | unset |
+| `P2C_MINERU_MODE` | PDF→Markdown mode: `auto`, `agent`, `standard`, or `off` | `auto` |
 | `P2C_CLAUDE_MODEL` | Phase 2 executor model | `claude-haiku-4-5-20251001` |
 | `P2C_MAX_ENV_PATCH` | Max env repair attempts | `2` |
 | `P2C_KEEP_CONDA_ENV` | Preserve Phase 2 env for debugging | unset |
@@ -125,8 +127,8 @@ All Pydantic schemas are in `p2c/schemas.py`. Key cross-phase models:
 ## Target Materials
 
 Place audit targets under `Target/`:
-- `Target/paper/full.md` — paper Markdown (from PDF conversion)
-- `Target/paper.pdf` — optional, enables visual figure extraction
+- `Target/paper.pdf` — source PDF; Phase 1 can generate `Target/paper/full.md` automatically with MinerU
+- `Target/paper/full.md` — optional cached paper Markdown
 - `Target/code/` — the companion code repository to audit
 
 `paper_with_code/` contains reference paper+code pairs used for development and batch testing.

@@ -959,6 +959,45 @@ def test_executor_system_prompt_mentions_long_horizon_policy() -> None:
     assert runtime_spec.python_command in prompt
 
 
+def test_executor_full_mode_prompt_disables_smoke_and_trend(tmp_path: Path) -> None:
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    runtime_spec = ExecutorAgent._build_runtime_spec(DummyEnvMgr())
+
+    prompt = ExecutorAgent._build_prompt(
+        repo_dir=repo_dir,
+        experiments=[{"experiment_id": "exp_01", "name": "full run"}],
+        repo_analysis={"entrypoint_candidates": [{"path": "main.py", "command": "python main.py"}]},
+        readme_content="python main.py",
+        dependency_files={},
+        runtime_spec=runtime_spec,
+        outputs_dir=tmp_path / "outputs",
+        budget_sec=3600,
+        soft_budget_sec_per_experiment=3600,
+        execution_mode="full",
+    )
+    system_prompt = ExecutorAgent._build_system_prompt(runtime_spec, execution_mode="full")
+
+    assert "Execution mode: full" in prompt
+    assert "FULL-RUN MODE IS ACTIVE" in prompt
+    assert "full -> existing full-result artifact -> skipped/failed" in prompt
+    assert "Do not start smoke" in prompt
+    assert "do not run smoke" in system_prompt.lower()
+    assert "artifact -> smoke -> trend -> full" not in prompt
+
+
+def test_executor_full_mode_env_aliases(monkeypatch) -> None:
+    monkeypatch.setenv("P2C_EXECUTION_MODE", "full-only")
+    assert ExecutorAgent._execution_mode_from_env() == "full"
+
+    monkeypatch.delenv("P2C_EXECUTION_MODE")
+    monkeypatch.setenv("P2C_FORCE_FULL_RUN", "1")
+    assert ExecutorAgent._execution_mode_from_env() == "full"
+
+    monkeypatch.setenv("P2C_FORCE_FULL_RUN", "0")
+    assert ExecutorAgent._execution_mode_from_env() == "standard"
+
+
 def test_executor_runtime_spec_uses_absolute_venv_paths() -> None:
     runtime_spec = ExecutorAgent._build_runtime_spec(DummyEnvMgr())
 

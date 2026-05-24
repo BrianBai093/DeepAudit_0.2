@@ -3,7 +3,7 @@
 #
 # Expected case layout:
 #   paper_with_code/<run_id>/code
-#   paper_with_code/<run_id>/paper/full.md
+#   paper_with_code/<run_id>/paper/full.md  (created automatically from paper.pdf when missing)
 #   paper_with_code/<run_id>/paper.pdf
 #
 # Usage:
@@ -22,6 +22,7 @@
 #   BUDGET_MINUTES=180          phase budget passed through to p2c
 #   P2C_MIN_EXEC_TIMEOUT_SEC=10800
 #                               minimum phase2 executor session timeout, default 3h
+#   P2C_EXECUTION_MODE=full     ask phase2 to attempt direct full-fidelity runs
 
 set -euo pipefail
 
@@ -36,6 +37,7 @@ P2C_ATOMIC_LLM_SENTENCE_BUDGET="${P2C_ATOMIC_LLM_SENTENCE_BUDGET:-32}"
 P2C_ATOMIC_LLM_TABLE_BUDGET="${P2C_ATOMIC_LLM_TABLE_BUDGET:-20}"
 OPENAI_TIMEOUT_SEC="${OPENAI_TIMEOUT_SEC:-300}"
 OPENAI_VISION_TIMEOUT_SEC="${OPENAI_VISION_TIMEOUT_SEC:-360}"
+P2C_EXECUTION_MODE="${P2C_EXECUTION_MODE:-standard}"
 PIP_NO_CACHE_DIR="${PIP_NO_CACHE_DIR:-1}"
 CONTINUE_ON_ERROR="${CONTINUE_ON_ERROR:-1}"
 DRY_RUN="${DRY_RUN:-0}"
@@ -74,6 +76,7 @@ export P2C_ATOMIC_LLM_SENTENCE_BUDGET
 export P2C_ATOMIC_LLM_TABLE_BUDGET
 export OPENAI_TIMEOUT_SEC
 export OPENAI_VISION_TIMEOUT_SEC
+export P2C_EXECUTION_MODE
 export PIP_NO_CACHE_DIR
 
 BATCH_STARTED_AT="$(date '+%Y%m%d_%H%M%S')"
@@ -112,6 +115,15 @@ selected_run_id() {
   return 1
 }
 
+phase_selected() {
+  local needle="$1"
+  local phase
+  for phase in "${PHASE_LIST[@]}"; do
+    [[ "$phase" == "$needle" ]] && return 0
+  done
+  return 1
+}
+
 find_paper_md() {
   local case_dir="$1"
   local preferred="${case_dir}/paper/full.md"
@@ -120,7 +132,7 @@ find_paper_md() {
     echo "$preferred"
     return 0
   fi
-  found="$(find "${case_dir}/paper" -maxdepth 1 -type f \( -name '*.md' -o -name '*.markdown' \) | sort | head -n 1 || true)"
+  found="$(find "${case_dir}/paper" -maxdepth 1 -type f \( -name '*.md' -o -name '*.markdown' \) 2>/dev/null | sort | head -n 1 || true)"
   [[ -n "$found" ]] || return 1
   echo "$found"
 }
@@ -149,13 +161,23 @@ run_case() {
 
   run_id="$(basename "$case_dir")"
   repo_dir="${case_dir}/code"
-  paper_md="$(find_paper_md "$case_dir")" || { echo "Paper markdown not found for ${run_id}"; return 2; }
-  paper_pdf="$(find_paper_pdf "$case_dir")" || { echo "Paper PDF not found for ${run_id}"; return 2; }
+  paper_pdf="$(find_paper_pdf "$case_dir" || true)"
   paper_md_out="${OUTPUT_ROOT}/${run_id}/paper.md"
 
   [[ -d "$repo_dir" ]] || { echo "Repo not found for ${run_id}: $repo_dir"; return 2; }
+  if phase_selected "1" && [[ -z "$paper_pdf" ]]; then
+    echo "Paper PDF not found for ${run_id}"
+    return 2
+  fi
+  if ! paper_md="$(find_paper_md "$case_dir")"; then
+    paper_md="${case_dir}/paper/full.md"
+    if ! phase_selected "1"; then
+      echo "Paper markdown not found for ${run_id}; run phase 1 with paper.pdf first"
+      return 2
+    fi
+  fi
   mkdir -p "$(dirname "$paper_md_out")"
-  if [[ ! -f "$paper_md_out" || "$paper_md" -nt "$paper_md_out" ]]; then
+  if [[ -f "$paper_md" && ( ! -f "$paper_md_out" || "$paper_md" -nt "$paper_md_out" ) ]]; then
     cp "$paper_md" "$paper_md_out"
   fi
 
@@ -170,6 +192,7 @@ run_case() {
   echo " artifacts  : ${ARTIFACTS_DIR}/${run_id}"
   echo " paper_out  : $paper_md_out"
   echo " python     : $PYTHON_BIN"
+  echo " exec mode  : ${P2C_EXECUTION_MODE}"
   echo " pip cache  : PIP_NO_CACHE_DIR=${PIP_NO_CACHE_DIR}"
   echo "================================================================"
 
@@ -222,6 +245,7 @@ echo " artifacts  : $ARTIFACTS_DIR"
 echo " output     : $OUTPUT_ROOT"
 echo " budget     : ${BUDGET_MINUTES} minutes per phase"
 echo " min timeout: ${P2C_MIN_EXEC_TIMEOUT_SEC}s"
+echo " exec mode  : ${P2C_EXECUTION_MODE}"
 echo " batch log  : $BATCH_LOG_DIR"
 echo " run log    : $RUN_LOG"
 echo " continue   : $CONTINUE_ON_ERROR"

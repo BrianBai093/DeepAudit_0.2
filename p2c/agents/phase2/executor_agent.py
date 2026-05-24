@@ -73,6 +73,7 @@ _FORWARD_ENV_KEYS = (
     "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY",
     "http_proxy", "https_proxy", "no_proxy",
     "CONDA_EXE", "CONDA_PREFIX",
+    "P2C_EXECUTION_MODE", "P2C_PHASE2_EXECUTION_MODE", "P2C_FORCE_FULL_RUN",
 )
 _ALLOWED_OVERRIDE_PATTERNS = [
     re.compile(pattern, re.IGNORECASE)
@@ -127,6 +128,16 @@ _RUNTIME_ARTIFACT_NAME_TOKENS = (
     "stats",
 )
 _REPO_MUTATION_GUARD_REL_PATH = "execution/repo_mutation_guard.json"
+_FULL_EXECUTION_MODE_ALIASES = {
+    "full",
+    "full_only",
+    "full-only",
+    "full_run",
+    "full-run",
+    "direct_full",
+    "direct-full",
+}
+_TRUTHY_ENV_VALUES = {"1", "true", "yes", "y", "on"}
 
 
 @dataclass
@@ -366,6 +377,7 @@ class ExecutorAgent(BaseAgent):
         model = (os.getenv("P2C_CLAUDE_MODEL") or DEFAULT_CLAUDE_MODEL).strip()
         soft_budget_sec_per_experiment = max(300, remaining_sec // max(1, len(experiments)))
         runtime_spec = self._build_runtime_spec(env_mgr)
+        execution_mode = self._execution_mode_from_env()
 
         live_sink = _LiveSessionSink(
             artifacts=self.artifacts,
@@ -389,6 +401,7 @@ class ExecutorAgent(BaseAgent):
             outputs_dir=outputs_dir,
             budget_sec=remaining_sec,
             soft_budget_sec_per_experiment=soft_budget_sec_per_experiment,
+            execution_mode=execution_mode,
         )
 
         repo_guard_ignore_roots = self._repo_guard_ignore_roots(repo_dir)
@@ -402,7 +415,10 @@ class ExecutorAgent(BaseAgent):
             exit_code=None,
             duration_sec=0.0,
             artifacts=[],
-            message=f"Starting autonomous execution for {len(experiments)} experiments with model={model}.",
+            message=(
+                f"Starting autonomous execution for {len(experiments)} experiments "
+                f"with model={model}, execution_mode={execution_mode}."
+            ),
         )
         live_sink.write_runtime_snapshot(status="starting", message="Launching Claude executor session.")
 
@@ -643,7 +659,56 @@ class ExecutorAgent(BaseAgent):
             )
 
     @staticmethod
-    def _long_horizon_policy_text() -> str:
+    def _execution_mode_from_env() -> str:
+        forced = str(os.getenv("P2C_FORCE_FULL_RUN", "")).strip().lower()
+        raw = str(os.getenv("P2C_EXECUTION_MODE") or os.getenv("P2C_PHASE2_EXECUTION_MODE") or "").strip().lower()
+        if forced in _TRUTHY_ENV_VALUES or raw in _FULL_EXECUTION_MODE_ALIASES:
+            return "full"
+        return "standard"
+
+    @staticmethod
+    def _execution_policy_text(execution_mode: str) -> str:
+        if execution_mode == "full":
+            return (
+                "## Execution Policy\n"
+                "1. Treat the experiments JSON as the only execution objective source.\n"
+                "2. Read the repo and README to decide how to run the code.\n"
+                "3. FULL-RUN MODE IS ACTIVE: use this search order for every experiment: full -> existing full-result artifact -> skipped/failed.\n"
+                "4. Do not start smoke, dry-run, debug, fast-dev, subset, shortened epoch, shortened step, or reduced-data runs.\n"
+                "5. Do not add repo budget-shortening flags such as epoch/step/iter/subset/debug/dev/sample/fast_dev_run unless the paper or repo documents them as the full experiment itself.\n"
+                "6. Prefer the repo-authoritative full command from README/scripts/configs. If the repo only exposes a single training command, treat that command as the full command.\n"
+                "7. Existing artifacts/checkpoints may be used only when they are explicitly full-result artifacts for the target experiment; otherwise run the fresh full command or mark skipped/failed.\n"
+                "8. If a full run is estimated to exceed the budget, do not silently downgrade to smoke/trend. Record skipped or failed with stop_reason=`budget_bound` and explain the estimate.\n"
+                "9. If you shorten epochs/steps/data for any reason, you MUST mark the run as trend/smoke and reason_code=`FULL_MODE_DOWNGRADED`; this should only happen after a failed full attempt or explicit impossibility.\n"
+                "10. Do not edit, patch, rewrite, or modify repository-tracked source/config/script/notebook files.\n"
+                "11. Keep a clear audit trail.\n"
+            )
+        return (
+            "## Execution Policy\n"
+            "1. Treat the experiments JSON as the only execution objective source.\n"
+            "2. Read the repo and README to decide how to run the code.\n"
+            "3. Use this search order for every experiment: artifact -> smoke -> trend -> full.\n"
+            "4. Prefer eval-only, test-only, inference-only, checkpoint-based, or existing artifact paths first.\n"
+            "5. For reduced-fidelity runs, only use repo-supported CLI flags already exposed by the repo.\n"
+            "6. Do not edit, patch, rewrite, or modify repository-tracked source/config/script/notebook files.\n"
+            "7. Breadth-first budget policy: do not spend full-run budget on one experiment until every experiment has a non-failed artifact/smoke/trend attempt or an explicit skipped record.\n"
+            "8. If you shorten epochs/steps/data, you MUST mark the run as reduced-fidelity and never present it as full reproduction.\n"
+            "9. If no supported CLI budget flag exists, choose artifact, full, or skipped instead of editing code.\n"
+            "10. Keep a clear audit trail.\n"
+        )
+
+    @staticmethod
+    def _long_horizon_policy_text(execution_mode: str = "standard") -> str:
+        if execution_mode == "full":
+            return (
+                "## Long-Horizon Training Policy\n"
+                "- FULL-RUN MODE overrides smoke/trend probing. Do not run a cheap probe first.\n"
+                "- Launch the repo-authoritative full command when it is identifiable and within the global timeout.\n"
+                "- Do not use reduced-fidelity flags to fit the run into the budget; record `budget_bound` instead of downgrading.\n"
+                "- Estimate runtime from docs, previous logs, or visible script schedules when possible, and write that estimate in notes.\n"
+                "- A successful fresh full command with metrics/signals should be recorded as fidelity=`full`, evidence_source=`fresh_run`, stop_reason=`full_run_complete`.\n"
+                "- If the full command fails, preserve stdout/stderr and record status=`failed` or `partial`; do not replace it with a smoke result unless explicitly noted as `FULL_MODE_DOWNGRADED`.\n\n"
+            )
         return (
             "## Long-Horizon Training Policy\n"
             "- Treat runs with explicit 100+ epoch schedules, nominal epochs >= 50, or unknown per-epoch cost as long-horizon by default.\n"
@@ -668,11 +733,15 @@ class ExecutorAgent(BaseAgent):
         outputs_dir: Path,
         budget_sec: int,
         soft_budget_sec_per_experiment: int,
+        execution_mode: str = "standard",
     ) -> str:
         dep_sections = "\n".join(
             f"### {name}\n```\n{content}\n```"
             for name, content in dependency_files.items()
         ) or "(none)"
+        execution_mode = "full" if execution_mode == "full" else "standard"
+        execution_policy = ExecutorAgent._execution_policy_text(execution_mode)
+        long_horizon_policy = ExecutorAgent._long_horizon_policy_text(execution_mode)
         return (
             "You are executing a research repository to reproduce paper experiments.\n"
             f"Repository root: {repo_dir}\n"
@@ -683,6 +752,7 @@ class ExecutorAgent(BaseAgent):
             f"Managed pip command: {runtime_spec.pip_command}\n"
             f"Budget: {budget_sec} seconds\n"
             f"Soft budget per experiment: {soft_budget_sec_per_experiment} seconds\n"
+            f"Execution mode: {execution_mode}\n"
             f"External output directory (outside repository): {outputs_dir}\n\n"
             "## Paper Experiments (authoritative)\n"
             f"```json\n{json.dumps(experiments, ensure_ascii=False, indent=2)}\n```\n\n"
@@ -692,23 +762,14 @@ class ExecutorAgent(BaseAgent):
             f"```\n{readme_content[:12000]}\n```\n\n"
             "## Dependency Files\n"
             f"{dep_sections}\n\n"
-            "## Execution Policy\n"
-            "1. Treat the experiments JSON as the only execution objective source.\n"
-            "2. Read the repo and README to decide how to run the code.\n"
-            "3. Use this search order for every experiment: artifact -> smoke -> trend -> full.\n"
-            "4. Prefer eval-only, test-only, inference-only, checkpoint-based, or existing artifact paths first.\n"
-            "5. For reduced-fidelity runs, only use repo-supported CLI flags already exposed by the repo.\n"
-            "6. Do not edit, patch, rewrite, or modify repository-tracked source/config/script/notebook files.\n"
-            "7. Breadth-first budget policy: do not spend full-run budget on one experiment until every experiment has a non-failed artifact/smoke/trend attempt or an explicit skipped record.\n"
-            "8. If you shorten epochs/steps/data, you MUST mark the run as reduced-fidelity and never present it as full reproduction.\n"
-            "9. If no supported CLI budget flag exists, choose artifact, full, or skipped instead of editing code.\n"
-            "10. Keep a clear audit trail.\n"
-            f"11. For Python commands, always start with `{runtime_spec.python_command}`.\n"
-            f"12. For pip commands, always start with `{runtime_spec.pip_command}`.\n"
-            "13. Never guess a different environment name or reuse an old environment from another run.\n"
-            "14. Write audit metadata, executor_results.json, activity logs, and per-experiment logs only to the external output directory above, never under the repository root.\n"
-            "15. If a training command supports output/log/checkpoint directory flags, point them to the external output directory; otherwise do not create extra audit directories inside the repo.\n\n"
-            f"{ExecutorAgent._long_horizon_policy_text()}"
+            f"{execution_policy}"
+            "## Runtime Requirements\n"
+            f"- For Python commands, always start with `{runtime_spec.python_command}`.\n"
+            f"- For pip commands, always start with `{runtime_spec.pip_command}`.\n"
+            "- Never guess a different environment name or reuse an old environment from another run.\n"
+            "- Write audit metadata, executor_results.json, activity logs, and per-experiment logs only to the external output directory above, never under the repository root.\n"
+            "- If a training command supports output/log/checkpoint directory flags, point them to the external output directory; otherwise do not create extra audit directories inside the repo.\n\n"
+            f"{long_horizon_policy}"
             "## Required Files To Write\n"
             "Use the absolute external output directory below. Do not write these files to `./artifacts`, `./outputs`, or any path inside the repository root.\n"
             f"1. `{outputs_dir}/executor_activity.jsonl`\n"
@@ -756,28 +817,38 @@ class ExecutorAgent(BaseAgent):
         )
 
     @staticmethod
-    def _build_system_prompt(runtime_spec: _ExecutorRuntimeSpec) -> str:
+    def _build_system_prompt(runtime_spec: _ExecutorRuntimeSpec, execution_mode: str = "standard") -> str:
+        execution_mode = "full" if execution_mode == "full" else "standard"
+        if execution_mode == "full":
+            execution_policy = (
+                "Execution policy:\n"
+                "- FULL-RUN MODE IS ACTIVE.\n"
+                "- Attempt fresh full-fidelity runs directly; do not run smoke, dry-run, debug, fast-dev, subset, shortened epoch, shortened step, or reduced-data probes first.\n"
+                "- Do not add budget-shortening CLI flags unless the repo/paper documents them as the full experiment itself.\n"
+                "- Existing artifacts/checkpoints count only when they are explicit full-result artifacts for the target experiment.\n"
+                "- If a full run is too expensive or cannot be identified, record skipped/failed with a clear reason; do not silently downgrade to smoke/trend.\n"
+                "- A successful fresh full command with metrics/signals should be recorded as fidelity=`full`, evidence_source=`fresh_run`, stop_reason=`full_run_complete`.\n"
+            )
+            long_horizon_policy = ExecutorAgent._long_horizon_policy_text("full")
+        else:
+            execution_policy = (
+                "Execution policy:\n"
+                "- Prefer artifact/checkpoint/eval-only paths before training.\n"
+                "- Then prefer short bounded smoke or trend runs.\n"
+                "- Only attempt full training when repo evidence requires it and budget allows.\n"
+                "- If you shorten epochs/steps/data, mark the run as reduced-fidelity.\n"
+                "- Never claim reduced-fidelity or artifact evidence is full reproduction.\n\n"
+            )
+            long_horizon_policy = ExecutorAgent._long_horizon_policy_text("standard")
         return (
             "You are the Phase 2 executor for research repositories.\n"
             "Authority split:\n"
             "- The experiments JSON is the ONLY authority for what experiments must be attempted.\n"
             "- The repository, README, and dependency files are the ONLY authority for how to run them.\n"
             "- Do NOT use paper prose or numeric targets to invent commands.\n\n"
-            "Execution policy:\n"
-            "- Prefer artifact/checkpoint/eval-only paths before training.\n"
-            "- Then prefer short bounded smoke or trend runs.\n"
-            "- Only attempt full training when repo evidence requires it and budget allows.\n"
-            "- If you shorten epochs/steps/data, mark the run as reduced-fidelity.\n"
-            "- Never claim reduced-fidelity or artifact evidence is full reproduction.\n\n"
-            "Long-horizon training policy:\n"
-            "- Treat runs with explicit 100+ epoch schedules, nominal epochs >= 50, or unknown per-epoch cost as long-horizon by default.\n"
-            f"- If repo-supported budget flags exist, start with a smoke run using at least {SMOKE_MIN_EPOCHS} epochs when an epoch flag is available; otherwise use the smallest faithful budget >= 5% of the declared schedule when possible.\n"
-            "- If smoke succeeds and logs or metrics move, run one trend pass using <= 10 epochs or <= 20% of the declared schedule, whichever is smaller.\n"
-            "- Do not start a long full run until every experiment has at least one artifact, smoke, trend, or skipped record.\n"
-            "- Estimate full runtime from observed wall-clock cost of smoke or trend runs when possible.\n"
-            "- Only run full when artifact, smoke, and trend evidence are insufficient and the estimated full runtime is <= 80% of the remaining global budget.\n"
-            "- If the estimate exceeds budget, stop at trend or skipped rather than launching an unbounded long run.\n"
-            "- If the repo exposes no supported budget flag, do not invent one: choose artifact, full, or skipped.\n\n"
+            f"Execution mode: {execution_mode}\n\n"
+            f"{execution_policy}\n"
+            f"{long_horizon_policy}"
             "Runtime policy:\n"
             f"- Managed backend: {runtime_spec.backend}\n"
             f"- Managed env name: {runtime_spec.env_name}\n"
@@ -1010,7 +1081,8 @@ class ExecutorAgent(BaseAgent):
         runtime_spec = ExecutorAgent._build_runtime_spec(env_mgr)
         use_tool_guardrails = os.getenv("P2C_USE_CLAUDE_TOOL_GUARDRAILS", "0") == "1"
         sink = ExecutorAgent._live_sink
-        system_prompt = ExecutorAgent._build_system_prompt(runtime_spec)
+        execution_mode = ExecutorAgent._execution_mode_from_env()
+        system_prompt = ExecutorAgent._build_system_prompt(runtime_spec, execution_mode=execution_mode)
         child_env = {key: value for key, value in os.environ.items() if key in _FORWARD_ENV_KEYS and value}
         if sink is not None:
             sink.log_activity(

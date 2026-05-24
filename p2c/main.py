@@ -10,6 +10,7 @@ from p2c.io_artifacts import ArtifactManager
 from p2c.llm.client import LLMClient
 from p2c.schemas import VerdictDoc
 from p2c.utils.console import format_log
+from p2c.utils.mineru_client import default_paper_md_from_pdf
 
 
 def log_global(artifacts: ArtifactManager, state: str, step: str, message: str) -> None:
@@ -96,7 +97,7 @@ def serializable_context(ctx: dict) -> dict:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Paper2Code MVP runner")
     parser.add_argument("--phase", type=int, choices=[1, 2, 3], required=True)
-    parser.add_argument("--paper_md", required=True)
+    parser.add_argument("--paper_md", default=None)
     parser.add_argument("--paper_md_out", required=True)
     parser.add_argument("--repo_dir", required=True)
     parser.add_argument("--run_id", required=True)
@@ -104,7 +105,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--budget_minutes", type=int, default=30)
     parser.add_argument("--max_self_heal_iters", type=int, default=6)
     parser.add_argument("--paper_pdf", default=None, help="Paper PDF for visual extraction (optional)")
-    return parser.parse_args()
+    args = parser.parse_args()
+    if not args.paper_md:
+        if args.phase == 1 and args.paper_pdf:
+            args.paper_md = str(default_paper_md_from_pdf(args.paper_pdf))
+        else:
+            parser.error("--paper_md is required unless phase 1 is given --paper_pdf")
+    return args
 
 
 def main() -> None:

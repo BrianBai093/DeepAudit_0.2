@@ -26,6 +26,7 @@ P2C_ATOMIC_LLM_SENTENCE_BUDGET="${P2C_ATOMIC_LLM_SENTENCE_BUDGET:-32}"
 P2C_ATOMIC_LLM_TABLE_BUDGET="${P2C_ATOMIC_LLM_TABLE_BUDGET:-20}"
 OPENAI_TIMEOUT_SEC="${OPENAI_TIMEOUT_SEC:-300}"
 OPENAI_VISION_TIMEOUT_SEC="${OPENAI_VISION_TIMEOUT_SEC:-360}"
+P2C_EXECUTION_MODE="${P2C_EXECUTION_MODE:-standard}"  # standard or full
 # -------------------------------------------------
 
 if [[ $# -lt 1 ]]; then
@@ -42,10 +43,12 @@ cd "$PROJECT_ROOT"
 # Sanity checks
 : "${OPENAI_API_KEY:?OPENAI_API_KEY not set}"
 : "${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY not set}"
-[[ -f "$PAPER_MD" ]] || { echo "Paper not found: $PAPER_MD"; exit 1; }
 [[ -d "$REPO_DIR" ]] || { echo "Repo not found: $REPO_DIR"; exit 1; }
 if [[ ",$PHASES," == *",1,"* ]]; then
   [[ -f "$PAPER_PDF" ]] || { echo "Paper PDF not found: $PAPER_PDF"; exit 1; }
+elif [[ ! -f "$PAPER_MD" ]]; then
+  echo "Paper markdown not found: $PAPER_MD (run phase 1 with paper.pdf first)"
+  exit 1
 fi
 mkdir -p "$(dirname "$PAPER_MD_OUT")"
 
@@ -58,6 +61,7 @@ echo " paper_pdf  : $PAPER_PDF"
 echo " repo       : $REPO_DIR"
 echo " artifacts  : $ARTIFACTS_DIR/$RUN_ID"
 echo " min timeout: ${P2C_MIN_EXEC_TIMEOUT_SEC}s"
+echo " exec mode  : ${P2C_EXECUTION_MODE}"
 echo " atomic LLM : sentences=${P2C_ATOMIC_LLM_SENTENCE_BUDGET}, tables=${P2C_ATOMIC_LLM_TABLE_BUDGET}"
 echo " OpenAI wait: text/json=${OPENAI_TIMEOUT_SEC}s, vision=${OPENAI_VISION_TIMEOUT_SEC}s"
 echo "================================================================"
@@ -67,6 +71,7 @@ export P2C_ATOMIC_LLM_SENTENCE_BUDGET
 export P2C_ATOMIC_LLM_TABLE_BUDGET
 export OPENAI_TIMEOUT_SEC
 export OPENAI_VISION_TIMEOUT_SEC
+export P2C_EXECUTION_MODE
 
 IFS=',' read -ra PHASE_LIST <<< "$PHASES"
 for phase in "${PHASE_LIST[@]}"; do

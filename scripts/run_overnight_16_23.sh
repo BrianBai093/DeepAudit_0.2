@@ -132,14 +132,16 @@ for run_id in "${PAPERS[@]}"; do
   log " >>> ${run_id}"
   log "============================================================"
 
-  if [[ ! -f "$paper_md" || ! -f "$paper_pdf" || ! -d "$repo_dir" ]]; then
+  if [[ ! -f "$paper_pdf" || ! -d "$repo_dir" ]]; then
     log "  SKIP: missing inputs (md=$paper_md pdf=$paper_pdf repo=$repo_dir)"
     printf "%s\tSKIP\tinputs\t-\t-\t0\n" "$run_id" >> "$SUMMARY"
     continue
   fi
 
   mkdir -p "$(dirname "$paper_md_out")"
-  cp -f "$paper_md" "$paper_md_out"
+  if [[ -f "$paper_md" ]]; then
+    cp -f "$paper_md" "$paper_md_out"
+  fi
 
   start_ts=$(date '+%s')
   start_iso=$(date '+%Y-%m-%dT%H:%M:%S')
