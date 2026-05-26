@@ -9,10 +9,8 @@ from pathlib import Path
 from typing import Any
 
 from p2c.schemas import (
-    ClaimAlignmentDoc,
-    ClaimAlignmentItem,
-    ClaimsIR,
-    CodexRun,
+    ExecutionLogRefs,
+    ExecutionRun,
     MetricContract,
     RunManifestDoc,
 )
@@ -189,6 +187,10 @@ def extract_metric_records_from_stdout(
         r"\s*[:=]\s*([\d.eE+-]+)"
     )
     for match in labeled_pattern.finditer(stdout):
+        line_start = stdout.rfind("\n", 0, match.start()) + 1
+        line_prefix = stdout[line_start:match.start()].lower()
+        if re.search(r"(?:^|[^a-z0-9_])(train|training|val|valid|validation|eval|test)[_ ]*$", line_prefix):
+            continue
         add_record(match.group(1), match.group(2), "LABELED_METRIC")
 
     # Layer 5 — dictionary-style metric summaries (`{'precision': 0.1, 'f1': 0.2}`).
@@ -288,7 +290,7 @@ def extract_metrics_from_stdout(
 
 
 def extract_metrics_from_file(file_path: str | Path) -> dict[str, Any]:
-    """Read a JSON file written by codex and return the metrics dict inside it."""
+    """Read a JSON file written by the executor session and return the metrics dict inside it."""
     try:
         data = json.loads(Path(file_path).read_text(encoding="utf-8"))
         if isinstance(data, dict):
@@ -366,93 +368,52 @@ def build_run_manifest(
     reason_codes: list[str] | None = None,
 ) -> RunManifestDoc:
     """Build a ``RunManifestDoc`` that Phase 3 can consume."""
-    codex_runs = []
+    execution_runs = []
     for r in runs:
-        codex_runs.append(
-            CodexRun(
-                run_id=r.get("step_id", f"run_{len(codex_runs)}"),
+        log_payload = r.get("logs") if isinstance(r.get("logs"), dict) else {}
+        status = str(r.get("status") or ("ok" if _safe_int(r.get("exit_code"), 1) == 0 else "failed"))
+        execution_runs.append(
+            ExecutionRun(
+                run_id=r.get("run_id") or r.get("experiment_id") or f"run_{len(execution_runs)}",
+                experiment_id=r.get("experiment_id"),
+                experiment_name=r.get("experiment_name"),
+                dataset=r.get("dataset"),
                 command=r.get("command", ""),
+                commands_attempted=r.get("commands_attempted", []),
                 params=r.get("params", {}),
-                cwd=r.get("cwd", "."),
-                exit_code=int(r.get("exit_code", 1)),
-                status=str(r.get("status") or ("ok" if int(r.get("exit_code", 1)) == 0 else "failed")),
+                cwd=_safe_text(r.get("cwd"), "."),
+                exit_code=_safe_int(r.get("exit_code"), 0 if status in {"ok", "partial", "skipped"} else 1),
+                status=status,
+                fidelity=r.get("fidelity"),
+                execution_outcome=r.get("execution_outcome"),
+                evidence_source=r.get("evidence_source"),
+                override_args=r.get("override_args", []),
+                observed_signals=r.get("observed_signals", []),
+                stop_reason=r.get("stop_reason"),
+                notes=r.get("notes"),
                 runtime_sec=r.get("runtime_sec"),
                 stdout_tail=(r.get("stdout_tail") or "")[-2000:],
                 stderr_tail=(r.get("stderr_tail") or "")[-2000:],
                 artifacts=r.get("artifacts", []),
                 metrics=r.get("metrics", {}),
+                logs=ExecutionLogRefs(**log_payload) if log_payload else ExecutionLogRefs(),
                 reason_codes=r.get("reason_codes", []),
             )
         )
-    return RunManifestDoc(runs=codex_runs, reason_codes=reason_codes or [])
+    return RunManifestDoc(runs=execution_runs, reason_codes=reason_codes or [])
 
 
-def build_claim_alignment(
-    claims_ir: ClaimsIR,
-    collected_metrics: dict[str, Any],
-    metric_sources: dict[str, list[str]] | None = None,
-) -> ClaimAlignmentDoc:
-    """Build a ``ClaimAlignmentDoc`` mapping claims to discovered metrics.
+def _safe_text(value: Any, default: str) -> str:
+    if value is None:
+        return default
+    text = str(value).strip()
+    return text or default
 
-    Phase 2 is intentionally conservative here: it reports *what* metrics
-    were collected and marks claims as ``"partial"`` when the metric name
-    matches but we cannot be certain the collected value corresponds to the
-    specific experiment described by the claim (e.g. same metric from
-    different tables / datasets).  Full alignment is deferred to Phase 3,
-    which has access to richer claim context (table_anchor, scope, etc.).
-    """
-    items: list[ClaimAlignmentItem] = []
-    metric_sources = metric_sources or {}
 
-    # Count how many result-type claims share each metric name
-    from collections import Counter
-    metric_claim_count: Counter[str] = Counter()
-    for claim in claims_ir.claims:
-        if claim.type == "result" and claim.metric:
-            metric_claim_count[claim.metric] += 1
-
-    for claim in claims_ir.claims:
-        required = [claim.metric] if claim.metric else []
-        matching_metric_names = [
-            name for name in collected_metrics
-            if claim.metric
-            and (
-                name == claim.metric
-                or name.endswith(f"_{claim.metric}")
-                or name.startswith(f"{claim.metric}_")
-            )
-        ]
-        has_metric = bool(matching_metric_names)
-        claim_sources = []
-        for metric_name in matching_metric_names:
-            for source in metric_sources.get(metric_name, []):
-                if source not in claim_sources:
-                    claim_sources.append(source)
-
-        if not has_metric:
-            evaluable = "no"
-            reason = None
-        elif claim.metric and metric_claim_count.get(claim.metric, 0) > 1:
-            # Multiple claims reference the same metric name (e.g. 3 different
-            # "accuracy" values from different tables).  We have *a* value but
-            # cannot determine which claim it corresponds to — mark partial and
-            # let Phase 3 resolve with experiment context.
-            evaluable = "partial"
-            reason = (
-                f"metric '{claim.metric}' collected but {metric_claim_count[claim.metric]} "
-                f"claims reference it; alignment deferred to Phase 3"
-            )
-        else:
-            evaluable = "yes"
-            reason = None
-
-        items.append(
-            ClaimAlignmentItem(
-                claim_id=claim.claim_id,
-                required_metrics=required,
-                source=claim_sources or ["codex_local_execution"],
-                evaluable=evaluable,
-                reason=reason,
-            )
-        )
-    return ClaimAlignmentDoc(claims=items)
+def _safe_int(value: Any, default: int) -> int:
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default

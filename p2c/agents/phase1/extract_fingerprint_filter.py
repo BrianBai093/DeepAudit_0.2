@@ -16,6 +16,24 @@ from p2c.schemas import (
 )
 
 NUMBER_RE = re.compile(r"\d+(?:\.\d+)?")
+TABLE_DERIVED_SOURCES = {
+    "table_metric",
+    "llm_table_metric",
+    "llm_table_param",
+    "visual_table_metric",
+    "visual_table_param",
+}
+
+_DEFAULT_MAX_FINGERPRINT_CLAIMS = 120
+
+
+def _compact_visual_reference(raw: object) -> dict[str, object]:
+    if not isinstance(raw, dict):
+        return {}
+    element_id = str(raw.get("element_id") or "").strip()
+    if not element_id:
+        return {}
+    return {"element_id": element_id}
 
 
 class ExtractFingerprintFilterAgent(BaseAgent):
@@ -179,7 +197,7 @@ class ExtractFingerprintFilterAgent(BaseAgent):
     @staticmethod
     def _is_actionable_row(row: dict) -> bool:
         source_type = str(row.get("source_type") or "")
-        if source_type == "table_metric":
+        if source_type in TABLE_DERIVED_SOURCES:
             return True
 
         facet = str(row.get("facet") or "")
@@ -190,6 +208,33 @@ class ExtractFingerprintFilterAgent(BaseAgent):
         if facet == "execution_param":
             return bool(re.search(r"\d", fact))
         return False
+
+    @classmethod
+    def _limit_selected_indices(
+        cls,
+        criteria: list[dict],
+        selected_indices: list[int],
+        max_claims: int,
+    ) -> tuple[list[int], int]:
+        """Keep phase-2-facing claims bounded while preserving high-value rows."""
+        if max_claims <= 0 or len(selected_indices) <= max_claims:
+            return selected_indices, 0
+
+        def priority(idx: int) -> tuple[int, int, int, int]:
+            row = criteria[idx]
+            claim_type = cls._claim_type(row)
+            has_metric_value = row.get("metric_value") is not None
+            source_type = str(row.get("source_type") or "")
+            is_table_result = source_type in TABLE_DERIVED_SOURCES and claim_type == "result"
+            return (
+                0 if claim_type == "result" else 1,
+                0 if has_metric_value else 1,
+                0 if is_table_result else 1,
+                idx,
+            )
+
+        kept = sorted(sorted(set(selected_indices), key=priority)[:max_claims])
+        return kept, max(0, len(set(selected_indices)) - len(kept))
 
     def execute(self, ctx: dict) -> dict:
         atomic = self.artifacts.read_json("fingerprint/atomic_criteria.json")
@@ -219,12 +264,12 @@ class ExtractFingerprintFilterAgent(BaseAgent):
         table_seen: set[tuple[str, str, str, str]] = set()
 
         for idx, row in enumerate(criteria):
-            if row.get("source_type") == "table_metric":
+            if row.get("source_type") in TABLE_DERIVED_SOURCES:
                 table_key = (
                     str(row.get("table_anchor") or ""),
                     str(row.get("entity") or row.get("model") or ""),
                     str(row.get("metric_name") or ""),
-                    str(row.get("metric_value") or row.get("value_raw") or ""),
+                    str(row.get("metric_value") or row.get("value_raw") or row.get("fact") or ""),
                 )
                 if table_key not in table_seen:
                     table_seen.add(table_key)
@@ -282,6 +327,13 @@ class ExtractFingerprintFilterAgent(BaseAgent):
             )
 
         selected_indices = sorted(set(selected_indices).union(table_selected))
+        try:
+            max_claims = int(os.getenv("P2C_MAX_FINGERPRINT_CLAIMS", str(_DEFAULT_MAX_FINGERPRINT_CLAIMS)))
+        except ValueError:
+            max_claims = _DEFAULT_MAX_FINGERPRINT_CLAIMS
+        selected_indices, dropped_by_cap = self._limit_selected_indices(criteria, selected_indices, max_claims)
+        if dropped_by_cap:
+            reason_codes.append("FINGERPRINT_CLAIMS_CAPPED")
 
         selected_rows = [criteria[i] for i in selected_indices]
 
@@ -311,8 +363,8 @@ class ExtractFingerprintFilterAgent(BaseAgent):
                     tolerance=tolerance,
                     evidence_anchors=FingerprintEvidenceAnchors(
                         text_anchor=f"atomic_criteria[{crit_idx}]",
-                        visual_anchor=row.get("table_anchor") if row.get("source_type") == "table_metric" else None,
-                        visual_data={},
+                        visual_anchor=row.get("table_anchor") or None,
+                        visual_data=_compact_visual_reference(row.get("visual_data")),
                     ),
                     reason_codes=[str(x) for x in row.get("reason_codes", [])],
                 )
@@ -333,6 +385,14 @@ class ExtractFingerprintFilterAgent(BaseAgent):
         )
 
         self.artifacts.write_json("fingerprint/filter_clusters.json", {"clusters": cluster_debug, "reason_codes": []})
-        self.artifacts.write_json("fingerprint/filter_selected.json", {"selected_indices": selected_indices, "reason_codes": []})
+        self.artifacts.write_json(
+            "fingerprint/filter_selected.json",
+            {
+                "selected_indices": selected_indices,
+                "dropped_by_cap": dropped_by_cap,
+                "max_claims": max_claims,
+                "reason_codes": ["FINGERPRINT_CLAIMS_CAPPED"] if dropped_by_cap else [],
+            },
+        )
         self.artifacts.write_json("fingerprint/fingerprint.json", fingerprint.model_dump())
         return {"fingerprint": fingerprint.model_dump()}

@@ -1,4 +1,4 @@
-"""ToolAgent — creates conda/venv environment and installs dependencies from the plan."""
+"""ToolAgent — creates conda/venv environments from repository-derived specs."""
 
 from __future__ import annotations
 
@@ -7,13 +7,42 @@ import re
 from pathlib import Path
 from typing import Any
 
+try:  # pragma: no cover - Python 3.11+
+    import tomllib  # type: ignore[attr-defined]
+except Exception:  # pragma: no cover - Python 3.10 fallback
+    try:
+        import tomli as tomllib  # type: ignore[no-redef]
+    except Exception:  # pragma: no cover - optional dependency
+        tomllib = None
+
 from p2c.agents.base import BaseAgent
+from p2c.env_detection import is_conda_environment_file, iter_conda_environment_files
 from p2c.runtime.conda_env import CondaEnvManager, DepLayer
-from p2c.schemas import CondaDependency, EnvSetupResult, ExecutionPlan
+from p2c.schemas import (
+    CondaDependency,
+    DependencyProfile,
+    EnvSetupResult,
+    ExecutorEnvSpec,
+    RepoAnalysis,
+)
 
 
 class ToolAgent(BaseAgent):
-    """Pure-subprocess agent: no LLM calls, just environment setup."""
+    """Pure-subprocess agent: deterministic environment setup from repo manifests."""
+
+    _ENV_SCAN_EXCLUDE_DIRS = {
+        ".git",
+        ".hg",
+        ".svn",
+        "__pycache__",
+        "node_modules",
+        ".venv",
+        "venv",
+        "build",
+        "dist",
+        ".mypy_cache",
+        ".pytest_cache",
+    }
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(name="tool_agent", *args, **kwargs)
@@ -24,31 +53,42 @@ class ToolAgent(BaseAgent):
     # ------------------------------------------------------------------
 
     def execute(self, ctx: dict[str, Any]) -> dict[str, Any]:
-        plan: ExecutionPlan = ctx["_p2_plan"]
+        env_spec_raw = ctx["_p2_env_spec"]
+        env_spec = env_spec_raw if isinstance(env_spec_raw, ExecutorEnvSpec) else ExecutorEnvSpec(**env_spec_raw)
         repo_dir = Path(str(ctx["repo_dir"])).resolve()
-        self._augment_plan_dependencies(plan, repo_dir)
+        native_environment_file = self._resolve_native_environment_file(env_spec, repo_dir)
+        if native_environment_file is None:
+            self._augment_env_spec_dependencies(env_spec, repo_dir)
         self._env_mgr = CondaEnvManager(
-            env_name=plan.env_name,
-            python_version=plan.python_version,
+            env_name=env_spec.env_name,
+            python_version=env_spec.python_version,
         )
-        self.log("PROGRESS", f"backend={self._env_mgr.backend}, env={plan.env_name}, "
-                              f"python={plan.python_version}")
+        self.log("PROGRESS", f"backend={self._env_mgr.backend}, env={env_spec.env_name}, python={env_spec.python_version}")
 
         result = EnvSetupResult(
-            env_name=plan.env_name,
-            python_version=plan.python_version,
+            env_name=env_spec.env_name,
+            python_version=env_spec.python_version,
         )
 
-        # 1. Create environment
         self.log("PROGRESS", "creating environment...")
-        create_out = self._env_mgr.create()
-        result.install_commands.append(f"create env (ok={create_out['ok']})")
+        if native_environment_file is not None:
+            self.log("PROGRESS", f"using native conda environment file: {native_environment_file}")
+            create_out = self._env_mgr.create_from_environment_file(native_environment_file)
+            result.install_commands.append(f"conda env create -f {native_environment_file} (ok={create_out['ok']})")
+            if create_out["ok"]:
+                result.reason_codes.append("NATIVE_CONDA_ENV_CREATED")
+        else:
+            create_out = self._env_mgr.create()
+            result.install_commands.append(f"create env (ok={create_out['ok']})")
         if not create_out["ok"]:
             self.log("PROGRESS", f"env creation failed: {create_out['log'][:500]}")
-            # Try fallback python version
-            if plan.python_version != "3.10":
+            if native_environment_file is not None:
+                result.reason_codes.append("NATIVE_CONDA_ENV_CREATE_FAILED")
+                self._persist(result)
+                return {"env_result": result}
+            if env_spec.python_version != "3.10":
                 self.log("PROGRESS", "retrying with python=3.10")
-                self._env_mgr = CondaEnvManager(env_name=plan.env_name, python_version="3.10")
+                self._env_mgr = CondaEnvManager(env_name=env_spec.env_name, python_version="3.10")
                 create_out = self._env_mgr.create()
                 result.python_version = "3.10"
                 if not create_out["ok"]:
@@ -57,35 +97,36 @@ class ToolAgent(BaseAgent):
                     return {"env_result": result}
 
         result.env_path = self._env_mgr.env_path_actual()
+        if native_environment_file is not None:
+            actual_python = self._env_mgr.python_version_actual()
+            if actual_python:
+                result.python_version = actual_python.split()[0]
 
-        # 2. System packages (best-effort)
-        if plan.system_packages:
-            self.log("PROGRESS", f"installing {len(plan.system_packages)} system packages...")
-            proc = self._env_mgr.install_system_packages(plan.system_packages)
+        if env_spec.system_packages:
+            self.log("PROGRESS", f"installing {len(env_spec.system_packages)} system packages...")
+            proc = self._env_mgr.install_system_packages(env_spec.system_packages)
             result.system_install_log.append(proc.stderr[:2000] if proc.stderr else "ok")
             result.install_commands.append(f"system packages rc={proc.returncode}")
 
-        # 3. Pre-install commands
-        for cmd in plan.pre_install_commands:
-            self.log("PROGRESS", f"pre-install: {cmd[:80]}")
-            proc = self._env_mgr.run_in_env(cmd, cwd=str(repo_dir), timeout_sec=120)
-            result.install_commands.append(f"pre-install({cmd[:60]}) rc={proc.returncode}")
+        use_layered = os.getenv("P2C_LAYERED_INSTALL", "1") == "1"
+        if native_environment_file is not None:
+            self.log("PROGRESS", "native conda env created; skipping derived dependency install")
+        elif use_layered and (env_spec.conda_dependencies or env_spec.pip_dependencies):
+            self._install_layered(env_spec, result)
+        else:
+            self._install_flat(env_spec, result)
+
+        for cmd in env_spec.pre_install_commands:
+            self.log("PROGRESS", f"post-dependency install: {cmd[:80]}")
+            proc = self._env_mgr.run_in_env(cmd, cwd=str(repo_dir), timeout_sec=300)
+            result.install_commands.append(f"post-dependency install({cmd[:60]}) rc={proc.returncode}")
             if proc.returncode != 0:
                 result.reason_codes.append("PREINSTALL_FAILED")
 
-        # 4 & 5. Dependencies — layered or flat install
-        use_layered = os.getenv("P2C_LAYERED_INSTALL", "1") == "1"
-        if use_layered and (plan.conda_dependencies or plan.pip_dependencies):
-            self._install_layered(plan, result)
-        else:
-            self._install_flat(plan, result)
-
-        # 6. Validate
         self.log("PROGRESS", "validating environment...")
-        key_imports = self._derive_key_imports(plan)
+        key_imports = self._derive_key_imports(env_spec)
         result.validation_passed = self._env_mgr.validate(key_imports)
 
-        # 7. Snapshot
         result.installed_packages_snapshot = self._env_mgr.freeze()
         self.artifacts.write_text("execution/env_lock/pip_freeze.txt", result.installed_packages_snapshot)
 
@@ -95,13 +136,17 @@ class ToolAgent(BaseAgent):
             result.reason_codes.append("VALIDATION_FAILED")
 
         self._persist(result)
-        self.log("DONE", f"env ready: {len(result.failed_packages)} failures, "
-                          f"valid={result.validation_passed}")
+        self.log("DONE", f"env ready: {len(result.failed_packages)} failures, valid={result.validation_passed}")
         return {"env_result": result}
 
-    # ------------------------------------------------------------------
-    # Cleanup (called by orchestrator)
-    # ------------------------------------------------------------------
+    def build_env_spec(self, ctx: dict[str, Any]) -> ExecutorEnvSpec:
+        repo_dir = Path(str(ctx["repo_dir"])).resolve()
+        repo_analysis_raw = self.artifacts.read_json("task/repo_analysis.json")
+        repo_analysis = RepoAnalysis(**repo_analysis_raw) if repo_analysis_raw else RepoAnalysis()
+        env_name = f"{ctx.get('run_id', 'p2c')}_executor"
+        env_spec = self._build_env_spec(repo_dir=repo_dir, repo_analysis=repo_analysis, env_name=env_name)
+        self.artifacts.write_json("execution/executor_env_spec.json", env_spec.model_dump())
+        return env_spec
 
     def cleanup(self) -> None:
         if self._env_mgr:
@@ -113,14 +158,324 @@ class ToolAgent(BaseAgent):
         return self._env_mgr
 
     # ------------------------------------------------------------------
+    # Deterministic env-spec builder
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def _build_env_spec(
+        cls,
+        *,
+        repo_dir: Path,
+        repo_analysis: RepoAnalysis,
+        env_name: str,
+    ) -> ExecutorEnvSpec:
+        pip_dependencies: list[str] = []
+        conda_dependencies: list[CondaDependency] = []
+        pre_install_commands: list[str] = []
+        reason_codes: list[str] = ["REPO_ENV_SPEC"]
+        native_environment_file = cls._find_native_environment_file(repo_dir, repo_analysis)
+        pixi_python_version: str | None = None
+        if native_environment_file is not None:
+            reason_codes.append("ENV_SPEC_FROM_NATIVE_CONDA_FILE")
+
+        for profile in repo_analysis.dependency_profiles:
+            if native_environment_file is not None and profile.manager == "conda":
+                continue
+            cls._merge_profile_dependencies(
+                repo_dir=repo_dir,
+                profile=profile,
+                pip_dependencies=pip_dependencies,
+                conda_dependencies=conda_dependencies,
+                pre_install_commands=pre_install_commands,
+                reason_codes=reason_codes,
+            )
+            for manifest_path in profile.manifest_paths:
+                manifest = repo_dir / manifest_path
+                if manifest.name != "pyproject.toml":
+                    continue
+                python_from_pixi, pixi_deps = cls._parse_pixi_pyproject(manifest)
+                if python_from_pixi:
+                    pixi_python_version = pixi_python_version or python_from_pixi
+                if pixi_deps:
+                    for dep in pixi_deps:
+                        cls._append_unique_conda(conda_dependencies, dep)
+                    reason_codes.append("ENV_SPEC_FROM_PIXI_PYPROJECT")
+
+        python_version = (
+            pixi_python_version
+            or (
+                cls._python_version_from_environment(native_environment_file)
+                if native_environment_file is not None
+                else None
+            )
+            or cls._infer_python_version(repo_dir, repo_analysis)
+        )
+        return ExecutorEnvSpec(
+            env_name=env_name,
+            python_version=python_version,
+            native_environment_file=(
+                cls._repo_relative_path(repo_dir, native_environment_file)
+                if native_environment_file is not None
+                else None
+            ),
+            conda_dependencies=conda_dependencies,
+            pip_dependencies=pip_dependencies,
+            system_packages=[],
+            pre_install_commands=pre_install_commands,
+            reason_codes=list(dict.fromkeys(reason_codes)),
+        )
+
+    @classmethod
+    def _merge_profile_dependencies(
+        cls,
+        *,
+        repo_dir: Path,
+        profile: DependencyProfile,
+        pip_dependencies: list[str],
+        conda_dependencies: list[CondaDependency],
+        pre_install_commands: list[str],
+        reason_codes: list[str],
+    ) -> None:
+        if profile.manager == "pip_requirements":
+            for manifest_path in profile.manifest_paths:
+                manifest = repo_dir / manifest_path
+                for requirement in cls._parse_requirements_file(manifest):
+                    cls._append_unique_pip(pip_dependencies, requirement)
+            reason_codes.append("ENV_SPEC_FROM_REQUIREMENTS")
+            return
+
+        if profile.manager == "pip_editable":
+            cmd = "python -m pip install -e ."
+            if profile.cwd and profile.cwd != ".":
+                cmd = f"cd {profile.cwd} && {cmd}"
+            cls._append_unique_command(pre_install_commands, cmd)
+            reason_codes.append("ENV_SPEC_FROM_EDITABLE_INSTALL")
+            return
+
+        if profile.manager == "poetry":
+            cmd = "python -m pip install poetry && poetry install"
+            if profile.cwd and profile.cwd != ".":
+                cmd = f"cd {profile.cwd} && {cmd}"
+            cls._append_unique_command(pre_install_commands, cmd)
+            reason_codes.append("ENV_SPEC_FROM_POETRY")
+            return
+
+        if profile.manager == "conda":
+            for manifest_path in profile.manifest_paths:
+                manifest = repo_dir / manifest_path
+                for dep in cls._parse_environment_yml(manifest):
+                    cls._append_unique_conda(conda_dependencies, dep)
+            reason_codes.append("ENV_SPEC_FROM_CONDA_FILE")
+
+    @classmethod
+    def _infer_python_version(cls, repo_dir: Path, repo_analysis: RepoAnalysis) -> str:
+        for profile in repo_analysis.dependency_profiles:
+            for manifest_path in profile.manifest_paths:
+                path = repo_dir / manifest_path
+                if path.name == "pyproject.toml":
+                    version = cls._python_version_from_pyproject(path)
+                    if version:
+                        return version
+                if is_conda_environment_file(path):
+                    version = cls._python_version_from_environment(path)
+                    if version:
+                        return version
+
+        setup_py = repo_dir / "setup.py"
+        if setup_py.is_file():
+            text = setup_py.read_text(encoding="utf-8", errors="ignore")
+            match = re.search(r"python_requires\s*=\s*['\"]([^'\"]+)['\"]", text)
+            version = cls._extract_python_minor(match.group(1)) if match else None
+            if version:
+                return version
+
+        return "3.10"
+
+    @classmethod
+    def _find_native_environment_file(cls, repo_dir: Path, repo_analysis: RepoAnalysis) -> Path | None:
+        for profile in repo_analysis.dependency_profiles:
+            if profile.manager != "conda":
+                continue
+            for manifest_path in profile.manifest_paths:
+                path = repo_dir / manifest_path
+                if is_conda_environment_file(path) and path.is_file():
+                    return path
+        candidates = iter_conda_environment_files(repo_dir, exclude_dirs=cls._ENV_SCAN_EXCLUDE_DIRS)
+        if candidates:
+            return candidates[0]
+        return None
+
+    @staticmethod
+    def _repo_relative_path(repo_dir: Path, path: Path) -> str:
+        try:
+            return str(path.relative_to(repo_dir))
+        except ValueError:
+            return str(path)
+
+    @staticmethod
+    def _resolve_native_environment_file(env_spec: ExecutorEnvSpec, repo_dir: Path) -> Path | None:
+        if not env_spec.native_environment_file:
+            return None
+        path = Path(env_spec.native_environment_file)
+        if not path.is_absolute():
+            path = repo_dir / path
+        return path if path.is_file() else None
+
+    @classmethod
+    def _python_version_from_pyproject(cls, path: Path) -> str | None:
+        if tomllib is None or not path.is_file():
+            return None
+        try:
+            with path.open("rb") as handle:
+                data = tomllib.load(handle)
+        except Exception:  # noqa: BLE001
+            return None
+        pixi_python = cls._python_version_from_pixi_data(data)
+        if pixi_python:
+            return pixi_python
+        project = data.get("project") if isinstance(data, dict) else {}
+        requires_python = project.get("requires-python") if isinstance(project, dict) else None
+        if isinstance(requires_python, str):
+            return cls._extract_python_minor(requires_python)
+        return None
+
+    @classmethod
+    def _python_version_from_environment(cls, path: Path) -> str | None:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        match = re.search(r"^\s*-\s*python\s*=\s*(3\.(?:7|8|9|10|11|12))", text, re.M)
+        return match.group(1) if match else cls._extract_python_minor(text)
+
+    @staticmethod
+    def _extract_python_minor(text: str) -> str | None:
+        bounded = re.search(
+            r">=\s*3\.(7|8|9|10|11|12).*<\s*3\.(7|8|9|10|11|12)",
+            text,
+        )
+        if bounded:
+            return f"3.{bounded.group(1)}"
+        match = re.search(r"(?:==|~=|>=|=)\s*3\.(7|8|9|10|11|12)", text)
+        if not match:
+            match = re.search(r"3\.(7|8|9|10|11|12)(?:\.\*|x)?", text)
+        return f"3.{match.group(1)}" if match else None
+
+    @classmethod
+    def _parse_pixi_pyproject(cls, path: Path) -> tuple[str | None, list[CondaDependency]]:
+        if tomllib is None or not path.is_file():
+            return None, []
+        try:
+            with path.open("rb") as handle:
+                data = tomllib.load(handle)
+        except Exception:  # noqa: BLE001
+            return None, []
+        python_version = cls._python_version_from_pixi_data(data)
+        deps: list[CondaDependency] = []
+        for package, raw_spec in cls._pixi_dependency_items(data):
+            package_name = str(package).strip()
+            if not package_name:
+                continue
+            if package_name.lower() in {"python", "pip", "setuptools", "wheel"}:
+                continue
+            constraint = cls._pixi_constraint(raw_spec)
+            deps.append(
+                CondaDependency(
+                    package=package_name,
+                    version_constraint=constraint,
+                    channel="conda-forge",
+                )
+            )
+        return python_version, deps
+
+    @classmethod
+    def _python_version_from_pixi_data(cls, data: dict[str, Any]) -> str | None:
+        for package, raw_spec in cls._pixi_dependency_items(data):
+            if str(package).strip().lower() != "python":
+                continue
+            constraint = cls._pixi_constraint(raw_spec)
+            if constraint:
+                return cls._extract_python_minor(constraint)
+        return None
+
+    @classmethod
+    def _pixi_dependency_items(cls, data: dict[str, Any]) -> list[tuple[str, Any]]:
+        pixi = cls._pixi_table(data)
+        deps: list[tuple[str, Any]] = []
+        base_deps = pixi.get("dependencies") if isinstance(pixi, dict) else {}
+        if isinstance(base_deps, dict):
+            deps.extend(base_deps.items())
+
+        feature_names = cls._default_pixi_features(pixi)
+        features = pixi.get("feature") if isinstance(pixi, dict) else {}
+        if isinstance(features, dict):
+            for feature_name in feature_names:
+                feature = features.get(feature_name)
+                feature_deps = feature.get("dependencies") if isinstance(feature, dict) else {}
+                if isinstance(feature_deps, dict):
+                    deps.extend(feature_deps.items())
+
+        deduped: dict[str, Any] = {}
+        for package, raw_spec in deps:
+            deduped[str(package)] = raw_spec
+        return list(deduped.items())
+
+    @staticmethod
+    def _pixi_table(data: dict[str, Any]) -> dict[str, Any]:
+        tool = data.get("tool") if isinstance(data, dict) else {}
+        pixi = tool.get("pixi") if isinstance(tool, dict) else {}
+        return pixi if isinstance(pixi, dict) else {}
+
+    @staticmethod
+    def _default_pixi_features(pixi: dict[str, Any]) -> list[str]:
+        environments = pixi.get("environments") if isinstance(pixi, dict) else {}
+        default_env = environments.get("default") if isinstance(environments, dict) else None
+        if isinstance(default_env, list):
+            return [str(item) for item in default_env]
+        if isinstance(default_env, dict):
+            features = default_env.get("features")
+            if isinstance(features, list):
+                return [str(item) for item in features]
+        return []
+
+    @staticmethod
+    def _pixi_constraint(raw_spec: Any) -> str | None:
+        if isinstance(raw_spec, str):
+            spec = raw_spec.strip()
+            if not spec or spec == "*":
+                return None
+            return spec
+        if isinstance(raw_spec, dict):
+            version = raw_spec.get("version")
+            if isinstance(version, str):
+                version = version.strip()
+                return version if version and version != "*" else None
+        return None
+
+    @classmethod
+    def _parse_environment_yml(cls, path: Path) -> list[CondaDependency]:
+        deps: list[CondaDependency] = []
+        try:
+            text = path.read_text(encoding="utf-8", errors="ignore")
+        except Exception:  # noqa: BLE001
+            return deps
+        for raw_line in text.splitlines():
+            stripped = raw_line.strip().lstrip("-").strip()
+            if not stripped or stripped.startswith("#") or stripped == "dependencies:" or stripped == "pip:":
+                continue
+            if stripped.startswith(("git+", "http://", "https://")):
+                continue
+            if stripped.startswith("python="):
+                continue
+            package, version = cls._split_dep_spec(stripped)
+            if package:
+                deps.append(CondaDependency(package=package, version_constraint=version, channel="conda-forge"))
+        return deps
+
+    # ------------------------------------------------------------------
     # Layered vs flat install
     # ------------------------------------------------------------------
 
-    def _install_layered(self, plan: ExecutionPlan, result: EnvSetupResult) -> None:
-        """Install deps in priority tiers: core → ML frameworks → paper-specific."""
-        layers = self._build_layers(plan)
-        self.log("PROGRESS", f"layered install: {len(layers)} tiers "
-                              f"({', '.join(l.name for l in layers)})")
+    def _install_layered(self, env_spec: ExecutorEnvSpec, result: EnvSetupResult) -> None:
+        layers = self._build_layers(env_spec)
+        self.log("PROGRESS", f"layered install: {len(layers)} tiers ({', '.join(l.name for l in layers)})")
 
         layer_results = self._env_mgr.install_layered(layers)
         for lr in layer_results:
@@ -133,51 +488,33 @@ class ToolAgent(BaseAgent):
             result.install_commands.append(entry)
             self.log("PROGRESS", entry)
 
-            # After core layer, verify numpy ABI compatibility
-            if lr.layer_name == "core" and lr.ok:
-                if not self._env_mgr.validate_abi():
-                    self.log("PROGRESS", "numpy ABI mismatch detected — reinstalling numpy via pip")
-                    self._env_mgr.run_in_env(
-                        "pip install --force-reinstall numpy", timeout_sec=120,
-                    )
-                    result.install_commands.append("numpy ABI fix (pip reinstall)")
+            if lr.layer_name == "core" and lr.ok and not self._env_mgr.validate_abi():
+                self.log("PROGRESS", "numpy ABI mismatch detected — reinstalling numpy via pip")
+                self._env_mgr.run_in_env("pip install --force-reinstall numpy", timeout_sec=120)
+                result.install_commands.append("numpy ABI fix (pip reinstall)")
 
-    def _install_flat(self, plan: ExecutionPlan, result: EnvSetupResult) -> None:
-        """Original flat install path (no layering)."""
-        if plan.conda_dependencies:
-            self.log("PROGRESS", f"installing {len(plan.conda_dependencies)} conda packages...")
-            logs = self._env_mgr.install_conda_packages(plan.conda_dependencies)
+    def _install_flat(self, env_spec: ExecutorEnvSpec, result: EnvSetupResult) -> None:
+        if env_spec.conda_dependencies:
+            self.log("PROGRESS", f"installing {len(env_spec.conda_dependencies)} conda packages...")
+            logs = self._env_mgr.install_conda_packages(env_spec.conda_dependencies)
             for entry in logs:
-                result.conda_install_log.append(
-                    f"channel={entry['channel']} specs={entry['specs']} rc={entry['rc']}"
-                )
+                result.conda_install_log.append(f"channel={entry['channel']} specs={entry['specs']} rc={entry['rc']}")
                 if entry["rc"] != 0:
-                    for spec in entry["specs"]:
-                        result.failed_packages.append(spec)
+                    result.failed_packages.extend(entry["specs"])
 
-        if plan.pip_dependencies:
-            self.log("PROGRESS", f"installing {len(plan.pip_dependencies)} pip packages...")
-            proc = self._env_mgr.install_pip_packages(plan.pip_dependencies)
+        if env_spec.pip_dependencies:
+            self.log("PROGRESS", f"installing {len(env_spec.pip_dependencies)} pip packages...")
+            proc = self._env_mgr.install_pip_packages(env_spec.pip_dependencies)
             result.pip_install_log.append(proc.stderr[:3000] if proc.stderr else "ok")
             result.install_commands.append(f"pip install rc={proc.returncode}")
             if proc.returncode != 0:
-                for pkg in plan.pip_dependencies:
+                for pkg in env_spec.pip_dependencies:
                     single = self._env_mgr.install_pip_packages([pkg])
                     if single.returncode != 0:
                         result.failed_packages.append(pkg)
 
     @staticmethod
-    def _build_layers(plan: ExecutionPlan) -> list[DepLayer]:
-        """Partition plan dependencies into install tiers.
-
-        Tier 1 (core):   python runtime deps, pytorch/tensorflow, numpy
-        Tier 2 (ml_libs): common ML libraries (sklearn, scipy, pandas, etc.)
-        Tier 3 (paper):   everything else (paper-specific packages)
-
-        Each tier gets verify_imports so a failure is caught before the next
-        tier is installed. Tier 1 is critical — if it fails, abort.
-        """
-        # Known packages for each tier
+    def _build_layers(env_spec: ExecutorEnvSpec) -> list[DepLayer]:
         CORE_PKGS = {
             "torch", "torchvision", "torchaudio", "pytorch",
             "tensorflow", "tensorflow-gpu", "tf-nightly",
@@ -188,7 +525,6 @@ class ToolAgent(BaseAgent):
             "seaborn", "xgboost", "lightgbm", "transformers",
             "datasets", "tokenizers", "accelerate", "huggingface-hub",
         }
-        # Import verification map
         IMPORT_MAP = {
             "torch": "torch", "torchvision": "torchvision",
             "tensorflow": "tensorflow", "jax": "jax",
@@ -197,18 +533,15 @@ class ToolAgent(BaseAgent):
             "transformers": "transformers",
         }
 
-        def _pkg_name(spec: str) -> str:
+        def pkg_name(spec: str) -> str:
             return spec.split("==")[0].split(">=")[0].split("<=")[0].split("[")[0].strip().lower()
 
-        # Packages that are already handled by env creation — skip them
-        _SKIP_PKGS = {"python", "pip", "setuptools", "wheel"}
-
-        # Partition conda deps
+        skip_pkgs = {"python", "pip", "setuptools", "wheel"}
         core_conda, ml_conda, paper_conda = [], [], []
-        for dep in plan.conda_dependencies:
-            name = _pkg_name(dep.package)
-            if name in _SKIP_PKGS:
-                continue  # already in env from conda create
+        for dep in env_spec.conda_dependencies:
+            name = pkg_name(dep.package)
+            if name in skip_pkgs:
+                continue
             if name in CORE_PKGS:
                 core_conda.append(dep)
             elif name in ML_PKGS:
@@ -216,10 +549,9 @@ class ToolAgent(BaseAgent):
             else:
                 paper_conda.append(dep)
 
-        # Partition pip deps
         core_pip, ml_pip, paper_pip = [], [], []
-        for dep in plan.pip_dependencies:
-            name = _pkg_name(dep)
+        for dep in env_spec.pip_dependencies:
+            name = pkg_name(dep)
             if name in CORE_PKGS:
                 core_pip.append(dep)
             elif name in ML_PKGS:
@@ -227,88 +559,41 @@ class ToolAgent(BaseAgent):
             else:
                 paper_pip.append(dep)
 
-        # ------------------------------------------------------------------
-        # ABI compatibility: when a DL framework (tensorflow/torch/jax) is
-        # installed via pip, numpy MUST also come from pip.  Mixing a
-        # conda-forge numpy with a pip tensorflow causes C-level ABI
-        # mismatches ("numpy.dtype size changed").
-        # ------------------------------------------------------------------
-        DL_FRAMEWORKS = {
-            "torch", "torchvision", "torchaudio", "pytorch",
-            "tensorflow", "tensorflow-gpu", "tf-nightly",
-            "jax", "jaxlib",
-        }
-        dl_in_pip = any(_pkg_name(dep) in DL_FRAMEWORKS for dep in core_pip)
-        if dl_in_pip:
-            # Move numpy (and scipy) from conda → pip
-            _ABI_SENSITIVE = {"numpy", "scipy", "h5py"}
-            moved_from_conda: list[str] = []
-            for tier_conda, tier_pip in [
-                (core_conda, core_pip),
-                (ml_conda, ml_pip),
-            ]:
-                to_remove = []
-                for d in tier_conda:
-                    if _pkg_name(d.package) in _ABI_SENSITIVE:
-                        vc = d.version_constraint
-                        # Build pip-style spec: numpy==1.26 (bare version gets ==)
-                        if vc and vc[0] not in ("=", ">", "<", "!", "~"):
-                            spec = f"{d.package}=={vc}"
-                        else:
-                            spec = f"{d.package}{vc or ''}"
+        frameworks = {"torch", "torchvision", "torchaudio", "pytorch", "tensorflow", "tensorflow-gpu", "tf-nightly", "jax", "jaxlib"}
+        if any(pkg_name(dep) in frameworks for dep in core_pip):
+            abi_sensitive = {"numpy", "scipy", "h5py"}
+            for tier_conda, tier_pip in [(core_conda, core_pip), (ml_conda, ml_pip)]:
+                to_remove: list[CondaDependency] = []
+                for dep in tier_conda:
+                    if pkg_name(dep.package) in abi_sensitive:
+                        spec = dep.package if not dep.version_constraint else f"{dep.package}{dep.version_constraint if dep.version_constraint[0] in ('=', '>', '<', '!', '~') else '==' + dep.version_constraint}"
                         if spec not in tier_pip and spec not in core_pip:
                             core_pip.append(spec)
-                        moved_from_conda.append(d.package)
-                        to_remove.append(d)
-                for d in to_remove:
-                    tier_conda.remove(d)
-
-            # Also ensure numpy is explicitly in pip if not already present
-            # (it may only be a transitive dep of tensorflow)
-            has_numpy_pip = any("numpy" in dep.lower() for dep in core_pip)
-            if not has_numpy_pip:
+                        to_remove.append(dep)
+                for dep in to_remove:
+                    tier_conda.remove(dep)
+            if not any("numpy" in dep.lower() for dep in core_pip):
                 core_pip.append("numpy")
 
-        # Build verify lists
-        def _imports_for(conda_deps: list[CondaDependency], pip_deps: list[str]) -> list[str]:
-            imports = []
-            for d in conda_deps:
-                name = _pkg_name(d.package)
+        def imports_for(conda_deps: list[CondaDependency], pip_deps: list[str]) -> list[str]:
+            imports: list[str] = []
+            for dep in conda_deps:
+                name = pkg_name(dep.package)
                 if name in IMPORT_MAP:
                     imports.append(IMPORT_MAP[name])
-            for d in pip_deps:
-                name = _pkg_name(d)
+            for dep in pip_deps:
+                name = pkg_name(dep)
                 if name in IMPORT_MAP:
                     imports.append(IMPORT_MAP[name])
             return imports[:5]
 
-        layers = []
+        layers: list[DepLayer] = []
         if core_conda or core_pip:
-            layers.append(DepLayer(
-                name="core",
-                conda_deps=core_conda,
-                pip_deps=core_pip,
-                verify_imports=_imports_for(core_conda, core_pip),
-                is_critical=True,
-            ))
+            layers.append(DepLayer("core", core_conda, core_pip, imports_for(core_conda, core_pip), True))
         if ml_conda or ml_pip:
-            layers.append(DepLayer(
-                name="ml_libs",
-                conda_deps=ml_conda,
-                pip_deps=ml_pip,
-                verify_imports=_imports_for(ml_conda, ml_pip),
-                is_critical=False,
-            ))
+            layers.append(DepLayer("ml_libs", ml_conda, ml_pip, imports_for(ml_conda, ml_pip), False))
         if paper_conda or paper_pip:
-            layers.append(DepLayer(
-                name="paper_specific",
-                conda_deps=paper_conda,
-                pip_deps=paper_pip,
-                verify_imports=[],  # too diverse to verify generically
-                is_critical=False,
-            ))
-
-        # Edge case: if no layers were created (all deps are empty), return empty
+            layers.append(DepLayer("paper_specific", paper_conda, paper_pip, [], False))
         return layers
 
     # ------------------------------------------------------------------
@@ -342,13 +627,10 @@ class ToolAgent(BaseAgent):
         return requirements
 
     @classmethod
-    def _augment_plan_dependencies(cls, plan: ExecutionPlan, repo_dir: Path) -> None:
+    def _augment_env_spec_dependencies(cls, env_spec: ExecutorEnvSpec, repo_dir: Path) -> None:
         manifest_candidates = ["requirements.txt", "requirements-dev.txt", "requirements_dev.txt"]
-        existing = {cls._base_pkg_name(dep) for dep in plan.pip_dependencies}
-        aliases = {
-            "theano": "theano-pymc",
-            "sklearn": "scikit-learn",
-        }
+        existing = {cls._base_pkg_name(dep) for dep in env_spec.pip_dependencies}
+        aliases = {"theano": "theano-pymc", "sklearn": "scikit-learn"}
         for manifest_name in manifest_candidates:
             manifest = repo_dir / manifest_name
             if not manifest.is_file():
@@ -359,12 +641,11 @@ class ToolAgent(BaseAgent):
                     continue
                 if base in existing or aliases.get(base) in existing:
                     continue
-                plan.pip_dependencies.append(requirement)
+                env_spec.pip_dependencies.append(requirement)
                 existing.add(base)
 
     @staticmethod
-    def _derive_key_imports(plan: ExecutionPlan) -> list[str]:
-        """Guess top-level importable package names from pip deps."""
+    def _derive_key_imports(env_spec: ExecutorEnvSpec) -> list[str]:
         imports: list[str] = []
         known_map = {
             "torch": "torch", "torchvision": "torchvision",
@@ -373,11 +654,53 @@ class ToolAgent(BaseAgent):
             "opencv-python-headless": "cv2", "pillow": "PIL",
             "pyyaml": "yaml", "beautifulsoup4": "bs4",
             "imbalanced-learn": "imblearn",
+            "jax": "jax", "numpy": "numpy",
+            "scipy": "scipy", "matplotlib": "matplotlib",
         }
-        for dep in plan.pip_dependencies[:20]:  # only check first 20
-            name = dep.split("==")[0].split(">=")[0].split("<=")[0].split("[")[0].strip().lower()
+        non_import_packages = {"jaxlib"}
+        for dep in env_spec.conda_dependencies[:20]:
+            name = dep.package.strip().lower()
+            if name in non_import_packages:
+                continue
             if name in known_map:
                 imports.append(known_map[name])
             elif name.replace("-", "_").isidentifier():
                 imports.append(name.replace("-", "_"))
-        return imports[:10]  # cap at 10
+        for dep in env_spec.pip_dependencies[:20]:
+            name = dep.split("==")[0].split(">=")[0].split("<=")[0].split("[")[0].strip().lower()
+            if name in non_import_packages:
+                continue
+            if name in known_map:
+                imports.append(known_map[name])
+            elif name.replace("-", "_").isidentifier():
+                imports.append(name.replace("-", "_"))
+        return list(dict.fromkeys(imports))[:10]
+
+    @staticmethod
+    def _append_unique_command(commands: list[str], command: str) -> None:
+        if command and command not in commands:
+            commands.append(command)
+
+    @classmethod
+    def _append_unique_pip(cls, dependencies: list[str], requirement: str) -> None:
+        base = cls._base_pkg_name(requirement)
+        if not base:
+            return
+        if base not in {cls._base_pkg_name(item) for item in dependencies}:
+            dependencies.append(requirement)
+
+    @staticmethod
+    def _append_unique_conda(dependencies: list[CondaDependency], dep: CondaDependency) -> None:
+        existing = {(item.package.lower(), item.version_constraint or "", item.channel) for item in dependencies}
+        key = (dep.package.lower(), dep.version_constraint or "", dep.channel)
+        if key not in existing:
+            dependencies.append(dep)
+
+    @staticmethod
+    def _split_dep_spec(spec: str) -> tuple[str, str | None]:
+        match = re.match(r"^([A-Za-z0-9_.-]+)\s*([<>=!~].+)?$", spec.strip())
+        if not match:
+            return "", None
+        package = match.group(1)
+        version = match.group(2).strip() if match.group(2) else None
+        return package, version

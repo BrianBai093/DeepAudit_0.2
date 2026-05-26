@@ -1,370 +1,402 @@
 # DeepAudit v0.5
 
-> 论文可复现性自动审计系统 — Automated Paper Reproducibility Audit System
+> 论文可复现性自动审计系统 / Automated Paper Reproducibility Audit System
 
----
+DeepAudit takes a research paper and its companion code repository, then runs a three-phase audit to determine whether the paper's executable claims are reproducible from the available code and evidence.
 
-## 1. 项目简介 / What Is This
+## 1. 项目简介 / What This Repo Does
 
-### English
+DeepAudit 的输入是：
 
-DeepAudit is a three-phase pipeline that takes a research paper and its companion code repository, then automatically:
+- 一份论文 Markdown，通常来自 PDF 转换后的 `paper.md`
+- 可选的论文 PDF，用于图表视觉抽取
+- 一个待审计目标代码仓库，例如 `Target/code`
 
-1. **Phase 1** — Reads the paper, extracts verifiable claims, analyzes the repository, and compiles executable tasks.
-2. **Phase 2** — Provisions a conda environment, executes the repository step-by-step via **Claude Code Agent SDK**, self-heals on failure, and collects metrics.
-3. **Phase 3** — Aligns execution evidence with paper claims, verifies reproducibility within tolerance, and produces a verdict report.
+DeepAudit 的输出是：
 
-**v0.5 highlights**: Phase 2 execution engine migrated from OpenAI Codex CLI to Claude Code Agent SDK. Claude Code is now the **primary and only executor** — every step goes through Claude Code's Bash tool with built-in self-healing and iteration capabilities. This follows the [karpathy/autoresearch](https://github.com/karpathy/autoresearch) design philosophy where the AI agent itself is the executor.
+- 论文 claim / experiment / metric 的结构化中间产物
+- 目标仓库环境构建与执行日志
+- Phase 2 执行证据包
+- Phase 3 claim verdict、可复现性评分和人类可读报告
 
-### 中文
+流水线分三阶段：
 
-DeepAudit 是一个三阶段流水线，输入一篇论文及其配套代码仓库，自动完成：
+1. **Phase 1: Paper + Repo Understanding**  
+   读取论文，抽取可验证 claim，解析图表/表格，分析目标仓库依赖和候选入口点，生成 `claims_ir.json`、`task_spec.json` 和 `metric_contract.json`。
 
-1. **Phase 1** — 阅读论文、抽取可验证 claim、分析仓库结构、编译可执行任务。
-2. **Phase 2** — 创建 conda 环境，通过 **Claude Code Agent SDK** 逐步执行仓库代码，失败时自动修复，收集指标。
-3. **Phase 3** — 将执行证据与论文 claim 对齐，在容差范围内验证可复现性，生成审计报告。
+2. **Phase 2: Environment + Autonomous Execution**  
+   根据仓库依赖创建隔离 conda/venv 环境，然后用 Claude Code Agent SDK 在目标仓库中自主执行实验。执行器会记录命令、日志、指标、失败原因，并生成 Phase 3 消费的规范证据包。
 
-**v0.5 重点变更**：Phase 2 执行引擎从 OpenAI Codex CLI 迁移至 Claude Code Agent SDK。Claude Code 现在是**唯一首选执行方式**——所有步骤统一通过 Claude Code 的 Bash tool 执行，自带 self-heal 和迭代能力。设计理念参照 [karpathy/autoresearch](https://github.com/karpathy/autoresearch)，AI agent 本身就是执行者。
+3. **Phase 3: Evidence Alignment + Verdict**  
+   从 Phase 2 证据包提取指标，对齐到论文 claim，判断是否支持论文结论，并生成 `verdict.json`、`reproducibility_score.json` 和 `report.md`。
 
----
+当前 v0.5 的关键点：Phase 2 的真实实现是 `ToolAgent + ExecutorAgent + Phase2Orchestrator`。README 中的 Phase 2 描述已经按当前代码路径和产物格式校准。
 
 ## 2. 目录结构 / Repository Layout
 
-```
+```text
 DeepAudit_0.2/
-├── p2c/                            # 核心流水线 / Core pipeline
-│   ├── main.py                     # CLI 入口 / CLI entry point
-│   ├── graph.py                    # 阶段编排 / Phase orchestration
-│   ├── schemas.py                  # Pydantic 数据模型 / Data models
-│   ├── io_artifacts.py             # 产物管理 / Artifact tree manager
-│   ├── failure_taxonomy.py         # 失败分类体系 / Failure classification (v2)
+├── p2c/
+│   ├── main.py                         # CLI 入口
+│   ├── graph.py                        # 三阶段 agent 编排
+│   ├── schemas.py                      # Pydantic 数据模型
+│   ├── io_artifacts.py                 # artifacts/<run_id>/ 产物树管理
+│   ├── failure_taxonomy.py             # Phase 2 失败分类
 │   ├── agents/
-│   │   ├── base.py                 # BaseAgent 抽象基类
-│   │   ├── phase1/                 # 论文摄取与任务编译
+│   │   ├── base.py                     # BaseAgent
+│   │   ├── phase1/
 │   │   │   ├── ingest_paper.py
+│   │   │   ├── extract_visual_elements.py
 │   │   │   ├── extract_fingerprint_guide.py
 │   │   │   ├── extract_fingerprint_atomic.py
+│   │   │   ├── enrich_claims_visual.py
 │   │   │   ├── extract_fingerprint_filter.py
 │   │   │   ├── build_claims_ir.py
 │   │   │   ├── repo_analysis.py
 │   │   │   └── compile_task_spec.py
-│   │   ├── phase2/                 # 环境配置与执行
-│   │   │   ├── orchestrator.py     # 状态机编排器
-│   │   │   ├── planner.py          # 执行计划生成
-│   │   │   ├── tool_agent.py       # 环境配置 (conda/pip)
-│   │   │   ├── codex_executor.py   # Claude Code 执行引擎 (v0.5)
-│   │   │   ├── local_prompt_templates.py
-│   │   │   └── result_extraction.py
-│   │   └── phase3/                 # 验证与报告
+│   │   ├── phase2/
+│   │   │   ├── tool_agent.py           # 环境规格生成与安装
+│   │   │   ├── executor_agent.py       # Claude Code 自主执行器
+│   │   │   ├── orchestrator.py         # env setup / repair / execute 状态机
+│   │   │   └── result_extraction.py    # 指标抽取与失败分类
+│   │   └── phase3/
+│   │       ├── execution_summary_evidence.py
 │   │       ├── observe_metrics.py
 │   │       ├── align_evidence.py
 │   │       ├── verify_claims.py
+│   │       ├── score_and_diagnose.py
+│   │       ├── visual_to_repo_alignment.py
+│   │       ├── execution_log_evidence.py
+│   │       ├── reproduce_figures.py
 │   │       └── audit_report.py
-│   ├── llm/
-│   │   └── client.py              # OpenAI 兼容 LLM 客户端
-│   ├── runtime/
-│   │   └── conda_env.py           # Conda 环境管理
+│   ├── llm/client.py                   # OpenAI-compatible LLM client
+│   ├── rag/                            # 可选代码索引 / RAG
+│   ├── runtime/conda_env.py            # conda/venv 环境管理
 │   └── utils/
-│       └── console.py             # 日志与格式化
-├── tests/                          # 回归测试
-├── Target/                         # 被审计的目标仓库
-├── artifacts/                      # 运行产物 (按 run_id 分组)
-├── output/                         # 论文 markdown 中间结果
-├── scripts/                        # 辅助脚本
-└── requirements.txt                # Python 依赖
+├── scripts/run_audit.sh                # 一键运行脚本
+├── tests/                              # 回归测试
+├── Target/                             # 待审计目标材料
+├── artifacts/                          # 运行产物
+├── output/                             # 论文 markdown 中间输出
+└── requirements.txt
 ```
 
----
+## 3. 架构概览 / Pipeline
 
-## 3. 架构概览 / Architecture Overview
+```text
+Phase 1
+paper.md (+ optional paper.pdf) + repo
+  -> PaperText
+  -> visual_elements / visual_targets
+  -> fingerprint / atomic criteria
+  -> claims_ir
+  -> repo_analysis / task_spec / metric_contract
 
-### Pipeline Flow
+Phase 2
+repo_analysis + claims_ir + metric_contract
+  -> executor_env_spec
+  -> env_setup_result
+  -> Claude executor session
+  -> executor_results / run_manifest
+  -> phase2_execution_package
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                        Phase 1                          │
-│  Paper + Repo → Claims IR + Task Spec + Metric Contract │
-│                                                         │
-│  ingest_paper → extract_fingerprint_{guide,atomic,filter}│
-│  → build_claims_ir → repo_analysis → compile_task_spec  │
-└──────────────────────────┬──────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────┐
-│                     Phase 2 (v0.5)                      │
-│          Claude Code Agent SDK as Primary Executor      │
-│                                                         │
-│  PLANNING ──▶ ENV_SETUP ──▶ EXECUTING ──▶ SUCCESS      │
-│     ↑            │              │                       │
-│     │            ▼              ▼                       │
-│     └── REPLANNING ◀── failure analysis                 │
-│              │                                          │
-│              ▼ (attempts exhausted)                     │
-│         AUTONOMOUS ──▶ SUCCESS / FAILED                 │
-└──────────────────────────┬──────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────┐
-│                        Phase 3                          │
-│  Execution Evidence → Claim Verification → Verdict      │
-│                                                         │
-│  observe_metrics → align_evidence → verify_claims       │
-│  → audit_report                                         │
-└─────────────────────────────────────────────────────────┘
+Phase 3
+phase2_execution_package + claims_ir + visual_targets
+  -> effective evidence
+  -> metrics
+  -> claim alignment
+  -> verdict / score / report
 ```
 
-### Phase 2 执行模型 / Phase 2 Execution Model (v0.5)
+`p2c/graph.py` 是实际三阶段调用顺序的来源。`p2c/main.py` 负责 CLI 参数、阶段前置产物校验、全局日志和 `execution/context.json` 写入。
 
-**旧模型 (v0.4)**：先尝试 `env_mgr.run_in_env()` 直接执行，失败后触发 Codex CLI recovery。三层策略：direct → Codex recovery → autonomous。
+## 4. Phase 2 当前执行模型
 
-**新模型 (v0.5)**：所有步骤统一通过 Claude Code Agent SDK 执行。
+Phase 2 不再使用旧的 plan/replan 文件模型。当前执行链路如下：
 
-```python
-_execute_step()
-  → build_step_execution_prompt()   # 构建执行提示词
-  → _run_claude()                   # Claude Code 执行
-      → system_prompt: "conda run -n {env} ..."  # 环境指令
-      → SDK query() → Bash tool 执行命令
-      → 收集 stdout/stderr/metrics
-  → _finalize_step_result()         # 提取指标、分类错误
-```
+1. `ToolAgent.build_env_spec()`  
+   读取 `task/repo_analysis.json`，从 `requirements.txt`、`pyproject.toml`、`environment.yml`、editable install 等信息推导 `ExecutorEnvSpec`，写入 `execution/executor_env_spec.json`。
 
-**两级修复策略**：
-- **Tier 1 (Micro-repair)**：行内修复（pip install、路径修正、设备切换），无需 LLM 重新规划
-- **Tier 2 (Macro-replan)**：完整重新规划 + 环境重建周期
+2. `ToolAgent.run()`  
+   创建隔离环境，安装 conda/pip/system/pre-install 依赖，校验关键 import，并写入 `execution/env_setup_result.json` 和 `execution/env_lock/pip_freeze.txt`。
 
----
+3. `ExecutorAgent.run()`  
+   用 Claude Code Agent SDK 开启一次自主执行 session。它把 repo README、依赖文件、实验列表、metric contract 和明确的输出目录传给 Claude executor，然后要求其在 `execution/executor_outputs/` 写出标准执行结果。
+   在训练开始前，宿主进程会扫描目标仓库中常见的保存逻辑，例如 `np.savetxt`、`torch.save`、`plt.savefig`、`json.dump`、`savepath` / `output_dir` 等，写入 `execution/phase2_artifacts/artifact_storage_preflight.json`，并把摘要交给 executor，帮助它选择正确 cwd 和 repo 支持的输出参数。
+   在训练结束后，宿主进程会再次扫描目标仓库，复制新生成或更新的结果数据、checkpoint 和图片到 `execution/phase2_artifacts/files/`，并写入 `execution/phase2_artifacts/manifest.json`。这些文件会并入 `run_manifest.json` 和 `phase2_execution_package.json`，因此 Phase 3 不再只依赖 stdout。
 
-## 4. 数据模型 / Data Models
+4. `Phase2Orchestrator`  
+   控制 env setup -> executing -> repairing/success/failed。遇到依赖类失败时会做有限环境 patch，例如补装缺失包、处理 CUDA/device 问题。
 
-核心 Pydantic 模型定义于 `p2c/schemas.py`：
+Phase 2 的规范输出是：
+
+- `execution/executor_outputs/phase2_execution_package.json`
+- `execution/executor_outputs/PHASE2_RESULTS.md`
+- `execution/executor_outputs/run_manifest.json`
+- `execution/executor_outputs/executor_results.json`
+- `execution/executor_outputs/executor_activity.jsonl`
+- `execution/executor_outputs/session_stdout.log`
+- `execution/executor_outputs/session_stderr.log`
+- `execution/executor_outputs/executor_agent.log`
+- `execution/executor_outputs/executor_runtime.json`
+- `execution/phase2_artifacts/artifact_storage_preflight.json`
+- `execution/phase2_artifacts/manifest.json`
+
+Phase 3 优先消费 `phase2_execution_package.json`。`run_manifest.json` 和 `executor_results.json` 主要作为兼容与诊断输入。
+
+## 5. 核心数据模型 / Core Data Models
+
+主要模型都在 `p2c/schemas.py`：
 
 | 模型 | 用途 |
 |---|---|
-| `Fingerprint` | 论文指纹：配置 + claims + 证据锚点 |
-| `FingerprintClaim` | 单条可验证 claim（含容差与逻辑） |
-| `ClaimsIR` | 中间表示：实验 + claims + 推理 |
-| `TaskSpec` | 可执行任务规格 + 入口点 + 指标观察器 |
-| `MetricContract` | 指标解析契约（解析器 + 归一化规则） |
-| `ExecutionPlan` | Phase 2 执行计划（环境依赖 + 执行步骤） |
-| `ExecutionStep` | 原子执行步骤（命令、cwd、超时、依赖） |
-| `Phase2State` | 状态机快照 |
-| `VerdictDoc` | 最终结论：SUPPORTED / PARTIALLY_SUPPORTED / NOT_SUPPORTED / INCONCLUSIVE |
+| `PaperText` | 论文文本、章节、图表描述 |
+| `VisualElement` / `VisualTarget` | 从 PDF 图表中抽取的视觉证据和待复现图表目标 |
+| `Fingerprint` / `FingerprintClaim` | 论文指纹与初始 claim |
+| `AtomicCriterion` | 从论文句子/表格/视觉信息抽取的原子验证标准 |
+| `ClaimsIR` / `Experiment` / `ClaimItem` | Phase 1 到 Phase 2/3 的 claim 中间表示 |
+| `RepoAnalysis` / `DependencyProfile` | 目标仓库生态、依赖文件和入口点候选 |
+| `TaskSpec` / `MetricContract` | 可执行任务规格和指标解析契约 |
+| `ExecutorEnvSpec` / `EnvSetupResult` | Phase 2 环境规格和安装结果 |
+| `ExecutionRun` / `RunManifestDoc` | Phase 2 执行记录 |
+| `MetricsDoc` / `ParsedEvidence` | Phase 3 指标和 claim 证据对齐 |
+| `VerdictDoc` / `ReproducibilityScore` | 最终结论和评分 |
 
----
+`ExecutionPlan` 仍保留在 schema 中，但注释明确为 deprecated compatibility model；当前 Phase 2 主路径不依赖它。
 
-## 5. 产物结构 / Artifact Layout
+## 6. 产物结构 / Artifact Layout
 
-每次运行的产物存储在 `artifacts/<run_id>/` 下：
+每次运行写入 `artifacts/<run_id>/`：
 
-```
-<run_id>/
+```text
+artifacts/<run_id>/
 ├── fingerprint/
-│   ├── fingerprint.json            # 最终指纹与 claims
-│   ├── guide_sentences.json        # 筛选出的关键句/表格
-│   ├── atomic_criteria.json        # 原子化标准
-│   └── claims_ir.json              # Claims 中间表示
+│   ├── fingerprint.json
+│   ├── guide_sentences.json
+│   ├── atomic_criteria.json
+│   ├── atomic_rejected.json
+│   ├── filter_clusters.json
+│   ├── filter_selected.json
+│   ├── claims_ir.json
+│   ├── visual_elements.json
+│   └── visual_targets.json
 ├── task/
-│   ├── repo_analysis.json          # 仓库分析结果
-│   ├── task_spec.json              # 可执行任务规格
-│   └── metric_contract.json        # 指标解析契约
+│   ├── repo_analysis.json
+│   ├── task_spec.json
+│   └── metric_contract.json
 ├── execution/
-│   ├── execution_plan.json         # Phase 2 执行计划
-│   ├── env_setup_result.json       # 环境验证结果
-│   ├── phase2_state.json           # 状态机快照
-│   ├── execution_failures.json     # 失败记录
-│   ├── run.log                     # 完整执行日志
+│   ├── context.json
+│   ├── run.log
+│   ├── executor_env_spec.json
+│   ├── env_setup_result.json
+│   ├── execution_failures.json
+│   ├── phase2_state.json
 │   ├── env_lock/
-│   │   └── pip_freeze.txt          # 环境锁定文件
-│   └── codex_outputs/
-│       ├── run_manifest.json       # 所有执行记录 + 指标
-│       ├── claim_alignment.json    # Claim ↔ 指标对齐
-│       └── step_*_{stdout,stderr}.log  # 每步日志
+│   │   └── pip_freeze.txt
+│   ├── executor_outputs/
+│   │   ├── phase2_execution_package.json
+│   │   ├── PHASE2_RESULTS.md
+│   │   ├── run_manifest.json
+│   │   ├── executor_results.json
+│   │   ├── executor_activity.jsonl
+│   │   ├── executor_runtime.json
+│   │   ├── executor_agent.log
+│   │   ├── session_stdout.log
+│   │   ├── session_stderr.log
+│   │   └── experiment_*_{stdout,stderr,narrative}.log
+│   └── phase2_artifacts/
+│       ├── artifact_storage_preflight.json
+│       ├── manifest.json
+│       └── files/
+│           └── <repo-relative generated outputs>
 └── results/
-    ├── metrics.json                # 解析后的指标
-    ├── verdict.json                # 最终 claim 结论
-    └── report.md                   # 人类可读审计报告
+    ├── execution_summary_evidence.json
+    ├── execution_log_evidence.json
+    ├── effective_run_manifest.json
+    ├── effective_claims_ir.json
+    ├── metrics.json
+    ├── parsed_evidence.json
+    ├── evaluability.json
+    ├── evaluability_verdict.json
+    ├── verdict.json
+    ├── reproducibility_score.json
+    ├── visual_to_repo_alignment.json
+    ├── reproduced_figures.json
+    └── report.md
 ```
 
----
+`ArtifactManager.ensure_tree()` 会先创建占位 JSON，因此某个文件存在不代表该阶段已经真正完成。判断 Phase 2 是否有效时，应看 `phase2_execution_package.json` 或 `run_manifest.json` 中是否有实验/运行记录。
 
-## 6. 安装 / Installation
+## 7. 安装 / Installation
 
-### 依赖 / Dependencies
+建议使用 Python 3.10+。
 
 ```bash
-pip install pydantic>=2.0 openai>=1.0 claude-agent-sdk>=0.1.0
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python -m pip install pytest
 ```
 
-测试额外需要：
+核心依赖见 `requirements.txt`：
 
-```bash
-pip install pytest
-```
+- `pydantic`
+- `openai`
+- `claude-agent-sdk`
+- `numpy`
+- `PyMuPDF`
+- `matplotlib`
 
-### 环境要求 / Requirements
+Phase 2 会优先使用 conda 创建目标执行环境；如果 conda 不可用，`p2c/runtime/conda_env.py` 中也有 venv fallback。
 
-- Python 3.10+
-- Conda（用于 Phase 2 目标仓库的环境隔离）
-
----
-
-## 7. 环境变量 / Environment Variables
+## 8. 环境变量 / Environment Variables
 
 | 变量 | 用途 | 默认值 |
 |---|---|---|
-| `OPENAI_API_KEY` | LLM 调用（Phase 1/3 的论文处理） | 必填 |
-| `OPENAI_MODEL` | LLM 模型名 | `gpt-5.4` |
-| `OPENAI_BASE_URL` | OpenAI 兼容 API 地址 | `https://api.openai.com/v1` |
-| `ANTHROPIC_API_KEY` | Claude Code Agent SDK 调用（Phase 2 执行） | 必填 |
-| `P2C_MAX_REPLAN` | Phase 2 最大重规划次数 | `3` |
+| `OPENAI_API_KEY` | Phase 1/3 的 OpenAI-compatible LLM 调用 | 必填 |
+| `OPENAI_MODEL` | Phase 1/3 文本与视觉模型 | `gpt-5.4` |
+| `OPENAI_BASE_URL` | OpenAI-compatible API 地址 | `https://api.openai.com/v1` |
+| `OPENAI_TIMEOUT_SEC` | 文本/JSON 调用超时 | `300` |
+| `OPENAI_VISION_TIMEOUT_SEC` | 视觉调用超时 | `max(360, OPENAI_TIMEOUT_SEC)` |
+| `MINERU_API_TOKEN` | MinerU 精准解析 API Token；当 PDF 超过轻量接口限制时需要 | 未设置 |
+| `P2C_MINERU_MODE` | PDF→Markdown 转换模式：`auto` / `agent` / `standard` / `off` | `auto` |
+| `P2C_MINERU_LANGUAGE` | MinerU 解析语言 | `en` |
+| `P2C_MINERU_TIMEOUT_SEC` | MinerU 任务轮询超时 | `900` |
+| `ANTHROPIC_API_KEY` | Claude Code Agent SDK | Phase 2 必填 |
+| `P2C_CLAUDE_MODEL` | Claude executor 模型 | `claude-haiku-4-5-20251001` |
+| `P2C_MAX_ENV_PATCH` | Phase 2 环境 patch 最大尝试次数 | `2` |
+| `P2C_LAYERED_INSTALL` | 是否分层安装依赖 | `1` |
+| `P2C_KEEP_CONDA_ENV` | 设置后保留 Phase 2 环境，便于调试 | 未设置 |
+| `P2C_HOST_TOOL_DIRS` | 额外转发给执行环境的宿主工具路径 | 未设置 |
+| `P2C_VENV_ROOT` | venv fallback 根目录 | `/tmp` |
+| `P2C_PHASE2_ARTIFACT_MAX_MB` | Phase 2 自动收集单个训练产物的大小上限 | `50` |
 
-Phase 2 执行时会自动转发以下宿主环境变量至 Claude Code：
-`HOME`, `USER`, `PATH`, `LANG`, `SHELL`, `TERM`, `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, `CONDA_EXE`, `CONDA_PREFIX`, `CONDA_DEFAULT_ENV`
+`scripts/run_audit.sh` 还会读取并转发一些运行预算变量，例如 `BUDGET_MINUTES`、`P2C_MIN_EXEC_TIMEOUT_SEC`、`P2C_ATOMIC_LLM_SENTENCE_BUDGET`、`P2C_ATOMIC_LLM_TABLE_BUDGET`。
 
----
+## 9. 使用方法 / How To Run
 
-## 8. 使用方法 / How To Run
-
-### Phase 1：论文摄取与任务编译
+### 单阶段运行
 
 ```bash
 python -m p2c.main \
   --phase 1 \
-  --paper_md "/path/to/paper.md" \
-  --paper_md_out "/path/to/output/paper.md" \
-  --repo_dir "/path/to/Target" \
-  --run_id my_audit \
-  --artifacts_dir "/path/to/artifacts" \
+  --paper_md_out output/paper.md \
+  --paper_pdf Target/paper.pdf \
+  --repo_dir Target/code \
+  --run_id audit_001 \
+  --artifacts_dir artifacts \
   --budget_minutes 60
 ```
-
-### Phase 2：Claude Code 执行
 
 ```bash
 python -m p2c.main \
   --phase 2 \
-  --paper_md "/path/to/output/paper.md" \
-  --paper_md_out "/path/to/output/paper.md" \
-  --repo_dir "/path/to/Target" \
-  --run_id my_audit \
-  --artifacts_dir "/path/to/artifacts" \
-  --budget_minutes 60
+  --paper_md output/paper.md \
+  --paper_md_out output/paper.md \
+  --repo_dir Target/code \
+  --run_id audit_001 \
+  --artifacts_dir artifacts \
+  --budget_minutes 180
 ```
-
-### Phase 3：验证与报告
 
 ```bash
 python -m p2c.main \
   --phase 3 \
-  --paper_md "/path/to/output/paper.md" \
-  --paper_md_out "/path/to/output/paper.md" \
-  --repo_dir "/path/to/Target" \
-  --run_id my_audit \
-  --artifacts_dir "/path/to/artifacts" \
+  --paper_md output/paper.md \
+  --paper_md_out output/paper.md \
+  --repo_dir Target/code \
+  --run_id audit_001 \
+  --artifacts_dir artifacts \
   --budget_minutes 60
 ```
 
-### 全流程示例 / Full Pipeline Example
+### 全流程运行
 
 ```bash
 export OPENAI_API_KEY="sk-..."
 export ANTHROPIC_API_KEY="sk-ant-..."
 
-# Phase 1 → Phase 2 → Phase 3
 for phase in 1 2 3; do
+  PDF_ARGS=()
+  if [ "$phase" = "1" ]; then
+    PDF_ARGS=(--paper_pdf Target/paper.pdf)
+  fi
   python -m p2c.main \
-    --phase $phase \
-    --paper_md paper.md \
+    --phase "$phase" \
+    --paper_md Target/paper/full.md \
     --paper_md_out output/paper.md \
-    --repo_dir ./Target \
+    --repo_dir Target/code \
     --run_id audit_001 \
-    --budget_minutes 60
+    --artifacts_dir artifacts \
+    --budget_minutes 180 \
+    "${PDF_ARGS[@]}"
 done
-
-# 查看结果
-cat artifacts/audit_001/results/verdict.json
-cat artifacts/audit_001/results/report.md
 ```
 
----
+Phase 1 才需要 `--paper_pdf`；如果没有 PDF，图表抽取和视觉增强会跳过，文本 claim 流水线仍可运行。
+当 `--paper_md` 省略且提供了 `--paper_pdf` 时，Phase 1 会自动将 `Target/paper.pdf` 转成 `Target/paper/full.md`，再生成 `--paper_md_out`。如果 `full.md` 已存在且不旧于 PDF，会直接复用；超过 MinerU 轻量接口限制的 PDF 需要设置 `MINERU_API_TOKEN`。
 
-## 9. 测试 / Testing
+### 脚本运行
+
+先编辑 `scripts/run_audit.sh` 顶部 DEFAULTS，使路径匹配本机，然后运行：
 
 ```bash
-# 使用 uv（推荐，自动解决 Python 版本）
-uv run --python 3.13 --with pytest --with pydantic -- \
-  python -m pytest tests/test_phase2_fixes.py -v
+./scripts/run_audit.sh audit_001
+./scripts/run_audit.sh audit_001 1,2
+./scripts/run_audit.sh audit_001 3
+```
 
-# 或直接使用 pytest
+结果查看：
+
+```bash
+cat artifacts/audit_001/results/verdict.json
+cat artifacts/audit_001/results/report.md
+cat artifacts/audit_001/execution/executor_outputs/PHASE2_RESULTS.md
+```
+
+## 10. 测试 / Testing
+
+```bash
 python -m pytest tests/ -v
 ```
 
-当前测试文件：
+常用定向测试：
 
-| 文件 | 覆盖范围 |
-|---|---|
-| `test_phase2_fixes.py` | Conda spec 构建、指标提取、环境转发、Claude Code 执行 mock |
-| `test_phase1_repo_analysis.py` | 仓库分析 agent |
-| `test_claim_context_pipeline.py` | 端到端 claim 构建流水线 |
-| `test_table_extraction.py` | Markdown 表格解析 |
+```bash
+python -m pytest tests/test_main_context.py -v
+python -m pytest tests/test_phase2_fixes.py -v
+python -m pytest tests/test_phase3_report.py -v
+python -m pytest tests/test_visual_enrichment.py -v
+```
 
----
+测试覆盖重点包括：
 
-## 10. 失败分类体系 / Failure Taxonomy
+- Phase 1 repo analysis、table extraction、claim context 和 visual enrichment
+- Phase 2 env spec、executor outputs、phase2 execution package、failure classification
+- Phase 3 metrics observation、effective evidence、claim verification、visual alignment、figure reproduction 和 report rendering
 
-Phase 2 使用 `failure_taxonomy.py` 中定义的分层失败分类：
+## 11. 失败分类 / Failure Taxonomy
 
-| 层级 | 示例失败码 | 修复策略 |
+Phase 2 通过 `failure_taxonomy.py` 和 `result_extraction.py` 对失败进行分类。常见类别：
+
+| 类别 | 示例 | 处理方式 |
 |---|---|---|
-| **Dependency** | `DEP_MISSING_PACKAGE`, `DEP_VERSION_CONFLICT` | INLINE_FIX / REPLAN |
-| **Data** | `DATA_NOT_FOUND`, `DATASET_UNRESOLVED` | REPLAN / SKIP |
-| **Configuration** | `CONFIG_INVALID_VALUE`, `CONFIG_DEPRECATED_OPTION` | INLINE_FIX |
-| **Code** | `CODE_SYNTAX_ERROR`, `CODE_IMPORT_ERROR` | REPLAN |
-| **Resource** | `RESOURCE_INSUFFICIENT_MEMORY`, `RESOURCE_GPU_UNAVAILABLE` | ABORT / SKIP |
-| **Output** | `OUTPUT_MISSING_FILE`, `OUTPUT_PARSE_ERROR` | RETRY |
+| Dependency | 缺包、版本冲突、build failure | pip/conda patch 或失败记录 |
+| Data | 数据集缺失、路径找不到 | 记录 blocker / 可能跳过 |
+| Configuration | 参数过期、device 配置错误 | inline fix / CPU fallback |
+| Code | import/runtime/syntax 错误 | 记录失败与日志 |
+| Resource | GPU 不可用、内存不足、超时 | budget/guardrail 处理 |
+| Output | executor 未写结果、指标无法解析 | 诊断为证据不足 |
 
-每个失败码包含：`repair_strategy`（修复策略）、`auto_repair_confidence`（自动修复置信度 0.0-1.0）、`is_fast_fail`（是否终止整条流水线）。
+每个 `StepFailure` 可包含 `failure_code`、`failure_layer`、`repair_strategy`、`repair_action` 和 `auto_repair_confidence`，便于 Phase 2 patch 和 Phase 3 报告解释。
 
----
+## 12. 当前实现注意事项 / Implementation Notes
 
-## 11. v0.5 迁移变更摘要 / v0.5 Migration Changelog
-
-### 核心变更
-
-| 项目 | v0.4 (Codex CLI) | v0.5 (Claude Code SDK) |
-|---|---|---|
-| 执行引擎 | OpenAI Codex CLI (`codex exec`) | Claude Code Agent SDK (`claude-agent-sdk`) |
-| 执行模型 | 三层混合：direct → Codex recovery → autonomous | 统一走 Claude Code primary |
-| 默认模型 | `gpt-5.4` | `claude-sonnet-4-20250514` |
-| SDK 导入 | 懒加载 (lazy import) | 模块级导入 + try/except fallback |
-| 环境传递 | `env_mgr.run_in_env()` subprocess | `system_prompt` 中指令 `conda run -n {env}` |
-| 返回类型 | `subprocess.CompletedProcess` | `ClaudeResult` dataclass |
-
-### 变更文件
-
-- **`p2c/agents/phase2/codex_executor.py`** — 主执行器重写
-- **`p2c/runtime/conda_env.py`** — 移除 Codex 相关逻辑
-- **`p2c/agents/phase2/local_prompt_templates.py`** — 提示词更新
-- **`requirements.txt`** — 新增 `claude-agent-sdk`
-- **`tests/test_phase2_fixes.py`** — 10 个测试重写
-
-### 删除的方法
-
-`_run_codex`, `_prepare_command_for_execution`, `_split_assignments`, `_build_failure_context`, `_resolve_codex_bin`
-
----
-
-## 12. 设计理念 / Design Philosophy
-
-本项目的 Phase 2 执行模型参照 [karpathy/autoresearch](https://github.com/karpathy/autoresearch) 的设计：
-
-- **AI agent 即执行者**：不再需要 subprocess 中间层，Claude Code 直接通过 Bash tool 执行命令
-- **Self-healing**：Claude Code 内置错误检测与自动修复能力，遇到失败会自主迭代
-- **环境隔离**：通过 `conda run --no-capture-output -n {env_name}` 前缀实现，无需激活环境
-- **最小编排**：宿主侧只负责构建 prompt、收集结果、提取指标，执行细节完全交给 agent
-
----
+- `execution/executor_outputs/phase2_execution_package.json` 是 Phase 3 的首选执行证据来源。
+- `execution/run.log` 是宿主 orchestration 日志；Claude session 的文本输出分别在 `executor_agent.log`、`session_stdout.log`、`session_stderr.log`。
+- `ExecutorAgent` 有 repo mutation guard。若 Claude executor 修改了目标仓库中已跟踪源码，Phase 2 会拒绝该次运行并记录 `SOURCE_MUTATION_DETECTED`。
+- `ArtifactManager.ensure_tree()` 会生成占位文件。调试时应检查文件内容中的 `reason_codes`，不要只看文件是否存在。
+- `scripts/run_audit.sh` 中的 `PROJECT_ROOT`、`PAPER_MD`、`PAPER_PDF`、`REPO_DIR` 是本地路径默认值，需要按机器调整。
 
 ## 13. License
 

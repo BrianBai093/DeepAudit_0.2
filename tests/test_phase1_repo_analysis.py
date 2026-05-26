@@ -40,7 +40,7 @@ def test_repo_analysis_detects_notebook_entrypoint(tmp_path: Path) -> None:
     assert "--output train.executed.ipynb" in primary.command
 
 
-def test_compile_task_spec_emits_task_for_notebook_repo(tmp_path: Path) -> None:
+def test_compile_task_spec_skips_notebook_only_repo(tmp_path: Path) -> None:
     repo_dir = tmp_path / "repo"
     code_dir = repo_dir / "code"
     code_dir.mkdir(parents=True)
@@ -76,11 +76,10 @@ def test_compile_task_spec_emits_task_for_notebook_repo(tmp_path: Path) -> None:
     agent = CompileTaskSpecAgent(llm=DummyLLM(), artifacts=artifacts, step_index=1, step_total=1)
     result = agent.execute({"repo_dir": str(repo_dir), "budget_minutes": 30, "max_self_heal_iters": 6})
 
-    assert result["task_spec"]["tasks"]
-    task = result["task_spec"]["tasks"][0]
-    assert task["entrypoint"] == "code/train.ipynb"
-    assert task["cwd"] == "code"
-    assert "python -m jupyter nbconvert" in task["command"]
+    assert result["task_spec"]["tasks"] == []
+    assert result["task_spec"]["entrypoints"] == []
+    assert "TASK_SPEC_NON_SCRIPT_ENTRYPOINTS_EXCLUDED" in result["task_spec"]["reason_codes"]
+    assert "REPO_ANALYSIS_NO_EXECUTABLE_CANDIDATE" in result["task_spec"]["reason_codes"]
 
 
 def test_repo_analysis_prefers_training_script_as_primary(tmp_path: Path) -> None:
@@ -142,3 +141,97 @@ def test_repo_analysis_detects_readme_wrapper_and_derived_cwd(tmp_path: Path) ->
     )
     assert derived_python.cwd == "workdir"
     assert derived_python.command == "python ../scripts/tool.py"
+
+
+def test_repo_analysis_prefers_exact_readme_python_command(tmp_path: Path) -> None:
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir(parents=True)
+    (repo_dir / "requirements.txt").write_text("numpy\n", encoding="utf-8")
+    (repo_dir / "main.py").write_text(
+        "if __name__ == '__main__':\n"
+        "    print('ok')\n",
+        encoding="utf-8",
+    )
+    (repo_dir / "README.md").write_text(
+        "python main.py --task CIFAR10 --epochs 120 --data-aug\n",
+        encoding="utf-8",
+    )
+
+    analysis = SystemRepoAnalyzer(repo_dir).analyze()
+
+    assert analysis.primary_entrypoint_id is not None
+    primary = next(ep for ep in analysis.entrypoint_candidates if ep.entrypoint_id == analysis.primary_entrypoint_id)
+    assert primary.path == "main.py"
+    assert primary.command == "python main.py --task CIFAR10 --epochs 120 --data-aug"
+    assert "README_VERIFIED_COMMAND" in primary.reason_codes
+
+
+def test_compile_task_spec_prioritizes_readme_command(tmp_path: Path) -> None:
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir(parents=True)
+    (repo_dir / "requirements.txt").write_text("numpy\n", encoding="utf-8")
+    (repo_dir / "main.py").write_text(
+        "if __name__ == '__main__':\n"
+        "    print('ok')\n",
+        encoding="utf-8",
+    )
+    (repo_dir / "README.md").write_text(
+        "python main.py --task CIFAR10 --epochs 120 --data-aug\n",
+        encoding="utf-8",
+    )
+
+    artifacts = make_artifacts(tmp_path, run_id="phase1_repo_analysis_readme")
+    artifacts.write_json(
+        "fingerprint/claims_ir.json",
+        {
+            "claims": [
+                {
+                    "claim_id": "C1",
+                    "type": "result",
+                    "predicate": "test error reaches reported value",
+                    "metric": "accuracy",
+                    "target": 0.9,
+                    "baseline": None,
+                    "conditions": {},
+                    "aggregation": "best",
+                    "evidence_set": ["paper_text"],
+                    "tolerance_policy": {"abs_eps": 0.01, "rel_eps": 0.02},
+                    "unverifiable_from_paper": False,
+                    "code_verifiable": True,
+                    "reason_codes": [],
+                    "notes": None,
+                }
+            ],
+            "reason_codes": [],
+        },
+    )
+
+    agent = CompileTaskSpecAgent(llm=DummyLLM(), artifacts=artifacts, step_index=1, step_total=1)
+    result = agent.execute({"repo_dir": str(repo_dir), "budget_minutes": 30, "max_self_heal_iters": 6})
+
+    assert result["task_spec"]["tasks"]
+    task = result["task_spec"]["tasks"][0]
+    assert task["entrypoint"] == "main.py"
+    assert task["command"] == "python main.py --task CIFAR10 --epochs 120 --data-aug"
+
+
+def test_repo_analysis_keeps_multiline_readme_python_command_intact(tmp_path: Path) -> None:
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir(parents=True)
+    (repo_dir / "requirements.txt").write_text("numpy\n", encoding="utf-8")
+    (repo_dir / "main.py").write_text(
+        "if __name__ == '__main__':\n"
+        "    print('ok')\n",
+        encoding="utf-8",
+    )
+    (repo_dir / "README.md").write_text(
+        "python main.py --exp_name Experiment1 \\\n"
+        "  --learn_type PEPITA \\\n"
+        "  --train_epochs 3\n",
+        encoding="utf-8",
+    )
+
+    analysis = SystemRepoAnalyzer(repo_dir).analyze()
+
+    primary = next(ep for ep in analysis.entrypoint_candidates if ep.entrypoint_id == analysis.primary_entrypoint_id)
+    assert primary.command == "python main.py --exp_name Experiment1 --learn_type PEPITA --train_epochs 3"

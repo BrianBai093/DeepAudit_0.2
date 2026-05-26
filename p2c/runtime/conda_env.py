@@ -100,8 +100,9 @@ class CondaEnvManager:
     @staticmethod
     def _find_conda() -> str | None:
         for cmd in ("mamba", "conda"):
-            if shutil.which(cmd):
-                return cmd
+            resolved = CondaEnvManager._resolve_binary(cmd)
+            if resolved:
+                return resolved
         return None
 
     @property
@@ -144,7 +145,7 @@ class CondaEnvManager:
         proc = subprocess.run(
             [self._conda_bin, "create", "-n", self.env_name,
              f"python={self.python_version}", "-y", "--quiet"],
-            capture_output=True, text=True, timeout=300,
+            capture_output=True, text=True, timeout=1800,
         )
         ok = proc.returncode == 0
         if ok:
@@ -171,11 +172,42 @@ class CondaEnvManager:
             except OSError:
                 logger.warning("could not create python3 symlink in %s", bin_dir)
 
+    def create_from_environment_file(self, environment_file: Path) -> dict[str, Any]:
+        """Create the environment directly from a repository ``environment.yml``.
+
+        The ``-n`` flag intentionally overrides any ``name:`` field inside the
+        file so each audit run gets its isolated, run-scoped environment.
+        """
+        if self._use_venv_fallback:
+            return {
+                "ok": False,
+                "log": "native conda environment files require conda or mamba",
+            }
+        proc = subprocess.run(
+            [
+                self._conda_bin,
+                "env",
+                "create",
+                "-n",
+                self.env_name,
+                "-f",
+                str(environment_file),
+                "--quiet",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=3600,
+        )
+        ok = proc.returncode == 0
+        if ok:
+            self._ensure_python3_symlink()
+        return {"ok": ok, "log": (proc.stdout + proc.stderr).strip()}
+
     def _create_venv(self) -> dict[str, Any]:
         self._venv_path.mkdir(parents=True, exist_ok=True)
         proc = subprocess.run(
             ["python3", "-m", "venv", str(self._venv_path)],
-            capture_output=True, text=True, timeout=120,
+            capture_output=True, text=True, timeout=900,
         )
         return {"ok": proc.returncode == 0, "log": (proc.stdout + proc.stderr).strip()}
 
@@ -189,10 +221,10 @@ class CondaEnvManager:
         """Execute *command* inside the managed environment.
 
         Inherits key host environment variables (PATH, API keys, proxy
-        settings) so that tools like ``codex`` and ``pip`` work correctly
+        settings) so that tools like the executor SDK and ``pip`` work correctly
         inside the conda-isolated shell.
         """
-        # Build an env dict that merges the host PATH (for codex, npm, etc.)
+        # Build an env dict that merges the host PATH (for executor SDK, npm, etc.)
         # with the conda env's own PATH.
         env = self._build_child_env()
         # ``mamba run`` on some Linux hosts (reproduced on Debian 13) misparses
@@ -211,7 +243,7 @@ class CondaEnvManager:
                 env=env,
             )
         run_cmd = [self._conda_bin, "run"]
-        if self._conda_bin != "mamba":
+        if Path(self._conda_bin).name != "mamba":
             run_cmd.append("--no-capture-output")
         run_cmd.extend(["-n", self.env_name, *bash_cmd])
         return subprocess.run(
@@ -300,7 +332,7 @@ class CondaEnvManager:
             proc = subprocess.run(
                 [self._conda_bin, "install", "-n", self.env_name,
                  "-c", channel, *specs, "-y", "--quiet"],
-                capture_output=True, text=True, timeout=600,
+                capture_output=True, text=True, timeout=3600,
             )
             if proc.returncode == 0:
                 results.append({"channel": channel, "specs": specs, "rc": 0, "log": ""})
@@ -310,7 +342,7 @@ class CondaEnvManager:
                 single = subprocess.run(
                     [self._conda_bin, "install", "-n", self.env_name,
                      "-c", channel, spec, "-y", "--quiet"],
-                    capture_output=True, text=True, timeout=300,
+                    capture_output=True, text=True, timeout=1800,
                 )
                 if single.returncode != 0 and dep.pip_fallback:
                     self.run_in_env(f"pip install {shlex.quote(spec)}", timeout_sec=120)
@@ -340,7 +372,7 @@ class CondaEnvManager:
                 args=[], returncode=1, stdout="", stderr="No supported package manager found"
             )
         return subprocess.run(
-            ["bash", "-lc", cmd], capture_output=True, text=True, timeout=300,
+            ["bash", "-lc", cmd], capture_output=True, text=True, timeout=1800,
         )
 
     # ------------------------------------------------------------------
@@ -371,7 +403,7 @@ class CondaEnvManager:
         proc = subprocess.run(
             [self._conda_bin, "create", "--clone", self.env_name,
              "-n", snap_name, "-y", "--quiet"],
-            capture_output=True, text=True, timeout=120,
+            capture_output=True, text=True, timeout=900,
         )
         if proc.returncode == 0:
             self._snapshots.append(snap_name)
@@ -396,13 +428,13 @@ class CondaEnvManager:
         # Remove current env
         subprocess.run(
             [self._conda_bin, "env", "remove", "-n", self.env_name, "-y"],
-            capture_output=True, text=True, timeout=120,
+            capture_output=True, text=True, timeout=900,
         )
         # Clone snapshot back
         proc = subprocess.run(
             [self._conda_bin, "create", "--clone", snapshot_id,
              "-n", self.env_name, "-y", "--quiet"],
-            capture_output=True, text=True, timeout=120,
+            capture_output=True, text=True, timeout=900,
         )
         return proc.returncode == 0
 
@@ -513,7 +545,7 @@ class CondaEnvManager:
             proc = subprocess.run(
                 [self._conda_bin, "install", "-n", self.env_name,
                  "-c", channel, *specs, "--freeze-installed", "-y", "--quiet"],
-                capture_output=True, text=True, timeout=600,
+                capture_output=True, text=True, timeout=3600,
             )
             if proc.returncode == 0:
                 results.append({"channel": channel, "specs": specs, "rc": 0, "log": ""})
@@ -523,7 +555,7 @@ class CondaEnvManager:
             proc = subprocess.run(
                 [self._conda_bin, "install", "-n", self.env_name,
                  "-c", channel, *specs, "-y", "--quiet"],
-                capture_output=True, text=True, timeout=600,
+                capture_output=True, text=True, timeout=3600,
             )
             if proc.returncode == 0:
                 results.append({"channel": channel, "specs": specs, "rc": 0, "log": "unfrozen"})
@@ -534,7 +566,7 @@ class CondaEnvManager:
                 single = subprocess.run(
                     [self._conda_bin, "install", "-n", self.env_name,
                      "-c", channel, spec, "-y", "--quiet"],
-                    capture_output=True, text=True, timeout=300,
+                    capture_output=True, text=True, timeout=1800,
                 )
                 if single.returncode != 0 and dep.pip_fallback:
                     self.run_in_env(f"pip install {shlex.quote(spec)}", timeout_sec=120)
@@ -631,5 +663,5 @@ class CondaEnvManager:
             return
         subprocess.run(
             [self._conda_bin, "env", "remove", "-n", self.env_name, "-y"],
-            capture_output=True, text=True, timeout=120,
+            capture_output=True, text=True, timeout=900,
         )

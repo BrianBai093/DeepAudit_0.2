@@ -1,1064 +1,1284 @@
-"""Tests for Phase 2 stability fixes: conda spec, metric extraction, env forwarding."""
-
 from __future__ import annotations
 
-
-# ---- Fix 1: conda/pip spec construction ----
-
-def test_conda_spec_bare_version():
-    """version_constraint='3.10' should produce 'python=3.10', not 'python3.10'."""
-    from p2c.runtime.conda_env import _conda_spec
-    from p2c.schemas import CondaDependency
-
-    dep = CondaDependency(package="python", version_constraint="3.10")
-    assert _conda_spec(dep) == "python=3.10"
-
-
-def test_conda_spec_with_operator():
-    """version_constraint='>=2.12' should pass through as-is."""
-    from p2c.runtime.conda_env import _conda_spec
-    from p2c.schemas import CondaDependency
-
-    dep = CondaDependency(package="tensorflow", version_constraint=">=2.12,<2.16")
-    assert _conda_spec(dep) == "tensorflow>=2.12,<2.16"
-
-
-def test_conda_spec_no_version():
-    """No version constraint should return just the package name."""
-    from p2c.runtime.conda_env import _conda_spec
-    from p2c.schemas import CondaDependency
-
-    dep = CondaDependency(package="numpy")
-    assert _conda_spec(dep) == "numpy"
-
-
-def test_pip_spec_bare_version():
-    """Bare version '1.26.4' should become '==' for pip."""
-    from p2c.runtime.conda_env import _pip_spec
-    from p2c.schemas import CondaDependency
-
-    dep = CondaDependency(package="numpy", version_constraint="1.26.4")
-    assert _pip_spec(dep) == "numpy==1.26.4"
-
-
-def test_pip_spec_with_operator():
-    from p2c.runtime.conda_env import _pip_spec
-    from p2c.schemas import CondaDependency
-
-    dep = CondaDependency(package="keras", version_constraint=">=2.12")
-    assert _pip_spec(dep) == "keras>=2.12"
-
-
-# ---- Fix 2: skip python/pip from layer partitioning ----
-
-def test_build_layers_skips_python_package():
-    """python and pip should NOT appear in any install layer."""
-    from p2c.agents.phase2.tool_agent import ToolAgent
-    from p2c.schemas import CondaDependency, ExecutionPlan
-
-    plan = ExecutionPlan(
-        plan_id="test",
-        env_name="test_env",
-        execution_steps=[],
-        conda_dependencies=[
-            CondaDependency(package="python", version_constraint="3.10"),
-            CondaDependency(package="pip"),
-        ],
-        pip_dependencies=["numpy", "pandas"],
-    )
-    layers = ToolAgent._build_layers(plan)
-
-    all_conda_pkgs = []
-    for layer in layers:
-        for dep in layer.conda_deps:
-            all_conda_pkgs.append(dep.package.lower())
-
-    assert "python" not in all_conda_pkgs, "python should be skipped — already in env"
-    assert "pip" not in all_conda_pkgs, "pip should be skipped — already in env"
-
-
-# ---- Fix 3: val/train metric distinction ----
-
-def test_metric_extraction_prefixed():
-    """val_accuracy and train_accuracy should be extracted separately."""
-    from p2c.agents.phase2.result_extraction import extract_metrics_from_stdout
-    from p2c.schemas import MetricContract
-
-    stdout = (
-        "Epoch 27/27\n"
-        "train accuracy: 0.9972\n"
-        "val accuracy: 0.9882\n"
-        "METRIC:accuracy=0.9882\n"
-        "METRIC:val_accuracy=0.9882\n"
-        "METRIC:train_accuracy=0.9972\n"
-    )
-    contract = MetricContract()
-    metrics = extract_metrics_from_stdout(stdout, contract)
-
-    assert metrics.get("val_accuracy") == 0.9882
-    assert metrics.get("train_accuracy") == 0.9972
-    # Unprefixed accuracy should be the val (last METRIC line or val extraction)
-    assert metrics.get("accuracy") == 0.9882
-
-
-def test_metric_extraction_unprefixed_prefers_val():
-    """When only Layer 3 patterns exist, unprefixed should come from val/test, not train."""
-    from p2c.agents.phase2.result_extraction import extract_metrics_from_stdout
-    from p2c.schemas import MetricContract
-
-    stdout = "train accuracy: 0.99\nval accuracy: 0.95\ntest accuracy: 0.93\n"
-    contract = MetricContract()
-    metrics = extract_metrics_from_stdout(stdout, contract)
-
-    # val sets the unprefixed name first
-    assert metrics.get("val_accuracy") == 0.95
-    assert metrics.get("test_accuracy") == 0.93
-    assert metrics.get("train_accuracy") == 0.99
-    # unprefixed should NOT be 0.99 (train)
-    assert metrics.get("accuracy") != 0.99
-
-
-def test_metric_extraction_credit_fraud_outputs():
-    """Fraud pipeline stdout should yield precision/recall/f1 plus richer derived metrics."""
-    from p2c.agents.phase2.result_extraction import extract_metrics_from_stdout
-    from p2c.schemas import MetricContract
-
-    stdout = (
-        "=== XGBoost ===\n"
-        "ROC-AUC: 0.9806\n"
-        "PR-AUC:  0.7296\n"
-        "Precision: 0.0372\n"
-        "Recall:    0.9184\n"
-        "F1-score:  0.0714\n"
-        "\nClassification Report:\n"
-        "              precision    recall  f1-score   support\n"
-        "\n"
-        "           0     0.9999    0.9590    0.9790     56864\n"
-        "           1     0.0372    0.9184    0.0714        98\n"
-        "    accuracy                         0.9589     56962\n"
-        "   macro avg     0.5185    0.9387    0.5252     56962\n"
-        "weighted avg     0.9982    0.9589    0.9774     56962\n"
-        "\n=== Threshold sweep ===\n"
-        "thr\tprecision\trecall\tf1\tTP\tFP\tFN\tTN\n"
-        "0.80\t0.0639\t\t0.9082\t0.1194\t89\t1304\t9\t55560\n"
-        "0.90\t0.0882\t\t0.8980\t0.1606\t88\t910\t10\t55954\n"
-        "\nBEST_F1_ROW:\n"
-        " threshold        0.900000\n"
-        "precision        0.088176\n"
-        "recall           0.897959\n"
-        "f1               0.160584\n"
-        "\nRecommended threshold (recall >= 0.90): 0.80\n"
-        "Precision: 0.0639, Recall: 0.9082, F1: 0.1194\n"
-        "\n=== Best model based on PR-AUC ===\n"
-        "{'name': 'XGBoost', 'roc_auc': 0.9806250933125078, 'pr_auc': 0.7296002366909252, "
-        "'precision': 0.037159372419488024, 'recall': 0.9183673469387755, 'f1': 0.07142857142857142}\n"
-    )
-    contract = MetricContract()
-    metrics = extract_metrics_from_stdout(stdout, contract)
-
-    assert metrics["precision"] == 0.037159372419488024
-    assert metrics["recall"] == 0.9183673469387755
-    assert metrics["f1"] == 0.07142857142857142
-    assert metrics["roc_auc"] == 0.9806250933125078
-    assert metrics["pr_auc"] == 0.7296002366909252
-    assert metrics["class_1_precision"] == 0.0372
-    assert metrics["recommended_threshold"] == 0.8
-    assert metrics["recommended_f1"] == 0.1194
-    assert metrics["best_f1_f1"] == 0.160584
-
-
-def test_metric_contract_pr_auc_regex_does_not_capture_roc_auc():
-    """Contract regexes should not let PR-AUC consume a later roc_auc dict value."""
-    from p2c.agents.phase1.compile_task_spec import CompileTaskSpecAgent
-    from p2c.agents.phase2.result_extraction import extract_metrics_from_stdout
-    from p2c.schemas import MetricContract
-
-    stdout = (
-        "=== Best model based on PR-AUC ===\n"
-        "{'name': 'XGBoost', 'roc_auc': 0.9806250933125078, 'pr_auc': 0.7296002366909252, "
-        "'precision': 0.037159372419488024, 'recall': 0.9183673469387755, 'f1': 0.07142857142857142}\n"
-    )
-    contract = MetricContract(
-        required_metrics=["precision", "recall", "f1"],
-        parsers=CompileTaskSpecAgent._metric_parsers_for(["precision", "recall", "f1"]),
-        normalization={},
-    )
-
-    metrics = extract_metrics_from_stdout(stdout, contract)
-
-    assert metrics["pr_auc"] == 0.7296002366909252
-    assert 0.9806250933125078 not in metrics.get("pr_auc_all", [])
-    assert metrics["roc_auc"] == 0.9806250933125078
-
-
-def test_metric_extraction_skips_static_inspection_commands():
-    """Static source inspection output should not be treated as executed metrics."""
-    from p2c.agents.phase2.result_extraction import extract_metrics_from_stdout
-    from p2c.schemas import MetricContract
-
-    stdout = (
-        "ROC-AUC: 0.4\n"
-        "PR-AUC: 0.4\n"
-        "Precision: 0.4\n"
-        "Recall: 0.2\n"
-        "F1-score: 0.4\n"
-    )
-    contract = MetricContract()
-
-    metrics = extract_metrics_from_stdout(
-        stdout,
-        contract,
-        command="sed -n '1,260p' src/train_fraud_model.py",
-    )
-
-    assert metrics == {}
-
-
-# ---- Fix 4: env variable forwarding ----
-
-def test_build_child_env_includes_path():
-    """_build_child_env should include host PATH."""
-    import os
-    from p2c.runtime.conda_env import CondaEnvManager
-
-    env = CondaEnvManager._build_child_env()
-    assert "PATH" in env
-    assert env["PATH"] == os.environ.get("PATH", "")
-
-
-def test_run_in_env_uses_non_login_bash_for_conda(monkeypatch):
-    """run_in_env should avoid ``bash -lc`` and skip ``--no-capture-output`` for mamba."""
-    import subprocess
-    from p2c.runtime.conda_env import CondaEnvManager
-
-    calls = {}
-
-    def fake_run(args, **kwargs):
-        calls["args"] = args
-        calls["kwargs"] = kwargs
-        return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
-
-    mgr = CondaEnvManager(env_name="dummy", python_version="3.10")
-    mgr._conda_bin = "mamba"
-    mgr._use_venv_fallback = False
-    mgr.run_in_env("python -V", cwd="/tmp", timeout_sec=12)
-
-    assert calls["args"][:3] == ["mamba", "run", "-n"]
-    assert calls["args"][-2] == "-c"
-    assert calls["args"][-1].endswith("python -V")
-    assert "-lc" not in calls["args"]
-    assert "--no-capture-output" not in calls["args"]
-
-
-def test_run_in_env_keeps_no_capture_output_for_conda(monkeypatch):
-    """conda run still benefits from ``--no-capture-output`` for better streaming behavior."""
-    import subprocess
-    from p2c.runtime.conda_env import CondaEnvManager
-
-    calls = {}
-
-    def fake_run(args, **kwargs):
-        calls["args"] = args
-        calls["kwargs"] = kwargs
-        return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
-
-    mgr = CondaEnvManager(env_name="dummy", python_version="3.10")
-    mgr._conda_bin = "conda"
-    mgr._use_venv_fallback = False
-    mgr.run_in_env("python -V", cwd="/tmp", timeout_sec=12)
-
-    assert calls["args"][:4] == ["conda", "run", "--no-capture-output", "-n"]
-    assert calls["args"][-2] == "-c"
-    assert calls["args"][-1].endswith("python -V")
-
-
-def test_run_in_env_uses_non_login_bash_for_venv(monkeypatch):
-    """The venv fallback should also avoid relying on login-shell startup files."""
-    import subprocess
-    from pathlib import Path
-    from p2c.runtime.conda_env import CondaEnvManager
-
-    calls = {}
-
-    def fake_run(args, **kwargs):
-        calls["args"] = args
-        calls["kwargs"] = kwargs
-        return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
-
-    mgr = CondaEnvManager(env_name="dummy", python_version="3.10")
-    mgr._use_venv_fallback = True
-    mgr._venv_path = Path("/tmp/p2c_venv_dummy")
-    mgr.run_in_env("python -V", cwd="/tmp", timeout_sec=12)
-
-    assert calls["args"][0:2] == ["bash", "-c"]
-    assert calls["args"][2].endswith("source /tmp/p2c_venv_dummy/bin/activate && python -V")
-    assert "-lc" not in calls["args"]
-
-
-def test_build_child_env_adds_node_tool_dirs(monkeypatch):
-    """Child env should expose resolved Node tool dirs even with a minimal PATH."""
-    from p2c.runtime.conda_env import CondaEnvManager
-
-    monkeypatch.setenv("PATH", "/usr/bin:/bin")
-    monkeypatch.setattr(
-        CondaEnvManager,
-        "_resolve_binary",
-        staticmethod(lambda binary, explicit_env=None: {
-            "node": "/tmp/base/bin/node",
-            "npm": "/tmp/base/bin/npm",
-        }.get(binary)),
-    )
-
-    env = CondaEnvManager._build_child_env()
-
-    assert env["P2C_HOST_TOOL_DIRS"] == "/tmp/base/bin"
-    assert env["PATH"].split(":")[0] == "/tmp/base/bin"
-
-
-def test_shell_wrap_command_preserves_env_path():
-    """Shell wrapper should preserve the activated env PATH and append forwarded tool dirs."""
-    from p2c.runtime.conda_env import CondaEnvManager
-
-    wrapped = CondaEnvManager._shell_wrap_command(
-        {
-            "PATH": "/tmp/agent/bin:/usr/bin",
-            "P2C_HOST_TOOL_DIRS": "/tmp/agent/bin:/tmp/base/bin",
-        },
-        "python --version",
-    )
-
-    assert 'export PATH="$PATH":' in wrapped
-    assert "/tmp/agent/bin:/tmp/base/bin" in wrapped
-    assert wrapped.endswith("python --version")
-
-
-def test_run_claude_returns_claude_result(monkeypatch):
-    """_run_claude should return a ClaudeResult with stdout/stderr/returncode."""
-    from p2c.agents.phase2.codex_executor import ClaudeResult, CodexExecutorAgent
-    import p2c.agents.phase2.codex_executor as executor_mod
-
-    class DummyEnvMgr:
-        env_name = "test_env"
-
-    # Mock ClaudeAgentOptions to accept keyword arguments
-    class FakeOptions:
-        def __init__(self, **kwargs):
-            pass
-
-    monkeypatch.setattr(executor_mod, "ClaudeAgentOptions", FakeOptions)
-
-    # Mock the SDK query() to return an empty async generator
-    async def fake_query(*, prompt, options=None):
-        if False:
-            yield  # makes this an async generator
-
-    monkeypatch.setattr(executor_mod, "query", fake_query)
-
-    result = CodexExecutorAgent._run_claude(
-        DummyEnvMgr(), "hello world", "/tmp/repo", timeout_sec=10
-    )
-
-    assert isinstance(result, ClaudeResult)
-    assert isinstance(result.stdout, str)
-    assert isinstance(result.stderr, str)
-    assert isinstance(result.returncode, int)
-    assert result.returncode == 0  # no errors from empty session
-
-
-def test_execute_step_uses_claude_as_primary(tmp_path, monkeypatch):
-    """Every step should go through Claude Code as the primary executor."""
-    from p2c.agents.phase2.codex_executor import ClaudeResult, CodexExecutorAgent
-    from p2c.io_artifacts import ArtifactManager
-    from p2c.schemas import ExecutionStep, MetricContract
-
+import os
+import subprocess
+from collections.abc import AsyncIterable
+from pathlib import Path
+
+from p2c.agents.phase1.repo_analysis import SystemRepoAnalyzer
+from p2c.agents.phase2.executor_agent import ExecutorAgent, ExecutorSessionResult
+from p2c.agents.phase2.orchestrator import Phase2Orchestrator
+from p2c.agents.phase2.result_extraction import build_run_manifest
+from p2c.agents.phase2.tool_agent import ToolAgent
+from p2c.io_artifacts import ArtifactManager
+from p2c.runtime.conda_env import CondaEnvManager
+from p2c.schemas import EnvSetupResult, ExecutorEnvSpec, MetricContract
+
+
+class DummyEnvMgr:
+    env_name = "test_env"
+    backend = "venv"
+    _use_venv_fallback = True
+    _conda_bin = None
+
+    @staticmethod
+    def env_path_actual() -> str:
+        return "/tmp/p2c_venv_test_env"
+
+
+def make_artifacts(tmp_path: Path, run_id: str) -> ArtifactManager:
+    artifacts = ArtifactManager(tmp_path / "artifacts", run_id)
+    artifacts.ensure_tree()
+    return artifacts
+
+
+def test_tool_agent_builds_env_spec_from_repo_manifests_only(tmp_path: Path) -> None:
     repo_dir = tmp_path / "repo"
     repo_dir.mkdir()
-    artifacts = ArtifactManager(tmp_path / "artifacts", "run123")
-    artifacts.ensure_tree()
-    agent = CodexExecutorAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
+    (repo_dir / "requirements.txt").write_text("numpy==1.26.4\npandas\n", encoding="utf-8")
 
-    calls = []
-
-    class DummyEnvMgr:
-        env_name = "test_env"
-
-    def fake_claude(env_mgr, prompt, cwd, timeout_sec=600):
-        calls.append(("claude", cwd, timeout_sec))
-        return ClaudeResult(
-            stdout="METRIC:accuracy=0.91\n",
-            stderr="",
-            returncode=0,
-        )
-
-    monkeypatch.setattr(CodexExecutorAgent, "_run_claude", staticmethod(fake_claude))
-
-    result = agent._execute_step(
-        step=ExecutionStep(
-            step_id="train",
-            description="run training",
-            command="python train.py",
-            expected_metrics=["accuracy"],
-        ),
-        env_mgr=DummyEnvMgr(),
-        repo_dir=str(repo_dir),
-        contract=MetricContract(),
-        outputs_dir=str(artifacts.path("execution/codex_outputs")),
-        timeout_sec=60,
-    )
-
-    assert len(calls) == 1
-    assert calls[0][1] == str(repo_dir)
-    assert result["execution_mode"] == "claude_primary"
-    assert result["exit_code"] == 0
-    assert result["metrics"]["accuracy"] == 0.91
-    stored = artifacts.read_json("execution/codex_outputs/step_train_result.json")
-    assert stored["command"] == "python train.py"
-    assert stored["exit_code"] == 0
-
-
-def test_execute_step_claude_writes_step_result_exit_code(tmp_path, monkeypatch):
-    """If Claude Code writes a failed step_result.json, that exit code should win over agent's own rc."""
-    from p2c.agents.phase2.codex_executor import ClaudeResult, CodexExecutorAgent
-    from p2c.io_artifacts import ArtifactManager
-    from p2c.schemas import ExecutionStep, MetricContract
-
-    repo_dir = tmp_path / "repo"
-    repo_dir.mkdir()
-    artifacts = ArtifactManager(tmp_path / "artifacts", "run456")
-    artifacts.ensure_tree()
-    agent = CodexExecutorAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
-
-    class DummyEnvMgr:
-        env_name = "test_env"
-
-    def fake_claude(env_mgr, prompt, cwd, timeout_sec=600):
-        artifacts.write_json(
-            "execution/codex_outputs/step_train_result.json",
-            {
-                "command": "python train.py",
-                "exit_code": 1,
-                "metrics": {},
-                "notes": "dependency still missing",
-            },
-        )
-        return ClaudeResult(
-            stdout="claude attempted fix but still failed\n",
-            stderr="ModuleNotFoundError: No module named pandas\n",
-            returncode=0,
-        )
-
-    monkeypatch.setattr(CodexExecutorAgent, "_run_claude", staticmethod(fake_claude))
-
-    result = agent._execute_step(
-        step=ExecutionStep(
-            step_id="train",
-            description="run training",
-            command="python train.py",
-            expected_metrics=["accuracy"],
-        ),
-        env_mgr=DummyEnvMgr(),
-        repo_dir=str(repo_dir),
-        contract=MetricContract(),
-        outputs_dir=str(artifacts.path("execution/codex_outputs")),
-        timeout_sec=60,
-    )
-
-    assert result["execution_mode"] == "claude_primary"
-    assert result["command"] == "python train.py"
-    assert result["exit_code"] == 1
-    assert result["error_type"] in {"dependency", "import"}
-
-
-def test_build_run_manifest_preserves_partial_status():
-    """Manifest builder should preserve executor-provided partial statuses."""
-    from p2c.agents.phase2.result_extraction import build_run_manifest
-
-    manifest = build_run_manifest(
-        [
-            {
-                "step_id": "predict",
-                "command": "test -f models/best_model.joblib",
-                "cwd": ".",
-                "exit_code": 0,
-                "status": "partial",
-                "params": {"degraded_success": True},
-                "metrics": {},
-                "reason_codes": ["PRIMARY_FAILED_FALLBACK_SUCCEEDED"],
-            }
-        ]
-    )
-
-    assert manifest.runs[0].status == "partial"
-    assert manifest.runs[0].params["degraded_success"] is True
-
-
-def test_execute_step_claude_primary_produces_metrics(tmp_path, monkeypatch):
-    """Claude Code primary execution should produce metrics in step result."""
-    from p2c.agents.phase2.codex_executor import ClaudeResult, CodexExecutorAgent
-    from p2c.io_artifacts import ArtifactManager
-    from p2c.schemas import ExecutionStep, MetricContract
-
-    repo_dir = tmp_path / "repo"
-    repo_dir.mkdir()
-    artifacts = ArtifactManager(tmp_path / "artifacts", "run_partial")
-    artifacts.ensure_tree()
-    agent = CodexExecutorAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
-
-    class DummyEnvMgr:
-        env_name = "test_env"
-
-    def fake_claude(env_mgr, prompt, cwd, timeout_sec=600):
-        return ClaudeResult(
-            stdout="METRIC:val_accuracy=0.95\nMETRIC:train_accuracy=0.99\n",
-            stderr="",
-            returncode=0,
-        )
-
-    monkeypatch.setattr(CodexExecutorAgent, "_run_claude", staticmethod(fake_claude))
-
-    result = agent._execute_step(
-        step=ExecutionStep(
-            step_id="predict",
-            description="run prediction validation",
-            command="python src/predict_fraud.py",
-        ),
-        env_mgr=DummyEnvMgr(),
-        repo_dir=str(repo_dir),
-        contract=MetricContract(),
-        outputs_dir=str(artifacts.path("execution/codex_outputs")),
-        timeout_sec=60,
-    )
-
-    assert result["exit_code"] == 0
-    assert result["execution_mode"] == "claude_primary"
-    assert result["metrics"]["val_accuracy"] == 0.95
-    assert result["metrics"]["train_accuracy"] == 0.99
-
-
-def test_execute_step_claude_failure_propagates_error(tmp_path, monkeypatch):
-    """Claude Code failure should propagate the error message from its output."""
-    from p2c.agents.phase2.codex_executor import ClaudeResult, CodexExecutorAgent
-    from p2c.io_artifacts import ArtifactManager
-    from p2c.schemas import ExecutionStep, MetricContract
-
-    repo_dir = tmp_path / "repo"
-    repo_dir.mkdir()
-    artifacts = ArtifactManager(tmp_path / "artifacts", "run789")
-    artifacts.ensure_tree()
-    agent = CodexExecutorAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
-
-    class DummyEnvMgr:
-        env_name = "test_env"
-
-    def fake_claude(env_mgr, prompt, cwd, timeout_sec=600):
-        return ClaudeResult(
-            stdout="Loading input file: data/sample_new_transactions.csv\n",
-            stderr=(
-                "Traceback (most recent call last):\n"
-                "FileNotFoundError: Could not find input CSV at: data/sample_new_transactions.csv\n"
-            ),
-            returncode=1,
-        )
-
-    monkeypatch.setattr(CodexExecutorAgent, "_run_claude", staticmethod(fake_claude))
-
-    result = agent._execute_step(
-        step=ExecutionStep(
-            step_id="predict",
-            description="run prediction smoke test",
-            command="python src/predict_fraud.py",
-        ),
-        env_mgr=DummyEnvMgr(),
-        repo_dir=str(repo_dir),
-        contract=MetricContract(),
-        outputs_dir=str(artifacts.path("execution/codex_outputs")),
-        timeout_sec=60,
-    )
-
-    assert result["exit_code"] == 1
-    assert result["execution_mode"] == "claude_primary"
-    assert "sample_new_transactions.csv" in result["error_message"]
-
-
-def test_planner_sanitizes_help_probe_and_passive_fallbacks(tmp_path):
-    """Planner sanitization should replace unsafe --help probes and drop passive fallbacks."""
-    from p2c.agents.phase2.planner import PlannerAgent
-    from p2c.schemas import ExecutionPlan, ExecutionStep
-
-    repo_dir = tmp_path / "repo"
-    src_dir = repo_dir / "src"
-    src_dir.mkdir(parents=True)
-    (src_dir / "train_fraud_model.py").write_text("print('train')\n", encoding="utf-8")
-    (src_dir / "predict_fraud.py").write_text("print('predict')\n", encoding="utf-8")
-
-    plan = ExecutionPlan(
-        plan_id="plan",
-        env_name="env",
-        execution_steps=[
-            ExecutionStep(
-                step_id="inspect",
-                description="inspect training cli",
-                command="python src/train_fraud_model.py --help",
-                fallback_commands=["python -c \"print('noop')\""],
-            ),
-            ExecutionStep(
-                step_id="predict",
-                description="validate prediction",
-                command="python src/predict_fraud.py",
-                fallback_commands=[
-                    "test -f models/best_model.joblib && ls -lah models",
-                    "PYTHONUNBUFFERED=1 python src/predict_fraud.py",
-                ],
-            ),
-        ],
-    )
-
-    PlannerAgent._sanitize_plan(plan, str(repo_dir))
-
-    assert "--help" not in plan.execution_steps[0].command
-    assert "read_text" in plan.execution_steps[0].command
-    assert plan.execution_steps[1].fallback_commands == ["PYTHONUNBUFFERED=1 python src/predict_fraud.py"]
-
-
-def test_planner_rewrites_wrapper_derived_shell_steps(tmp_path):
-    """Wrapper-derived entrypoints should keep their inferred cwd and command."""
-    from p2c.agents.phase2.planner import PlannerAgent
-    from p2c.schemas import ExecutionPlan, ExecutionStep
-
-    repo_dir = tmp_path / "repo"
-    workdir = repo_dir / "workdir"
-    scripts_dir = repo_dir / "scripts"
-    workdir.mkdir(parents=True)
-    scripts_dir.mkdir(parents=True)
-    (repo_dir / "run.sh").write_text("#!/usr/bin/env bash\ncd workdir\n../scripts/do.sh\n", encoding="utf-8")
-    (scripts_dir / "do.sh").write_text("#!/usr/bin/env bash\npython ../scripts/tool.py\n", encoding="utf-8")
-    (scripts_dir / "tool.py").write_text("print('ok')\n", encoding="utf-8")
-
-    repo_analysis = {
-        "entrypoint_candidates": [
-            {
-                "entrypoint_id": "shell:run.sh",
-                "path": "run.sh",
-                "command": "bash run.sh",
-                "cwd": ".",
-                "runtime": "shell",
-                "confidence": 0.99,
-                "evidence": "README verified shell command",
-                "reason_codes": ["README_WORKFLOW_PRIMARY"],
-            },
-            {
-                "entrypoint_id": "shell-derived:run.sh:scripts/do.sh@workdir",
-                "path": "scripts/do.sh",
-                "command": "bash ../scripts/do.sh",
-                "cwd": "workdir",
-                "runtime": "shell",
-                "confidence": 0.9,
-                "evidence": "derived from shell wrapper `run.sh`",
-                "reason_codes": ["ENTRYPOINT_DERIVED_FROM_WRAPPER", "ENTRYPOINT_CWD_FROM_WRAPPER"],
-                "path_resolution_mode": "wrapper_virtual_cwd",
-                "derived_from_wrapper": "run.sh",
-            },
-        ]
-    }
-    task_spec = {
-        "tasks": [
-            {
-                "task_id": "task_01",
-                "entrypoint": "scripts/do.sh",
-                "command": "bash ../scripts/do.sh",
-                "cwd": "workdir",
-                "runtime": "shell",
-                "confidence": 0.9,
-                "evidence": "derived from shell wrapper `run.sh`",
-                "reason_codes": ["ENTRYPOINT_DERIVED_FROM_WRAPPER", "ENTRYPOINT_CWD_FROM_WRAPPER"],
-                "path_resolution_mode": "wrapper_virtual_cwd",
-                "derived_from_wrapper": "run.sh",
-            }
-        ]
-    }
-
-    plan = ExecutionPlan(
-        plan_id="plan",
-        env_name="env",
-        execution_steps=[
-            ExecutionStep(
-                step_id="run_wrapper_child",
-                description="run wrapper-derived child",
-                command="bash scripts/do.sh",
-                cwd=".",
-                required_artifacts=["../data/input.csv", "scores/out.txt"],
-            )
-        ],
-    )
-
-    PlannerAgent._sanitize_plan(plan, str(repo_dir), repo_analysis=repo_analysis, task_spec=task_spec)
-
-    step = plan.execution_steps[0]
-    assert step.command == "bash ../scripts/do.sh"
-    assert step.cwd == "workdir"
-    assert step.path_resolution_mode == "wrapper_virtual_cwd"
-    assert step.derived_from_wrapper == "run.sh"
-    assert step.required_artifacts == ["data/input.csv", "workdir/scores/out.txt"]
-
-
-def test_derive_key_imports_maps_imblearn():
-    """Environment validation should import imbalanced-learn via `imblearn`."""
-    from p2c.agents.phase2.tool_agent import ToolAgent
-    from p2c.schemas import ExecutionPlan
-
-    plan = ExecutionPlan(
-        plan_id="plan",
-        env_name="env",
-        execution_steps=[],
-        pip_dependencies=["imbalanced-learn", "scikit-learn"],
-    )
-
-    imports = ToolAgent._derive_key_imports(plan)
-
-    assert "imblearn" in imports
-    assert "sklearn" in imports
-
-
-def test_tool_agent_augments_missing_requirements_dependency(tmp_path):
-    """Repo requirements should backfill planner omissions like passage."""
-    from p2c.agents.phase2.tool_agent import ToolAgent
-    from p2c.schemas import ExecutionPlan
-
-    repo_dir = tmp_path / "repo"
-    repo_dir.mkdir()
-    (repo_dir / "requirements.txt").write_text(
-        "numpy>=1.8.2\npandas>=0.16.0\nTheano>=0.7\npassage>=0.2.4\n",
-        encoding="utf-8",
-    )
-
-    plan = ExecutionPlan(
-        plan_id="plan",
-        env_name="env",
-        execution_steps=[],
-        pip_dependencies=["numpy==1.23.5", "pandas==1.5.3", "Theano-PyMC==1.1.2"],
-    )
-
-    ToolAgent._augment_plan_dependencies(plan, repo_dir)
-
-    assert "passage>=0.2.4" in plan.pip_dependencies
-    assert "Theano>=0.7" not in plan.pip_dependencies
-
-
-def test_tool_agent_runs_preinstall_in_repo_dir(tmp_path, monkeypatch):
-    """Pre-install commands should resolve paths relative to repo_dir, not project cwd."""
-    from p2c.agents.phase2.tool_agent import ToolAgent
-    from p2c.schemas import ExecutionPlan
-
-    repo_dir = tmp_path / "repo"
-    repo_dir.mkdir()
-    artifacts_dir = tmp_path / "artifacts"
-    from p2c.io_artifacts import ArtifactManager
-
-    artifacts = ArtifactManager(artifacts_dir, "run_tool")
-    artifacts.ensure_tree()
-
-    calls = {"pre": []}
-
-    class DummyEnvMgr:
-        backend = "dummy"
-        def __init__(self, *args, **kwargs):
-            self.env_name = kwargs.get("env_name", "env")
-            self.python_version = kwargs.get("python_version", "3.10")
-        def create(self):
-            return {"ok": True, "log": ""}
-        def env_path_actual(self):
-            return "/tmp/env"
-        def run_in_env(self, command, cwd=".", timeout_sec=600):
-            import subprocess
-            calls["pre"].append((command, cwd, timeout_sec))
-            if command == "pip freeze":
-                return subprocess.CompletedProcess(args=[command], returncode=0, stdout="", stderr="")
-            return subprocess.CompletedProcess(args=[command], returncode=0, stdout="", stderr="")
-        def install_layered(self, layers):
-            return []
-        def validate(self, key_imports=None):
-            return True
-        def freeze(self):
-            return ""
-
-    monkeypatch.setattr("p2c.agents.phase2.tool_agent.CondaEnvManager", DummyEnvMgr)
-
-    plan = ExecutionPlan(
-        plan_id="plan",
-        env_name="env",
-        execution_steps=[],
-        pre_install_commands=["python - <<'PY'\nprint('ok')\nPY"],
-    )
-
-    agent = ToolAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
-    agent.execute({"_p2_plan": plan, "repo_dir": str(repo_dir)})
-
-    assert calls["pre"][0][1] == str(repo_dir)
-
-
-def test_observe_metrics_reads_step_stdout_logs(tmp_path, monkeypatch):
-    """Phase 3 metrics observation should recover fraud metrics from full step stdout logs."""
-    from p2c.agents.phase3.observe_metrics import ObserveMetricsAgent
-    from p2c.io_artifacts import ArtifactManager
-
-    artifacts = ArtifactManager(tmp_path / "artifacts", "run_metrics")
-    artifacts.ensure_tree()
+    artifacts = make_artifacts(tmp_path, "env_spec")
     artifacts.write_json(
-        "task/metric_contract.json",
+        "task/repo_analysis.json",
         {
-            "required_metrics": ["precision", "recall", "f1"],
-            "parsers": [],
-            "normalization": {},
+            "dependency_profiles": [
+                {
+                    "profile_id": "python-requirements:requirements.txt",
+                    "ecosystem": "python",
+                    "manager": "pip_requirements",
+                    "cwd": ".",
+                    "manifest_paths": ["requirements.txt"],
+                    "install_command": "python -m pip install -r requirements.txt",
+                    "auto_bootstrap_supported": True,
+                    "reason_codes": [],
+                }
+            ],
+            "entrypoint_candidates": [],
+            "primary_entrypoint_id": None,
             "reason_codes": [],
         },
     )
     artifacts.write_json(
-        "execution/codex_outputs/run_manifest.json",
+        "fingerprint/claims_ir.json",
         {
-            "runs": [
+            "experiments": [
                 {
-                    "run_id": "step_02_train_model",
-                    "command": "python src/train_fraud_model.py",
-                    "params": {},
-                    "cwd": ".",
-                    "exit_code": 0,
-                    "status": "ok",
-                    "runtime_sec": 1.0,
-                    "stdout_tail": "",
-                    "stderr_tail": "",
-                    "metrics": {},
-                    "reason_codes": [],
+                    "experiment_id": "exp_01",
+                    "name": "run",
+                    "description": "",
+                    "dataset": "CIFAR10",
+                    "table_anchor": "Table 1",
+                    "primary_metrics": ["accuracy"],
+                    "is_primary": True,
+                    "notes": None,
+                }
+            ],
+            "claims": [
+                {
+                    "claim_id": "claim_01",
+                    "type": "result",
+                    "predicate": "accuracy = 0.9",
+                    "metric": "accuracy",
+                    "target": 0.9,
+                    "conditions": {"experiment_id": "exp_01"},
                 }
             ],
             "reason_codes": [],
         },
     )
-    artifacts.write_text(
-        "execution/codex_outputs/step_step_02_train_model_stdout.log",
-        "Precision: 0.0372\nRecall: 0.9184\nF1-score: 0.0714\n",
+
+    agent = ToolAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
+    env_spec = agent.build_env_spec({"repo_dir": str(repo_dir), "run_id": "env_spec"})
+
+    assert env_spec.pip_dependencies == ["numpy==1.26.4", "pandas"]
+    assert "accuracy" not in " ".join(env_spec.pip_dependencies)
+    assert env_spec.env_name == "env_spec_executor"
+
+
+def test_tool_agent_prefers_native_environment_yml(tmp_path: Path) -> None:
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    (repo_dir / "environment.yml").write_text(
+        "\n".join(
+            [
+                "name: final_env",
+                "channels:",
+                "  - pytorch",
+                "  - conda-forge",
+                "dependencies:",
+                "  - dbus=1.13.12=h746ee38_0",
+                "  - python=3.8.3=hcff3b4d_0",
+                "  - numpy=1.18.1=py38h4f9e942_0",
+                "  - pytorch=1.5.0=py3.8_cuda10.2.89_cudnn7.6.5_0",
+            ]
+        ),
+        encoding="utf-8",
     )
 
-    agent = ObserveMetricsAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
-    monkeypatch.setattr(agent, "safe_chat_text", lambda system, user: (None, None))
-
-    result = agent.execute({})
-    records = result["metrics"]["records"]
-    metric_names = {row["metric_name"] for row in records}
-
-    assert "precision" in metric_names
-    assert "recall" in metric_names
-    assert "f1" in metric_names
-    assert all(row["metric_name"] != "unknown" for row in records)
-
-
-def test_observe_metrics_ignores_static_inspection_steps(tmp_path, monkeypatch):
-    """Phase 3 should ignore polluted inspect-step metrics from static source reads."""
-    from p2c.agents.phase3.observe_metrics import ObserveMetricsAgent
-    from p2c.io_artifacts import ArtifactManager
-
-    artifacts = ArtifactManager(tmp_path / "artifacts", "run_inspect")
-    artifacts.ensure_tree()
+    artifacts = make_artifacts(tmp_path, "native_env")
     artifacts.write_json(
-        "task/metric_contract.json",
+        "task/repo_analysis.json",
         {
-            "required_metrics": ["precision", "recall", "f1"],
-            "parsers": [],
-            "normalization": {},
+            "dependency_profiles": [
+                {
+                    "profile_id": "conda:.",
+                    "ecosystem": "conda",
+                    "manager": "conda",
+                    "cwd": ".",
+                    "manifest_paths": ["environment.yml"],
+                    "install_command": None,
+                    "auto_bootstrap_supported": False,
+                    "reason_codes": [],
+                }
+            ],
+            "entrypoint_candidates": [],
+            "primary_entrypoint_id": None,
             "reason_codes": [],
         },
     )
+
+    agent = ToolAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
+    env_spec = agent.build_env_spec({"repo_dir": str(repo_dir), "run_id": "native_env"})
+
+    assert env_spec.native_environment_file == "environment.yml"
+    assert env_spec.python_version == "3.8"
+    assert env_spec.conda_dependencies == []
+    assert env_spec.pip_dependencies == []
+    assert "ENV_SPEC_FROM_NATIVE_CONDA_FILE" in env_spec.reason_codes
+
+
+def test_tool_agent_discovers_conda_env_yml_when_repo_analysis_misses_it(tmp_path: Path) -> None:
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    (repo_dir / "conda_env.yml").write_text(
+        "\n".join(
+            [
+                "name: legacy_env",
+                "channels:",
+                "  - conda-forge",
+                "  - pytorch",
+                "dependencies:",
+                "  - python=3.7.*",
+                "  - pytorch",
+                "  - torchvision",
+                "  - pip",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (repo_dir / "setup.py").write_text("from setuptools import setup\nsetup(name='legacy')\n", encoding="utf-8")
+
+    artifacts = make_artifacts(tmp_path, "native_conda_env")
     artifacts.write_json(
-        "execution/codex_outputs/run_manifest.json",
+        "task/repo_analysis.json",
+        {
+            "dependency_profiles": [
+                {
+                    "profile_id": "python-setuptools:.",
+                    "ecosystem": "python",
+                    "manager": "pip_editable",
+                    "cwd": ".",
+                    "manifest_paths": ["setup.py"],
+                    "install_command": "python -m pip install -e .",
+                    "auto_bootstrap_supported": True,
+                    "reason_codes": [],
+                }
+            ],
+            "entrypoint_candidates": [],
+            "primary_entrypoint_id": None,
+            "reason_codes": [],
+        },
+    )
+
+    agent = ToolAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
+    env_spec = agent.build_env_spec({"repo_dir": str(repo_dir), "run_id": "native_conda_env"})
+
+    assert env_spec.native_environment_file == "conda_env.yml"
+    assert env_spec.python_version == "3.7"
+    assert env_spec.pre_install_commands == ["python -m pip install -e ."]
+    assert "ENV_SPEC_FROM_NATIVE_CONDA_FILE" in env_spec.reason_codes
+
+
+def test_tool_agent_prefers_p2c_env_override_over_repo_conda_env(tmp_path: Path) -> None:
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    (repo_dir / "conda_env.yml").write_text(
+        "name: legacy\ndependencies:\n  - python=3.7.*\n",
+        encoding="utf-8",
+    )
+    (repo_dir / "p2c_env.yml").write_text(
+        "name: override\ndependencies:\n  - python=3.9\n",
+        encoding="utf-8",
+    )
+
+    artifacts = make_artifacts(tmp_path, "p2c_env_override")
+    artifacts.write_json("task/repo_analysis.json", {"dependency_profiles": [], "reason_codes": []})
+
+    agent = ToolAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
+    env_spec = agent.build_env_spec({"repo_dir": str(repo_dir), "run_id": "p2c_env_override"})
+
+    assert env_spec.native_environment_file == "p2c_env.yml"
+    assert env_spec.python_version == "3.9"
+
+
+def test_repo_analysis_detects_common_conda_environment_filenames(tmp_path: Path) -> None:
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    (repo_dir / "conda_env.yml").write_text("name: old\ndependencies:\n  - python=3.7.*\n", encoding="utf-8")
+    (repo_dir / "environment-dev.yaml").write_text("name: dev\ndependencies:\n  - python=3.10\n", encoding="utf-8")
+
+    analysis = SystemRepoAnalyzer(repo_dir).analyze()
+    conda_manifests = {
+        tuple(profile.manifest_paths)
+        for profile in analysis.dependency_profiles
+        if profile.manager == "conda"
+    }
+
+    assert ("conda_env.yml",) in conda_manifests
+    assert ("environment-dev.yaml",) in conda_manifests
+
+
+def test_tool_agent_converts_pixi_pyproject_to_conda_forge_env_spec(tmp_path: Path) -> None:
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    (repo_dir / "pyproject.toml").write_text(
+        "\n".join(
+            [
+                "[build-system]",
+                'requires = ["setuptools", "wheel"]',
+                'build-backend = "setuptools.build_meta"',
+                "",
+                "[project]",
+                'name = "lagrangian_nns"',
+                'version = "0.1.0"',
+                'requires-python = ">=3.7,<3.8"',
+                "dependencies = []",
+                "",
+                "[tool.pixi.dependencies]",
+                'python = "3.7.*"',
+                'jax = "==0.1.55"',
+                'jaxlib = "==0.1.37"',
+                'numpy = "<=1.18.0"',
+                'scipy = "<=1.4.1"',
+                'matplotlib = "<=3.1.2"',
+                'pytest = "*"',
+                "",
+                "[tool.pixi.environments]",
+                'default = ["py37"]',
+                "",
+                "[tool.pixi.feature.py37.dependencies]",
+                'python = "3.7.*"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    artifacts = make_artifacts(tmp_path, "pixi_env")
+    artifacts.write_json(
+        "task/repo_analysis.json",
+        {
+            "dependency_profiles": [
+                {
+                    "profile_id": "python-pyproject:.",
+                    "ecosystem": "python",
+                    "manager": "pip_editable",
+                    "cwd": ".",
+                    "manifest_paths": ["pyproject.toml"],
+                    "install_command": "python -m pip install -e .",
+                    "auto_bootstrap_supported": True,
+                    "reason_codes": [],
+                }
+            ],
+            "entrypoint_candidates": [],
+            "primary_entrypoint_id": None,
+            "reason_codes": [],
+        },
+    )
+
+    agent = ToolAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
+    env_spec = agent.build_env_spec({"repo_dir": str(repo_dir), "run_id": "pixi_env"})
+    conda_specs = {
+        (dep.package, dep.version_constraint, dep.channel)
+        for dep in env_spec.conda_dependencies
+    }
+
+    assert env_spec.python_version == "3.7"
+    assert ("jax", "==0.1.55", "conda-forge") in conda_specs
+    assert ("jaxlib", "==0.1.37", "conda-forge") in conda_specs
+    assert ("numpy", "<=1.18.0", "conda-forge") in conda_specs
+    assert not any(dep.package == "python" for dep in env_spec.conda_dependencies)
+    assert env_spec.pre_install_commands == ["python -m pip install -e ."]
+    assert "ENV_SPEC_FROM_PIXI_PYPROJECT" in env_spec.reason_codes
+    assert ToolAgent._derive_key_imports(env_spec)[:3] == ["jax", "numpy", "scipy"]
+
+
+def test_phase2_orchestrator_stops_after_native_env_create_failure(tmp_path: Path) -> None:
+    artifacts = make_artifacts(tmp_path, "native_env_fail")
+
+    class FailingToolAgent:
+        env_manager = None
+        cleanup_called = False
+
+        @staticmethod
+        def build_env_spec(ctx):
+            return ExecutorEnvSpec(
+                env_name="native_env_fail_executor",
+                python_version="3.8",
+                native_environment_file="environment.yml",
+            )
+
+        @staticmethod
+        def run(ctx):
+            return {
+                "env_result": EnvSetupResult(
+                    env_name="native_env_fail_executor",
+                    python_version="3.8",
+                    install_commands=["conda env create -f environment.yml (ok=False)"],
+                    reason_codes=["NATIVE_CONDA_ENV_CREATE_FAILED"],
+                )
+            }
+
+        def cleanup(self):
+            self.cleanup_called = True
+
+    class RecordingExecutorAgent:
+        called = False
+
+        def run(self, ctx):
+            self.called = True
+            return {"success": True}
+
+    tool_agent = FailingToolAgent()
+    executor_agent = RecordingExecutorAgent()
+    orchestrator = Phase2Orchestrator(
+        tool_agent=tool_agent,
+        executor_agent=executor_agent,
+        llm=None,
+        artifacts=artifacts,
+        step_index=1,
+        step_total=1,
+    )
+
+    result = orchestrator.execute({"repo_dir": str(tmp_path / "repo"), "run_id": "native_env_fail"})
+
+    assert result["status"] == "failed"
+    assert executor_agent.called is False
+    assert tool_agent.cleanup_called is True
+    assert result["failures"][0]["stage"] == "env_setup"
+    assert result["failures"][0]["reason_codes"] == ["NATIVE_CONDA_ENV_CREATE_FAILED"]
+    assert artifacts.read_json("execution/execution_failures.json")[0]["stage"] == "env_setup"
+
+
+def test_run_manifest_tolerates_null_cwd_and_exit_code_for_skipped_runs() -> None:
+    manifest = build_run_manifest(
+        [
+            {
+                "experiment_id": "exp_01",
+                "command": "skipped",
+                "cwd": None,
+                "exit_code": None,
+                "status": "skipped",
+                "reason_codes": ["SKIPPED_NONESSENTIAL"],
+            }
+        ],
+        reason_codes=["EXECUTOR_AGENT_RUN"],
+    )
+
+    run = manifest.runs[0]
+    assert run.cwd == "."
+    assert run.exit_code == 0
+    assert run.status == "skipped"
+
+
+def test_executor_load_runs_synthesizes_missing_stderr_when_stdout_exists(tmp_path: Path) -> None:
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    artifacts = make_artifacts(tmp_path, "missing_stderr")
+    outputs_dir = artifacts.path("execution/executor_outputs")
+    outputs_dir.mkdir(parents=True, exist_ok=True)
+    artifacts.write_text("execution/executor_outputs/experiment_exp_01_stdout.log", "METRIC:accuracy=0.91\n")
+    artifacts.write_text("execution/executor_outputs/executor_activity.jsonl", "{}\n")
+    artifacts.write_json(
+        "execution/executor_outputs/executor_results.json",
         {
             "runs": [
                 {
-                    "run_id": "step_01_inspect_train_script",
-                    "command": "sed -n '1,260p' src/train_fraud_model.py",
-                    "params": {},
-                    "cwd": ".",
+                    "experiment_id": "exp_01",
+                    "command": "python train.py",
+                    "commands_attempted": ["python train.py"],
+                    "cwd": str(repo_dir),
                     "exit_code": 0,
                     "status": "ok",
-                    "runtime_sec": 0.1,
-                    "stdout_tail": "Precision: 0.4\nRecall: 0.2\nF1-score: 0.4\n",
-                    "stderr_tail": "",
-                    "metrics": {"precision": 0.4, "recall": 0.2, "f1": 0.4},
+                    "fidelity": "full",
+                    "evidence_source": "fresh_run",
+                    "metrics": {"accuracy": 0.91},
+                    "logs": {
+                        "stdout": "execution/executor_outputs/experiment_exp_01_stdout.log",
+                        "stderr": "execution/executor_outputs/experiment_exp_01_stderr.log",
+                        "narrative": "execution/executor_outputs/experiment_exp_01_narrative.log",
+                    },
                     "reason_codes": [],
-                },
+                }
+            ]
+        },
+    )
+
+    agent = ExecutorAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
+    runs = agent._load_executor_runs(
+        artifacts.path("execution/executor_outputs/executor_results.json"),
+        contract=MetricContract(required_metrics=["accuracy"], parsers=[], normalization={}, reason_codes=[]),
+        session_stdout="",
+        experiments=[{"experiment_id": "exp_01", "name": "run"}],
+        outputs_dir=outputs_dir,
+        repo_dir=repo_dir,
+        observed_commands=["python train.py"],
+    )
+
+    run = runs[0]
+    assert run["status"] == "ok"
+    assert "DECLARED_LOG_MISSING" not in run["reason_codes"]
+    assert artifacts.path("execution/executor_outputs/experiment_exp_01_stderr.log").is_file()
+    assert artifacts.path(run["logs"]["narrative"]).is_file()
+
+
+def test_executor_selects_freshest_final_results_payload(tmp_path: Path) -> None:
+    artifacts = make_artifacts(tmp_path, "fresh_final")
+    outputs_dir = artifacts.path("execution/executor_outputs")
+    outputs_dir.mkdir(parents=True, exist_ok=True)
+    stale = outputs_dir / "executor_results.json"
+    final = outputs_dir / "executor_results_final.json"
+    stale.write_text(
+        '{"runs":[{"experiment_id":"exp_01","status":"skipped","metrics":{}}]}',
+        encoding="utf-8",
+    )
+    final.write_text(
+        '{"runs":[{"experiment_id":"exp_01","status":"partial","metrics":{"loss":4.5}}]}',
+        encoding="utf-8",
+    )
+    os.utime(stale, (1, 1))
+    os.utime(final, (2, 2))
+
+    assert ExecutorAgent._select_executor_results_path(outputs_dir) == final
+
+
+def test_executor_agent_detects_source_mutation(tmp_path: Path, monkeypatch) -> None:
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    (repo_dir / "README.md").write_text("python train.py\n", encoding="utf-8")
+    tracked_file = repo_dir / "train.py"
+    tracked_file.write_text("print('before')\n", encoding="utf-8")
+
+    artifacts = make_artifacts(tmp_path, "source_guard")
+    artifacts.write_json(
+        "fingerprint/claims_ir.json",
+        {
+            "experiments": [
                 {
-                    "run_id": "step_02_train_model",
-                    "command": "python src/train_fraud_model.py",
-                    "params": {},
-                    "cwd": ".",
-                    "exit_code": 0,
-                    "status": "ok",
-                    "runtime_sec": 1.0,
-                    "stdout_tail": "",
-                    "stderr_tail": "",
-                    "metrics": {"precision": 0.0372},
-                    "reason_codes": [],
-                },
+                    "experiment_id": "exp_01",
+                    "name": "mutating run",
+                    "description": "",
+                    "dataset": None,
+                    "table_anchor": None,
+                    "primary_metrics": ["accuracy"],
+                    "is_primary": True,
+                    "notes": None,
+                }
+            ],
+            "claims": [],
+            "reason_codes": [],
+        },
+    )
+    artifacts.write_json("task/repo_analysis.json", {"dependency_profiles": [], "entrypoint_candidates": [], "reason_codes": []})
+    artifacts.write_json("task/metric_contract.json", {"required_metrics": ["accuracy"], "parsers": [], "normalization": {}, "reason_codes": []})
+
+    def fake_session(env_mgr, prompt, cwd, timeout_sec=600):
+        tracked_file.write_text("print('after')\n", encoding="utf-8")
+        artifacts.write_json("execution/executor_outputs/executor_results.json", {"runs": []})
+        return ExecutorSessionResult(stdout="", stderr="", returncode=0, narrative="")
+
+    monkeypatch.setattr(ExecutorAgent, "_run_executor_session", staticmethod(fake_session))
+
+    agent = ExecutorAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
+    result = agent.execute(
+        {
+            "repo_dir": str(repo_dir),
+            "_p2_env_mgr": DummyEnvMgr(),
+            "_p2_remaining_sec": 60,
+            "_p2_attempt": 1,
+        }
+    )
+
+    assert result["success"] is False
+    failure = result["failure"]
+    assert failure.reason_codes == ["SOURCE_MUTATION_DETECTED"]
+
+
+def test_executor_agent_allows_tracked_runtime_artifact_mutation(tmp_path: Path, monkeypatch) -> None:
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    (repo_dir / "README.md").write_text("python train.py\n", encoding="utf-8")
+    (repo_dir / "train.py").write_text("print('ok')\n", encoding="utf-8")
+    checkpoint = repo_dir / "model.tar"
+    checkpoint.write_text("before\n", encoding="utf-8")
+
+    artifacts = make_artifacts(tmp_path, "runtime_artifact_guard")
+    artifacts.write_json(
+        "fingerprint/claims_ir.json",
+        {
+            "experiments": [
+                {
+                    "experiment_id": "exp_01",
+                    "name": "checkpoint run",
+                    "description": "",
+                    "dataset": None,
+                    "table_anchor": None,
+                    "primary_metrics": ["loss"],
+                    "is_primary": True,
+                    "notes": None,
+                }
+            ],
+            "claims": [],
+            "reason_codes": [],
+        },
+    )
+    artifacts.write_json("task/repo_analysis.json", {"dependency_profiles": [], "entrypoint_candidates": [], "reason_codes": []})
+    artifacts.write_json("task/metric_contract.json", {"required_metrics": ["loss"], "parsers": [], "normalization": {}, "reason_codes": []})
+
+    def fake_session(env_mgr, prompt, cwd, timeout_sec=600):
+        checkpoint.write_text("after\n", encoding="utf-8")
+        artifacts.write_json(
+            "execution/executor_outputs/executor_results.json",
+            {
+                "runs": [
+                    {
+                        "experiment_id": "exp_01",
+                        "command": "python train.py",
+                        "commands_attempted": ["python train.py"],
+                        "cwd": ".",
+                        "exit_code": 0,
+                        "status": "ok",
+                        "fidelity": "trend",
+                        "metrics": {"loss": 0.25},
+                        "artifacts": ["model.tar"],
+                    }
+                ]
+            },
+        )
+        return ExecutorSessionResult(stdout="", stderr="", returncode=0, narrative="")
+
+    monkeypatch.setattr(ExecutorAgent, "_run_executor_session", staticmethod(fake_session))
+
+    agent = ExecutorAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
+    result = agent.execute(
+        {
+            "repo_dir": str(repo_dir),
+            "_p2_env_mgr": DummyEnvMgr(),
+            "_p2_remaining_sec": 60,
+            "_p2_attempt": 1,
+        }
+    )
+
+    assert result["success"] is True
+    manifest = artifacts.read_json("execution/executor_outputs/run_manifest.json")
+    assert manifest["runs"][0]["status"] == "ok"
+    assert "REPO_RUNTIME_ARTIFACT_MUTATION_RECORDED" in manifest["reason_codes"]
+
+    guard = artifacts.read_json("execution/repo_mutation_guard.json")
+    assert guard["status"] == "warning"
+    assert guard["runtime_artifact_mutations"] == ["model.tar"]
+    assert guard["blocking_mutations"] == []
+
+
+def test_executor_agent_writes_experiment_scoped_manifest_and_logs(tmp_path: Path, monkeypatch) -> None:
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    (repo_dir / "README.md").write_text("python train.py\n", encoding="utf-8")
+    (repo_dir / "train.py").write_text("print('ok')\n", encoding="utf-8")
+
+    artifacts = make_artifacts(tmp_path, "manifest_logs")
+    artifacts.write_json(
+        "fingerprint/claims_ir.json",
+        {
+            "experiments": [
+                {
+                    "experiment_id": "exp_01",
+                    "name": "fc table 1",
+                    "description": "run fc model",
+                    "dataset": "MNIST",
+                    "table_anchor": "Table 1",
+                    "primary_metrics": ["accuracy"],
+                    "is_primary": True,
+                    "notes": None,
+                }
+            ],
+            "claims": [],
+            "reason_codes": [],
+        },
+    )
+    artifacts.write_json("task/repo_analysis.json", {"dependency_profiles": [], "entrypoint_candidates": [], "reason_codes": []})
+    artifacts.write_json("task/metric_contract.json", {"required_metrics": ["accuracy"], "parsers": [], "normalization": {}, "reason_codes": []})
+
+    def fake_session(env_mgr, prompt, cwd, timeout_sec=600):
+        artifacts.write_text("execution/executor_outputs/experiment_exp_01_stdout.log", "METRIC:accuracy=0.97\n")
+        artifacts.write_text("execution/executor_outputs/experiment_exp_01_stderr.log", "")
+        artifacts.write_text("execution/executor_outputs/experiment_exp_01_narrative.log", "ran train.py\n")
+        artifacts.write_text(
+            "execution/executor_outputs/executor_activity.jsonl",
+            '{"ts":"2026-04-22T00:00:00Z","event":"session_start","experiment_id":null,"cwd":".","command":"executor","status":"started","exit_code":null,"duration_sec":0.0,"artifacts":[],"message":"start"}\n',
+        )
+        artifacts.write_json(
+            "execution/executor_outputs/executor_results.json",
+            {
+                "runs": [
+                    {
+                        "experiment_id": "exp_01",
+                        "experiment_name": "fc table 1",
+                        "dataset": "MNIST",
+                        "command": "python train.py",
+                        "commands_attempted": ["python train.py", "python eval.py"],
+                        "cwd": ".",
+                        "exit_code": 0,
+                        "status": "ok",
+                        "runtime_sec": 12.5,
+                        "artifacts": ["results/model.pt"],
+                        "metrics": {"accuracy": 0.97},
+                        "notes": "completed",
+                        "logs": {
+                            "stdout": "execution/executor_outputs/experiment_exp_01_stdout.log",
+                            "stderr": "execution/executor_outputs/experiment_exp_01_stderr.log",
+                            "narrative": "execution/executor_outputs/experiment_exp_01_narrative.log",
+                            "activity": "execution/executor_outputs/executor_activity.jsonl",
+                        },
+                        "reason_codes": [],
+                    }
+                ]
+            },
+        )
+        return ExecutorSessionResult(stdout="", stderr="", returncode=0, narrative="done")
+
+    monkeypatch.setattr(ExecutorAgent, "_run_executor_session", staticmethod(fake_session))
+
+    agent = ExecutorAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
+    result = agent.execute(
+        {
+            "repo_dir": str(repo_dir),
+            "_p2_env_mgr": DummyEnvMgr(),
+            "_p2_remaining_sec": 60,
+            "_p2_attempt": 1,
+        }
+    )
+
+    assert result["success"] is True
+    manifest = artifacts.read_json("execution/executor_outputs/run_manifest.json")
+    run = manifest["runs"][0]
+    assert run["run_id"] == "exp_01"
+    assert run["experiment_id"] == "exp_01"
+    assert run["experiment_name"] == "fc table 1"
+    assert "claim_ids" not in run
+    assert run["commands_attempted"] == ["python train.py", "python eval.py"]
+    assert run["logs"]["activity"] == "execution/executor_outputs/executor_activity.jsonl"
+    package = artifacts.read_json("execution/executor_outputs/phase2_execution_package.json")
+    assert package["schema_version"] == "phase2_execution_package.v1"
+    assert package["experiments"][0]["attempts"][0]["attempt_id"].startswith("exp_01")
+    assert artifacts.path("execution/executor_outputs/PHASE2_RESULTS.md").is_file()
+
+
+def test_phase2_execution_package_preserves_duplicate_executor_runs(tmp_path: Path, monkeypatch) -> None:
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    (repo_dir / "README.md").write_text("python main_pytorch.py\n", encoding="utf-8")
+    (repo_dir / "main_pytorch.py").write_text("print('ok')\n", encoding="utf-8")
+
+    artifacts = make_artifacts(tmp_path, "phase2_package")
+    artifacts.write_json(
+        "fingerprint/claims_ir.json",
+        {
+            "experiments": [
+                {
+                    "experiment_id": "exp_02",
+                    "name": "Table 1 convolutional benchmark",
+                    "description": "conv benchmark",
+                    "dataset": "MNIST/CIFAR10",
+                    "table_anchor": "Table 1",
+                    "primary_metrics": ["accuracy"],
+                    "is_primary": True,
+                    "notes": None,
+                }
+            ],
+            "claims": [
+                {
+                    "claim_id": "claim_01",
+                    "type": "result",
+                    "predicate": "accuracy = 98.86+/-0.04%",
+                    "metric": "accuracy",
+                    "target": 0.9886,
+                    "conditions": {"experiment_id": "exp_02", "scope": "BP, convolutional model, MNIST"},
+                    "tolerance_policy": {"abs_eps": 0.005},
+                }
             ],
             "reason_codes": [],
         },
     )
-    artifacts.write_text(
-        "execution/codex_outputs/step_step_01_inspect_train_script_stdout.log",
-        "Precision: 0.4\nRecall: 0.2\nF1-score: 0.4\n",
+    artifacts.write_json("task/repo_analysis.json", {"dependency_profiles": [], "entrypoint_candidates": [], "reason_codes": []})
+    artifacts.write_json("task/metric_contract.json", {"required_metrics": ["accuracy"], "parsers": [], "normalization": {}, "reason_codes": []})
+
+    def fake_session(env_mgr, prompt, cwd, timeout_sec=600):
+        for suffix, value in (("smoke_MNIST_Conv_BP", "91.41"), ("trend_MNIST_Conv_BP", "91.94"), ("full_MNIST_Conv_BP", "90.55")):
+            artifacts.write_text(f"execution/executor_outputs/experiment_exp_02_bp_{suffix}_stdout.log", f"METRIC:test_accuracy={value}\n")
+            artifacts.write_text(f"execution/executor_outputs/experiment_exp_02_bp_{suffix}_stderr.log", "")
+            artifacts.write_text(f"execution/executor_outputs/experiment_exp_02_bp_{suffix}_narrative.log", suffix)
+        artifacts.write_json(
+            "execution/executor_outputs/executor_results.json",
+            {
+                "runs": [
+                    {
+                        "experiment_id": "exp_02_bp",
+                        "experiment_name": "Table 1 convolutional BP benchmark",
+                        "config_name": "MNIST_Conv_BP",
+                        "command": "python main_pytorch.py --learn_type BP --dataset mn --train_epochs 1 --model Net1conv1fcXL",
+                        "commands_attempted": ["python main_pytorch.py --learn_type BP --dataset mn --train_epochs 1 --model Net1conv1fcXL"],
+                        "cwd": ".",
+                        "exit_code": 0,
+                        "status": "ok",
+                        "fidelity": "smoke",
+                        "evidence_source": "fresh_run",
+                        "metrics": {"test_accuracy": 91.41},
+                        "logs": {
+                            "stdout": "execution/executor_outputs/experiment_exp_02_bp_smoke_MNIST_Conv_BP_stdout.log",
+                            "stderr": "execution/executor_outputs/experiment_exp_02_bp_smoke_MNIST_Conv_BP_stderr.log",
+                            "narrative": "execution/executor_outputs/experiment_exp_02_bp_smoke_MNIST_Conv_BP_narrative.log",
+                        },
+                    },
+                    {
+                        "experiment_id": "exp_02_bp",
+                        "experiment_name": "Table 1 convolutional BP benchmark",
+                        "config_name": "MNIST_Conv_BP",
+                        "command": "python main_pytorch.py --learn_type BP --dataset mn --train_epochs 10 --model Net1conv1fcXL",
+                        "commands_attempted": ["python main_pytorch.py --learn_type BP --dataset mn --train_epochs 10 --model Net1conv1fcXL"],
+                        "cwd": ".",
+                        "exit_code": 0,
+                        "status": "ok",
+                        "fidelity": "trend",
+                        "evidence_source": "fresh_run",
+                        "metrics": {"test_accuracy": 91.94},
+                        "logs": {
+                            "stdout": "execution/executor_outputs/experiment_exp_02_bp_trend_MNIST_Conv_BP_stdout.log",
+                            "stderr": "execution/executor_outputs/experiment_exp_02_bp_trend_MNIST_Conv_BP_stderr.log",
+                            "narrative": "execution/executor_outputs/experiment_exp_02_bp_trend_MNIST_Conv_BP_narrative.log",
+                        },
+                    },
+                    {
+                        "experiment_id": "exp_02_bp",
+                        "experiment_name": "Table 1 convolutional BP benchmark",
+                        "config_name": "MNIST_Conv_BP",
+                        "command": "python main_pytorch.py --learn_type BP --dataset mn --train_epochs 100 --model Net1conv1fcXL",
+                        "commands_attempted": ["python main_pytorch.py --learn_type BP --dataset mn --train_epochs 100 --model Net1conv1fcXL"],
+                        "cwd": ".",
+                        "exit_code": 0,
+                        "status": "ok",
+                        "fidelity": "full",
+                        "evidence_source": "fresh_run",
+                        "metrics": {"test_accuracy": 90.55},
+                        "logs": {
+                            "stdout": "execution/executor_outputs/experiment_exp_02_bp_full_MNIST_Conv_BP_stdout.log",
+                            "stderr": "execution/executor_outputs/experiment_exp_02_bp_full_MNIST_Conv_BP_stderr.log",
+                            "narrative": "execution/executor_outputs/experiment_exp_02_bp_full_MNIST_Conv_BP_narrative.log",
+                        },
+                    },
+                ]
+            },
+        )
+        return ExecutorSessionResult(stdout="", stderr="", returncode=0, narrative="done")
+
+    monkeypatch.setattr(ExecutorAgent, "_run_executor_session", staticmethod(fake_session))
+
+    agent = ExecutorAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
+    result = agent.execute(
+        {
+            "repo_dir": str(repo_dir),
+            "_p2_env_mgr": DummyEnvMgr(),
+            "_p2_remaining_sec": 60,
+            "_p2_attempt": 1,
+        }
     )
-    artifacts.write_text(
-        "execution/codex_outputs/step_step_02_train_model_stdout.log",
-        "Precision: 0.0372\nRecall: 0.9184\nF1-score: 0.0714\n",
-    )
 
-    agent = ObserveMetricsAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
-    monkeypatch.setattr(agent, "safe_chat_text", lambda system, user: (None, None))
-
-    result = agent.execute({})
-    records = result["metrics"]["records"]
-    values_by_metric = {}
-    for row in records:
-        values_by_metric.setdefault(row["metric_name"], set()).add(row["value"])
-
-    assert values_by_metric["precision"] == {0.0372}
-    assert values_by_metric["recall"] == {0.9184}
-    assert values_by_metric["f1"] == {0.0714}
+    assert result["success"] is True
+    package = artifacts.read_json("execution/executor_outputs/phase2_execution_package.json")
+    exp = package["experiments"][0]
+    assert exp["experiment_id"] == "exp_02"
+    assert exp["aliases"] == ["exp_02_bp"]
+    assert len(exp["attempts"]) == 3
+    metric_names = {metric["metric_name"] for metric in exp["metrics"]}
+    assert "bp_mnist_conv_smoke_test_accuracy" in metric_names
+    assert "bp_mnist_conv_trend_test_accuracy" in metric_names
+    assert "bp_mnist_conv_full_test_accuracy" in metric_names
+    values = {metric["metric_name"]: metric["value_ratio"] for metric in exp["metrics"]}
+    assert values["bp_mnist_conv_full_test_accuracy"] == 0.9055
+    assert exp["best_attempts_by_scope"]["bp|mnist|conv|test_accuracy"].endswith("100ep")
 
 
-def test_execute_step_static_inspection_does_not_emit_metrics(tmp_path, monkeypatch):
-    """Claude Code primary execution for inspect-like commands still succeeds."""
-    from p2c.agents.phase2.codex_executor import CodexExecutorAgent
-    from p2c.io_artifacts import ArtifactManager
-    from p2c.schemas import ExecutionStep, MetricContract
-
+def test_executor_agent_recovers_results_written_under_target_repo_artifacts(tmp_path: Path, monkeypatch) -> None:
     repo_dir = tmp_path / "repo"
     repo_dir.mkdir()
-    artifacts = ArtifactManager(tmp_path / "artifacts", "run_inspect_exec")
-    artifacts.ensure_tree()
-    agent = CodexExecutorAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
+    (repo_dir / "README.md").write_text("python train.py --epochs 1\n", encoding="utf-8")
+    (repo_dir / "train.py").write_text("print('ok')\n", encoding="utf-8")
 
-    class DummyEnvMgr:
-        env_name = "test_env"
+    artifacts = make_artifacts(tmp_path, "misplaced_results")
+    artifacts.write_json(
+        "fingerprint/claims_ir.json",
+        {
+            "experiments": [
+                {
+                    "experiment_id": "exp_01",
+                    "name": "misplaced run",
+                    "description": "",
+                    "dataset": "MNIST",
+                    "table_anchor": "Table 1",
+                    "primary_metrics": ["accuracy"],
+                    "is_primary": True,
+                    "notes": None,
+                }
+            ],
+            "claims": [],
+            "reason_codes": [],
+        },
+    )
+    artifacts.write_json("task/repo_analysis.json", {"dependency_profiles": [], "entrypoint_candidates": [], "reason_codes": []})
+    artifacts.write_json("task/metric_contract.json", {"required_metrics": ["accuracy"], "parsers": [], "normalization": {}, "reason_codes": []})
 
-    from p2c.agents.phase2.codex_executor import ClaudeResult
-
-    def fake_claude(env_mgr, prompt, cwd, timeout_sec=600):
-        return ClaudeResult(
-            stdout="Precision: 0.4\nRecall: 0.2\nF1-score: 0.4\n",
-            stderr="",
-            returncode=0,
+    def fake_session(env_mgr, prompt, cwd, timeout_sec=600):
+        misplaced_dir = repo_dir / "artifacts" / "misplaced_results" / "execution" / "executor_outputs"
+        misplaced_dir.mkdir(parents=True)
+        (misplaced_dir / "experiment_exp_01_stdout.log").write_text("METRIC:accuracy=0.93\n", encoding="utf-8")
+        (misplaced_dir / "experiment_exp_01_stderr.log").write_text("", encoding="utf-8")
+        (misplaced_dir / "experiment_exp_01_narrative.log").write_text("ran from misplaced dir\n", encoding="utf-8")
+        (misplaced_dir / "executor_results.json").write_text(
+            """{
+  "runs": [
+    {
+      "experiment_id": "exp_01",
+      "experiment_name": "misplaced run",
+      "dataset": "MNIST",
+      "command": "python train.py --epochs 1",
+      "commands_attempted": ["python train.py --epochs 1"],
+      "cwd": ".",
+      "exit_code": 0,
+      "status": "ok",
+      "fidelity": "smoke",
+      "evidence_source": "fresh_run",
+      "override_args": ["--epochs=1"],
+      "metrics": {"accuracy": 0.93},
+      "logs": {
+        "stdout": "artifacts/misplaced_results/execution/executor_outputs/experiment_exp_01_stdout.log",
+        "stderr": "artifacts/misplaced_results/execution/executor_outputs/experiment_exp_01_stderr.log",
+        "narrative": "artifacts/misplaced_results/execution/executor_outputs/experiment_exp_01_narrative.log",
+        "activity": "artifacts/misplaced_results/execution/executor_outputs/executor_activity.jsonl"
+      },
+      "reason_codes": []
+    }
+  ]
+}
+""",
+            encoding="utf-8",
         )
+        return ExecutorSessionResult(stdout="", stderr="", returncode=0, narrative="done")
 
-    monkeypatch.setattr(CodexExecutorAgent, "_run_claude", staticmethod(fake_claude))
+    monkeypatch.setattr(ExecutorAgent, "_run_executor_session", staticmethod(fake_session))
 
-    result = agent._execute_step(
-        step=ExecutionStep(
-            step_id="inspect_train",
-            description="inspect training script",
-            command="sed -n '1,260p' src/train_fraud_model.py",
-            retry_on_failure=False,
-        ),
-        env_mgr=DummyEnvMgr(),
-        repo_dir=str(repo_dir),
-        contract=MetricContract(),
-        outputs_dir=str(artifacts.path("execution/codex_outputs")),
-        timeout_sec=60,
+    agent = ExecutorAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
+    result = agent.execute(
+        {
+            "repo_dir": str(repo_dir),
+            "_p2_env_mgr": DummyEnvMgr(),
+            "_p2_remaining_sec": 60,
+            "_p2_attempt": 1,
+        }
     )
 
-    assert result["exit_code"] == 0
+    assert result["success"] is True
+    assert artifacts.path("execution/executor_outputs/executor_results.json").is_file()
+    manifest = artifacts.read_json("execution/executor_outputs/run_manifest.json")
+    run = manifest["runs"][0]
+    assert run["status"] == "ok"
+    assert run["logs"]["stdout"] == "execution/executor_outputs/experiment_exp_01_stdout.log"
+    assert "EXPERIMENT_RESULT_MISSING" not in run["reason_codes"]
+    assert "DECLARED_LOG_MISSING" not in run["reason_codes"]
 
 
-def test_execute_step_shell_false_success_is_forced_failed(tmp_path, monkeypatch):
-    """Shell wrappers with path errors should not be marked successful on rc=0 alone."""
-    from p2c.agents.phase2.codex_executor import CodexExecutorAgent, ClaudeResult
-    from p2c.io_artifacts import ArtifactManager
-    from p2c.schemas import ExecutionStep, MetricContract
-
-    repo_dir = tmp_path / "repo"
-    scripts_dir = repo_dir / "scripts"
-    scripts_dir.mkdir(parents=True)
-    (scripts_dir / "run.sh").write_text("#!/usr/bin/env bash\ncd missing_dir\npython train.py\n", encoding="utf-8")
-
-    artifacts = ArtifactManager(tmp_path / "artifacts", "run_shell_false_success")
-    artifacts.ensure_tree()
-    agent = CodexExecutorAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
-
-    class DummyEnvMgr:
-        env_name = "test_env"
-
-    def fake_claude(env_mgr, prompt, cwd, timeout_sec=600):
-        return ClaudeResult(
-            stdout="",
-            stderr="scripts/run.sh: line 2: cd: missing_dir: No such file or directory\n",
-            returncode=0,
-        )
-
-    monkeypatch.setattr(CodexExecutorAgent, "_run_claude", staticmethod(fake_claude))
-
-    result = agent._execute_step(
-        step=ExecutionStep(
-            step_id="wrapper",
-            description="run shell wrapper",
-            command="bash scripts/run.sh",
-            produced_artifacts=["models/best_model.joblib"],
-            path_resolution_mode="repo_root",
-        ),
-        env_mgr=DummyEnvMgr(),
-        repo_dir=str(repo_dir),
-        contract=MetricContract(),
-        outputs_dir=str(artifacts.path("execution/codex_outputs")),
-        timeout_sec=60,
-    )
-
-    assert result["exit_code"] == 1
-    assert result["status"] == "failed"
-    assert result["params"]["effective_cwd"] == "."
-    assert result["params"]["path_resolution_mode"] == "repo_root"
-    assert "SHELL_WRAPPER_FALSE_SUCCESS" in result["reason_codes"]
-
-
-def test_execute_step_claude_failure_returns_error(tmp_path, monkeypatch):
-    """Claude Code failure (non-zero exit) propagates as failed step result."""
-    from p2c.agents.phase2.codex_executor import CodexExecutorAgent, ClaudeResult
-    from p2c.io_artifacts import ArtifactManager
-    from p2c.schemas import ExecutionStep, MetricContract
-
+def test_executor_prompt_mentions_experiments_repo_and_readme_only(tmp_path: Path) -> None:
     repo_dir = tmp_path / "repo"
     repo_dir.mkdir()
-    artifacts = ArtifactManager(tmp_path / "artifacts", "run_claude_fail")
-    artifacts.ensure_tree()
-    agent = CodexExecutorAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
+    (repo_dir / "README.md").write_text("python main.py --epochs 3\n", encoding="utf-8")
 
-    class DummyEnvMgr:
-        env_name = "test_env"
-
-    def fake_claude(env_mgr, prompt, cwd, timeout_sec=600):
-        return ClaudeResult(
-            stdout="",
-            stderr="SyntaxError: Missing parentheses in call to 'print'\n",
-            returncode=1,
-        )
-
-    monkeypatch.setattr(CodexExecutorAgent, "_run_claude", staticmethod(fake_claude))
-
-    result = agent._execute_step(
-        step=ExecutionStep(
-            step_id="pipe",
-            description="run pipeline with tee",
-            command="PYTHONPATH=.. python nbsvm.py --ngram 1 --out ../scores/NBSVM-VALID-1GRAM | tee ../scores/NBSVM-VALID-1GRAM.log",
-            retry_on_failure=False,
-        ),
-        env_mgr=DummyEnvMgr(),
-        repo_dir=str(repo_dir),
-        contract=MetricContract(),
-        outputs_dir=str(artifacts.path("execution/codex_outputs")),
-        timeout_sec=60,
+    runtime_spec = ExecutorAgent._build_runtime_spec(DummyEnvMgr())
+    prompt = ExecutorAgent._build_prompt(
+        repo_dir=repo_dir,
+        experiments=[
+            {
+                "experiment_id": "exp_01",
+                "name": "main run",
+                "description": "reproduce table 1",
+                "dataset": "MNIST",
+                "table_anchor": "Table 1",
+                "primary_metrics": ["accuracy"],
+                "is_primary": True,
+                "notes": None,
+            }
+        ],
+        repo_analysis={"entrypoint_candidates": [{"path": "main.py", "command": "python main.py"}]},
+        readme_content="python main.py --epochs 3",
+        dependency_files={"requirements.txt": "numpy\n"},
+        runtime_spec=runtime_spec,
+        outputs_dir=tmp_path / "artifacts" / "run" / "execution" / "executor_outputs",
+        budget_sec=600,
+        soft_budget_sec_per_experiment=300,
     )
 
-    assert result["exit_code"] == 1
-    assert result["status"] == "failed"
+    assert "main run" in prompt
+    assert "README" in prompt
+    assert "Repository Analysis" in prompt
+    assert "artifact -> smoke -> trend -> full" in prompt
+    assert "Soft budget per experiment: 300 seconds" in prompt
+    assert "100+ epoch schedules" in prompt
+    assert "at least 3 epochs" in prompt
+    assert "estimated full runtime is <= 80% of the remaining global budget" in prompt
+    assert runtime_spec.python_command in prompt
+    assert "task_spec" not in prompt
+    assert "execution_plan" not in prompt
+    assert "claim_alignment" not in prompt
+
+
+def test_executor_system_prompt_mentions_long_horizon_policy() -> None:
+    runtime_spec = ExecutorAgent._build_runtime_spec(DummyEnvMgr())
+
+    prompt = ExecutorAgent._build_system_prompt(runtime_spec)
+
+    assert "100+ epoch schedules" in prompt
+    assert "at least 3 epochs" in prompt
+    assert "estimated full runtime is <= 80% of the remaining global budget" in prompt
+    assert runtime_spec.python_command in prompt
+
+
+def test_executor_full_mode_prompt_disables_smoke_and_trend(tmp_path: Path) -> None:
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    runtime_spec = ExecutorAgent._build_runtime_spec(DummyEnvMgr())
+
+    prompt = ExecutorAgent._build_prompt(
+        repo_dir=repo_dir,
+        experiments=[{"experiment_id": "exp_01", "name": "full run"}],
+        repo_analysis={"entrypoint_candidates": [{"path": "main.py", "command": "python main.py"}]},
+        readme_content="python main.py",
+        dependency_files={},
+        runtime_spec=runtime_spec,
+        outputs_dir=tmp_path / "outputs",
+        budget_sec=3600,
+        soft_budget_sec_per_experiment=3600,
+        execution_mode="full",
+    )
+    system_prompt = ExecutorAgent._build_system_prompt(runtime_spec, execution_mode="full")
+
+    assert "Execution mode: full" in prompt
+    assert "FULL-RUN MODE IS ACTIVE" in prompt
+    assert "full -> existing full-result artifact -> skipped/failed" in prompt
+    assert "Do not start smoke" in prompt
+    assert "do not run smoke" in system_prompt.lower()
+    assert "artifact -> smoke -> trend -> full" not in prompt
+
+
+def test_executor_full_mode_env_aliases(monkeypatch) -> None:
+    monkeypatch.setenv("P2C_EXECUTION_MODE", "full-only")
+    assert ExecutorAgent._execution_mode_from_env() == "full"
+
+    monkeypatch.delenv("P2C_EXECUTION_MODE")
+    monkeypatch.setenv("P2C_FORCE_FULL_RUN", "1")
+    assert ExecutorAgent._execution_mode_from_env() == "full"
+
+    monkeypatch.setenv("P2C_FORCE_FULL_RUN", "0")
+    assert ExecutorAgent._execution_mode_from_env() == "standard"
+
+
+def test_executor_runtime_spec_uses_absolute_venv_paths() -> None:
+    runtime_spec = ExecutorAgent._build_runtime_spec(DummyEnvMgr())
+
+    assert runtime_spec.backend == "venv"
+    assert runtime_spec.env_name == "test_env"
+    assert runtime_spec.env_path == "/tmp/p2c_venv_test_env"
+    assert runtime_spec.python_command == "/tmp/p2c_venv_test_env/bin/python"
+    assert runtime_spec.pip_command == "/tmp/p2c_venv_test_env/bin/pip"
+
+
+def test_conda_env_manager_finds_absolute_conda_binary(monkeypatch) -> None:
+    monkeypatch.setattr(
+        CondaEnvManager,
+        "_resolve_binary",
+        staticmethod(lambda binary, explicit_env=None: "/home/test/miniconda3/bin/conda" if binary == "conda" else None),
+    )
+
+    manager = CondaEnvManager(env_name="phase2_env", python_version="3.10")
+
+    assert manager._use_venv_fallback is False
+    assert manager.backend == "/home/test/miniconda3/bin/conda"
+
+
+def test_conda_env_manager_treats_absolute_mamba_as_mamba(monkeypatch) -> None:
+    monkeypatch.setattr(
+        CondaEnvManager,
+        "_resolve_binary",
+        staticmethod(lambda binary, explicit_env=None: "/home/test/miniconda3/bin/mamba" if binary == "mamba" else None),
+    )
+    calls: list[list[str]] = []
+
+    def fake_run(args, **kwargs):
+        calls.append(list(args))
+        return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr("p2c.runtime.conda_env.subprocess.run", fake_run)
+
+    manager = CondaEnvManager(env_name="phase2_env", python_version="3.10")
+    manager.run_in_env("python -V")
+
+    assert calls
+    assert calls[0][:2] == ["/home/test/miniconda3/bin/mamba", "run"]
+    assert "--no-capture-output" not in calls[0]
+
+
+def test_executor_guardrail_blocks_background_jobs_and_naked_python() -> None:
+    allowed, code, _ = ExecutorAgent._evaluate_bash_guardrail("python train.py --epochs 1", "phase2_env")
+    assert allowed is False
+    assert code == "CONDA_PREFIX_REQUIRED"
+
+    allowed, code, _ = ExecutorAgent._evaluate_bash_guardrail(
+        "conda run --no-capture-output -n phase2_env python train.py &",
+        "phase2_env",
+    )
+    assert allowed is False
+    assert code == "BACKGROUND_PROCESS_BLOCKED"
+
+
+def test_executor_guardrail_blocks_mutation_and_disallowed_overrides() -> None:
+    allowed, code, _ = ExecutorAgent._evaluate_bash_guardrail(
+        "conda run --no-capture-output -n phase2_env sed -i 's/1/2/' train.py",
+        "phase2_env",
+    )
+    assert allowed is False
+    assert code == "DESTRUCTIVE_COMMAND_BLOCKED"
+
+    allowed, code, _ = ExecutorAgent._evaluate_bash_guardrail(
+        "conda run --no-capture-output -n phase2_env python train.py --epoch-budget 4",
+        "phase2_env",
+    )
+    assert allowed is True
+    assert code is None
+
+    allowed, code, _ = ExecutorAgent._evaluate_bash_guardrail(
+        "conda run --no-capture-output -n phase2_env python train.py --iteration-mode cosine",
+        "phase2_env",
+    )
+    assert allowed is False
+    assert code == "OVERRIDE_FLAG_NOT_ALLOWED"
+
+
+def test_executor_result_normalization_accepts_common_executor_aliases() -> None:
+    assert (
+        ExecutorAgent._normalize_evidence_source(
+            "existing_artifact",
+            stdout_text="",
+            existing_artifacts=[],
+            commands_attempted=[],
+        )
+        == "existing_results"
+    )
+    assert ExecutorAgent._command_was_observed(
+        "python train.py --epochs 1",
+        observed_command_set=set(),
+        observed_commands=["/opt/mamba run -n phase2_env python train.py --epochs 1 > /tmp/run.log"],
+    )
+
+
+def test_executor_session_uses_streaming_prompt_for_claude_sdk(monkeypatch) -> None:
+    seen: dict[str, object] = {}
+    monkeypatch.setenv("P2C_USE_CLAUDE_TOOL_GUARDRAILS", "1")
+
+    class FakeClaudeAgentOptions:
+        def __init__(self, **kwargs):
+            for key, value in kwargs.items():
+                setattr(self, key, value)
+
+    async def fake_query(*, prompt, options):
+        seen["prompt"] = prompt
+        seen["options"] = options
+        seen["messages"] = [item async for item in prompt]
+        if False:
+            yield None
+
+    monkeypatch.setattr("p2c.agents.phase2.executor_agent.ClaudeAgentOptions", FakeClaudeAgentOptions)
+    monkeypatch.setattr("p2c.agents.phase2.executor_agent.query", fake_query)
+
+    result = ExecutorAgent._run_executor_session(DummyEnvMgr(), "run experiment", cwd="/tmp", timeout_sec=30)
+
+    assert result.returncode == 0
+    assert isinstance(seen["prompt"], AsyncIterable)
+    assert seen["messages"] == [
+        {
+            "type": "user",
+            "session_id": "",
+            "message": {"role": "user", "content": "run experiment"},
+            "parent_tool_use_id": None,
+        }
+    ]
+    options = seen["options"]
+    assert getattr(options, "cwd") == "/tmp"
+    assert "Bash" not in getattr(options, "allowed_tools")
+    assert getattr(options, "can_use_tool") is not None
+
+
+def test_executor_load_runs_normalizes_progressive_fidelity_fields(tmp_path: Path) -> None:
+    artifacts = make_artifacts(tmp_path, "normalize_runs")
+    outputs_dir = artifacts.path("execution/executor_outputs")
+    outputs_dir.mkdir(parents=True, exist_ok=True)
+    artifacts.write_text("execution/executor_outputs/experiment_exp_01_stdout.log", "METRIC:accuracy=0.88\n")
+    artifacts.write_text("execution/executor_outputs/experiment_exp_01_stderr.log", "")
+    artifacts.write_text("execution/executor_outputs/experiment_exp_01_narrative.log", "short run\n")
+    artifacts.write_text("execution/executor_outputs/executor_activity.jsonl", "{}\n")
+    artifacts.write_json(
+        "execution/executor_outputs/executor_results.json",
+        {
+            "runs": [
+                {
+                    "experiment_id": "exp_01",
+                    "experiment_name": "short run",
+                    "command": "conda run --no-capture-output -n test_env python train.py --epochs 1",
+                    "commands_attempted": [
+                        "conda run --no-capture-output -n test_env python train.py --epochs 1"
+                    ],
+                    "cwd": ".",
+                    "exit_code": 0,
+                    "status": "ok",
+                    "fidelity": "full",
+                    "evidence_source": "fresh_run",
+                    "override_args": ["--epochs=1"],
+                    "runtime_sec": 1.0,
+                    "metrics": {"accuracy": 0.88},
+                    "logs": {
+                        "stdout": "execution/executor_outputs/experiment_exp_01_stdout.log",
+                        "stderr": "execution/executor_outputs/experiment_exp_01_stderr.log",
+                        "narrative": "execution/executor_outputs/experiment_exp_01_narrative.log",
+                        "activity": "execution/executor_outputs/executor_activity.jsonl",
+                    },
+                    "reason_codes": [],
+                }
+            ]
+        },
+    )
+
+    agent = ExecutorAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
+    runs = agent._load_executor_runs(
+        artifacts.path("execution/executor_outputs/executor_results.json"),
+        contract=MetricContract(required_metrics=["accuracy"], parsers=[], normalization={}, reason_codes=[]),
+        session_stdout="",
+        experiments=[
+            {
+                "experiment_id": "exp_01",
+                "name": "short run",
+                "dataset": "MNIST",
+                "table_anchor": "Table 1",
+            }
+        ],
+        outputs_dir=outputs_dir,
+        observed_commands=["conda run --no-capture-output -n test_env python train.py --epochs 1"],
+    )
+
+    run = runs[0]
+    assert run["fidelity"] == "trend"
+    assert run["execution_outcome"] == "TREND_SUPPORTED"
+    assert "FULL_WITH_OVERRIDE_ARGS" in run["reason_codes"]
+    assert run["override_args"] == ["--epochs=1"]
+
+
+def test_executor_load_runs_keeps_traceable_executor_result_success_and_synthesizes_logs(tmp_path: Path) -> None:
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    (repo_dir / "res_exp_01").mkdir()
+
+    artifacts = make_artifacts(tmp_path, "traceable_success")
+    outputs_dir = artifacts.path("execution/executor_outputs")
+    outputs_dir.mkdir(parents=True, exist_ok=True)
+    artifacts.write_text(
+        "execution/executor_outputs/executor_activity.jsonl",
+        '{"event":"command_end","command":"mamba run -n test_env python train.py --epochs 1","status":"ok"}\n',
+    )
+    artifacts.write_json(
+        "execution/executor_outputs/executor_results.json",
+        {
+            "runs": [
+                {
+                    "experiment_id": "exp_01",
+                    "experiment_name": "traceable run",
+                    "command": "python train.py --epochs 1",
+                    "commands_attempted": ["python train.py --epochs 1"],
+                    "cwd": ".",
+                    "exit_code": 0,
+                    "status": "ok",
+                    "fidelity": "smoke+trend",
+                    "evidence_source": "fresh_runs",
+                    "artifacts": ["res_exp_01"],
+                    "metrics": {"accuracy": 0.91},
+                    "notes": "executor_results metrics are traceable",
+                    "logs": {},
+                    "reason_codes": [],
+                }
+            ]
+        },
+    )
+
+    agent = ExecutorAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
+    runs = agent._load_executor_runs(
+        artifacts.path("execution/executor_outputs/executor_results.json"),
+        contract=MetricContract(required_metrics=["accuracy"], parsers=[], normalization={}, reason_codes=[]),
+        session_stdout="",
+        experiments=[{"experiment_id": "exp_01", "name": "traceable run"}],
+        outputs_dir=outputs_dir,
+        repo_dir=repo_dir,
+        observed_commands=["mamba run -n test_env python train.py --epochs 1"],
+    )
+
+    run = runs[0]
+    assert run["status"] == "ok"
+    assert run["fidelity"] == "trend"
+    assert run["evidence_source"] == "fresh_run"
+    assert run["metrics"]["accuracy"] == 0.91
+    assert run["logs"]["stdout"] == "execution/executor_outputs/experiment_exp_01_stdout.log"
+    assert run["logs"]["stderr"] == "execution/executor_outputs/experiment_exp_01_stderr.log"
+    assert run["logs"]["narrative"] == "execution/executor_outputs/experiment_exp_01_narrative.log"
+    assert "SYNTHETIC_RUN_LOG_FROM_EXECUTOR_RESULTS" in run["reason_codes"]
+    assert "COMMAND_NOT_OBSERVED" not in run["reason_codes"]
+    assert "UNTRACEABLE_METRICS" not in run["reason_codes"]
+    assert artifacts.path("execution/executor_outputs/experiment_exp_01_stdout.log").is_file()
+    assert "METRIC:accuracy=0.91" in artifacts.path(
+        "execution/executor_outputs/experiment_exp_01_stdout.log"
+    ).read_text(encoding="utf-8")
+
+
+def test_executor_load_runs_synthesizes_missing_experiment_rows(tmp_path: Path) -> None:
+    artifacts = make_artifacts(tmp_path, "missing_rows")
+    outputs_dir = artifacts.path("execution/executor_outputs")
+    outputs_dir.mkdir(parents=True, exist_ok=True)
+    artifacts.write_json("execution/executor_outputs/executor_results.json", {"runs": []})
+    artifacts.write_text("execution/executor_outputs/executor_activity.jsonl", "{}\n")
+
+    agent = ExecutorAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
+    runs = agent._load_executor_runs(
+        artifacts.path("execution/executor_outputs/executor_results.json"),
+        contract=MetricContract(required_metrics=[], parsers=[], normalization={}, reason_codes=[]),
+        session_stdout="",
+        experiments=[{"experiment_id": "exp_missing", "name": "missing run"}],
+        outputs_dir=outputs_dir,
+        observed_commands=[],
+    )
+
+    run = runs[0]
+    assert run["experiment_id"] == "exp_missing"
+    assert run["status"] == "failed"
+    assert run["stop_reason"] == "runtime_failure"
+    assert "EXPERIMENT_RESULT_MISSING" in run["reason_codes"]

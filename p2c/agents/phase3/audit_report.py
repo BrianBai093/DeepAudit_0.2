@@ -1,75 +1,189 @@
 from __future__ import annotations
 
 import json
-import subprocess
-import sys
 from pathlib import Path
 
 from p2c.agents.base import BaseAgent
+from p2c.agents.phase3.claim_inputs import load_effective_claims_ir
+from p2c.agents.phase3.execution_summary_evidence import (
+    PHASE2_PACKAGE_PATH,
+    PHASE2_RESULTS_PATH,
+    SUMMARY_PRIORITY_NOTE,
+    load_effective_run_manifest,
+    load_phase2_execution_package,
+)
+from p2c.agents.phase2.result_extraction import is_static_inspection_command
 
 SYSTEM_PROMPT = """\
 You are a senior ML reproducibility auditor writing the final assessment report.
 
-You will receive ALL artifacts from a paper reproduction pipeline:
-- Paper claims extracted from the paper (with experiment context)
-- Repository analysis (what code/notebooks exist)
-- Execution results (what ran, what metrics were produced)
-- Claim verdicts (which claims were supported/not supported/inconclusive)
-- Experiment coverage (which paper experiments are in the repo, which are missing)
+You will receive a canonical Phase 2 execution package plus selected Phase 1 and Phase 3 \
+artifacts. Treat phase2_execution_package.json as the execution source of truth.
 
-Write a comprehensive reproducibility audit report in Markdown. The report MUST include:
+Write a CONCISE reproducibility audit report in Markdown. Follow the structure EXACTLY:
 
-## Structure
+## Report Structure (STRICT — follow this order and format)
 
-### 1. Executive Summary
-- One-paragraph overview: what paper, what repo, what was the outcome
-- **Reproducibility Score: X/10** (integer, based on criteria below)
+### 1. Score Card (tables only, NO prose)
 
-### 2. Experiment Coverage
-- Table listing each experiment from the paper
-- For each: is it implemented in the repo? Was it executed? Result?
-- Highlight missing experiments that the paper describes but the repo lacks
+| Dimension | Score | Weight | Weighted | Key Evidence |
+|-----------|-------|--------|----------|--------------|
+| Environment | X/100 | 25% | ... | one-line evidence |
+| Data Availability | X/100 | 25% | ... | one-line evidence |
+| Execution Success | X/100 | 20% | ... | one-line evidence |
+| Claim Match | X/100 | 30% | ... | one-line evidence |
+| **Total** | | | **X/100** | |
 
-### 3. Result Verification
-- For each result claim that could be verified:
-  - Paper claimed value vs reproduced value
-  - Within tolerance? Yes/No
-  - Brief analysis of any discrepancy
-- For claims that could NOT be verified: explain why
+**ECR (Executable-Claim Reproducible)**: ✅ True / ❌ False — one-line reason
 
-### 4. Configuration & Environment
-- Were the reported configurations (dataset sizes, hyperparameters, etc.) \
-consistent with what the code actually uses?
-- Any environment issues encountered during execution?
+### 2. Verdict Dashboard (table only, NO prose)
 
-### 5. Gaps & Concerns
-- Missing experiments, unreproducible claims, code quality issues
-- Anything suspicious or concerning about reproducibility
+| Experiment | Scope | Paper Value | Reproduced | Fidelity | Status |
+|------------|-------|-------------|------------|----------|--------|
+Use ✅ for SUPPORTED, ❌ for NOT_SUPPORTED, ⚠️ for INCONCLUSIVE.
+Focus this dashboard on result claims with reproduced metrics: experiment, dataset, algorithm,
+model family, paper acc/metric, reproduced acc/metric, and fidelity. Do not include setup/config
+claims such as dropout or data split unless there are no result claims at all.
 
-### 6. Scoring Breakdown
-Explain the score using these criteria (each 0-2 points):
-1. **Code Completeness** (0-2): Does the repo contain code for all paper experiments?
-2. **Execution Success** (0-2): Did the code run without major issues?
-3. **Result Accuracy** (0-2): Do reproduced results match paper claims?
-4. **Documentation** (0-2): Is the repo well-documented for reproduction?
-5. **Data Availability** (0-2): Are datasets accessible and properly referenced?
+### 3. Reproduced Figures/Tables
+For each reproduced figure or table image: embed ![caption](path) and add ONE sentence comparison note.
+That sentence MUST include the figure's match_level: EXACT, PARTIAL, RELATED, or NO_EVIDENCE.
+If no figures or tables were generated, write "No figures/tables reproduced."
+Only include entries with reproduction_status="REPRODUCED"; do not include audit-only charts.
+
+### 4. Gap Diagnosis (table only)
+
+| # | Category | Severity | Affected Claims | Description |
+|---|----------|----------|-----------------|-------------|
+Categories MUST be from: DATA_MISSING, PREPROCESS_UNSPECIFIED, CHECKPOINT_MISSING, \
+ENVIRONMENT_UNDERDEFINED, ENTRYPOINT_UNCLEAR, NONDETERMINISM, COMPUTE_INFEASIBLE, RESULT_MISMATCH.
+
+### 5. Experiment Coverage (table only)
+
+| Experiment | Implemented? | Executed? | Result |
+|------------|-------------|-----------|--------|
+The Result column MUST summarize status, fidelity, execution_outcome, evidence_source, and stop_reason.
 
 ## Rules
-- Be factual. Only cite values that appear in the artifacts.
-- Do NOT fabricate metrics, file paths, or claim results.
-- Use specific numbers and evidence for every assertion.
-- If something is unclear, say so explicitly rather than guessing.
-- Distinguish clearly between:
-  1. repo not implemented,
-  2. repo executed but cannot be aligned to the paper's exact experiment,
-  3. repo executed and numerically disagrees with the paper.
-- Treat `status="partial"` execution steps as degraded success: the primary command failed and a fallback only partially validated the step.
-- If runnable entrypoints and successful execution evidence exist, do NOT describe the \
-  repository as missing implementation unless the artifacts clearly prove that absence.
-- If environment validation failed but failed_packages is empty and core steps ran, treat \
-  that as a validation warning or probe mismatch, not as a hard execution failure.
+- NO verbose paragraphs. Use tables and single-sentence bullets ONLY.
+- Max 2 sentences per section OUTSIDE of tables.
+- Every number MUST come from the provided artifacts.
+- If REPRODUCIBILITY SCORE contains raw_total_score/calibration_notes, use total_score as the final calibrated
+  score and mention the calibration note once in the Score Card evidence.
+- Use the Phase 2 execution package first. The effective run manifest is a compatibility projection
+  derived from that package when the package exists.
+- PHASE2_RESULTS.md is a deterministic same-origin summary of the package; raw EXECUTION_*.md files
+  are lower-priority debug context.
+- Do NOT fabricate metrics, file paths, or results.
+- Do NOT repeat information across sections.
+- Do NOT use bare claim IDs as the primary label; always show the concrete claim text first.
+- Distinguish: not implemented vs executed-but-misaligned vs numerically-disagrees.
+- Treat status="partial" as degraded success.
 - Write in clear, professional English.
 """
+
+
+def _claim_title(claim: dict, claim_id: str | None = None) -> str:
+    """Human-readable claim label for reports."""
+    predicate = str(claim.get("predicate") or "").strip()
+    if predicate:
+        return predicate
+    metric = str(claim.get("metric") or "").strip()
+    target = claim.get("target")
+    if metric and target is not None:
+        return f"{metric} = {target}"
+    if metric:
+        return metric
+    return str(claim_id or "unknown claim")
+
+
+def _claim_meta(claim: dict, claim_id: str | None = None) -> str:
+    """Compact traceability metadata after the readable claim title."""
+    parts = [str(claim_id)] if claim_id else []
+    ctype = str(claim.get("type") or "").strip()
+    if ctype:
+        parts.append(ctype)
+    conditions = claim.get("conditions", {})
+    if isinstance(conditions, dict):
+        experiment_id = str(conditions.get("experiment_id") or "").strip()
+        if experiment_id:
+            parts.append(experiment_id)
+        table_anchor = str(conditions.get("table_anchor") or "").strip()
+        if table_anchor:
+            parts.append(table_anchor)
+    return ", ".join(parts)
+
+
+def _claim_label(claim: dict, claim_id: str | None = None) -> str:
+    title = _claim_title(claim, claim_id)
+    meta = _claim_meta(claim, claim_id)
+    return f"{title} ({meta})" if meta else title
+
+
+def _report_image_path(image_path: str) -> str:
+    """Convert run-root-relative image paths for use from results/report.md."""
+    path = str(image_path or "").strip()
+    if path.startswith("results/"):
+        return path[len("results/"):]
+    return path
+
+
+def _is_reportable_reproduced_figure(fig: dict) -> bool:
+    if not fig.get("image_path"):
+        return False
+    if fig.get("reproduction_status", "REPRODUCED") != "REPRODUCED":
+        return False
+    return str(fig.get("element_id") or "") != "verdict_comparison"
+
+
+def _plan_step_map(plan: dict) -> dict[str, dict]:
+    rows = plan.get("execution_steps", []) if isinstance(plan, dict) else []
+    if not isinstance(rows, list):
+        return {}
+    return {
+        str(row.get("step_id")): row
+        for row in rows
+        if isinstance(row, dict) and row.get("step_id")
+    }
+
+
+def _metricless_report_step(run: dict, planned_step: dict | None) -> bool:
+    """Return True for setup/static inspection runs whose metrics are untrusted."""
+    planned_step = planned_step or {}
+    expected = planned_step.get("expected_metrics") or []
+    produced = planned_step.get("produced_artifacts") or []
+    if expected or produced:
+        return False
+    if planned_step.get("is_setup"):
+        return True
+    planned_command = str(planned_step.get("command") or "")
+    if planned_command and is_static_inspection_command(planned_command):
+        return True
+    return is_static_inspection_command(str(run.get("command") or ""))
+
+
+def _run_metrics_for_report(run: dict, plan_steps: dict[str, dict]) -> dict:
+    """Filter manifest metrics before they are shown to the report LLM."""
+    metrics = run.get("metrics", {})
+    if not isinstance(metrics, dict):
+        return {}
+    planned_step = plan_steps.get(str(run.get("run_id") or ""))
+    if _metricless_report_step(run, planned_step):
+        return {}
+    return metrics
+
+
+def _failure_rows_for_report(payload) -> list:
+    """Normalize execution_failures.json across list/current/legacy shapes."""
+    if isinstance(payload, list):
+        return [row for row in payload if isinstance(row, dict)]
+    if isinstance(payload, dict):
+        rows = payload.get("failures", [])
+        if isinstance(rows, list):
+            return [row for row in rows if isinstance(row, dict)]
+        if payload.get("step_failures"):
+            return [payload]
+    return []
 
 
 def _build_report_prompt(ctx: dict, artifacts) -> str:
@@ -77,14 +191,14 @@ def _build_report_prompt(ctx: dict, artifacts) -> str:
     sections = []
 
     # ── Paper claims + experiments ──────────────────────────────
-    claims_ir = artifacts.read_json("fingerprint/claims_ir.json")
+    claims_ir = load_effective_claims_ir(artifacts)
 
     experiments = claims_ir.get("experiments", [])
     if experiments:
         sections.append("# PAPER EXPERIMENTS (identified by LLM)")
         sections.append(json.dumps(experiments, indent=2, ensure_ascii=False)[:3000])
 
-    sections.append("\n# PAPER CLAIMS (claims_ir.json)")
+    sections.append("\n# PAPER CLAIMS (effective_claims_ir.json)")
     sections.append(json.dumps(claims_ir.get("claims", []), indent=2, ensure_ascii=False)[:5000])
 
     # ── Fingerprint configurations ───────────────────────────────
@@ -105,50 +219,89 @@ def _build_report_prompt(ctx: dict, artifacts) -> str:
     except Exception:  # noqa: BLE001
         pass
 
-    # ── Execution plan ───────────────────────────────────────────
-    try:
-        plan = artifacts.read_json("execution/execution_plan.json")
-        sections.append("\n# EXECUTION PLAN")
-        # Only include key fields to save tokens
-        plan_summary = {
-            "plan_id": plan.get("plan_id"),
-            "python_version": plan.get("python_version"),
-            "steps": [
-                {"step_id": s.get("step_id"), "description": s.get("description"), "command": s.get("command", "")[:200]}
-                for s in plan.get("execution_steps", [])
-            ],
-            "compatibility_issues": plan.get("compatibility_issues", []),
+    # ── Canonical Phase2 execution package ────────────────────────
+    phase2_package = load_phase2_execution_package(artifacts)
+    if phase2_package:
+        sections.append("\n# PHASE2 EXECUTION PACKAGE (canonical execution evidence)")
+        sections.append(SUMMARY_PRIORITY_NOTE)
+        package_summary = {
+            "schema_version": phase2_package.get("schema_version"),
+            "source_files": phase2_package.get("source_files", {}),
+            "experiments": [],
         }
-        sections.append(json.dumps(plan_summary, indent=2, ensure_ascii=False)[:3000])
+        for experiment in phase2_package.get("experiments", []):
+            if not isinstance(experiment, dict):
+                continue
+            package_summary["experiments"].append(
+                {
+                    "experiment_id": experiment.get("experiment_id"),
+                    "name": experiment.get("name"),
+                    "aliases": experiment.get("aliases", []),
+                    "paper_target_refs": experiment.get("paper_target_refs", [])[:12],
+                    "best_attempts_by_scope": experiment.get("best_attempts_by_scope", {}),
+                    "metrics": experiment.get("metrics", [])[:20],
+                    "failures": experiment.get("failures", [])[:8],
+                    "summary_for_llm": experiment.get("summary_for_llm"),
+                }
+            )
+        sections.append(json.dumps(package_summary, indent=2, ensure_ascii=False)[:9000])
+        phase2_results = artifacts.path(PHASE2_RESULTS_PATH)
+        if phase2_results.exists() and phase2_results.stat().st_size > 0:
+            sections.append("\n# PHASE2 RESULTS SUMMARY (derived from package)")
+            sections.append(phase2_results.read_text(encoding="utf-8", errors="ignore")[:5000])
+
+    # ── Legacy execution summary and effective manifest ───────────
+    try:
+        summary_evidence = artifacts.read_json("results/execution_summary_evidence.json")
+        summary_path = summary_evidence.get("summary_path")
+        if summary_path and not phase2_package:
+            summary_file = artifacts.path(summary_path)
+            summary_text = summary_file.read_text(encoding="utf-8", errors="ignore") if summary_file.exists() else ""
+            sections.append("\n# EXECUTION SUMMARY FINAL (same-origin, highest priority)")
+            sections.append(SUMMARY_PRIORITY_NOTE)
+            sections.append(summary_text[:6000])
     except Exception:  # noqa: BLE001
         pass
 
-    # ── Run manifest ─────────────────────────────────────────────
-    manifest = artifacts.read_json("execution/codex_outputs/run_manifest.json")
-    sections.append("\n# RUN MANIFEST (execution results)")
+    manifest = load_effective_run_manifest(artifacts)
+    sections.append("\n# RUN MANIFEST (effective Phase 3 execution results)")
     for run in manifest.get("runs", []):
-        sections.append(f"\n## Step: {run.get('run_id')}")
+        sections.append(f"\n## Experiment: {run.get('experiment_name') or run.get('run_id')}")
         sections.append(f"- status: {run.get('status')}")
+        sections.append(f"- fidelity: {run.get('fidelity')}")
+        sections.append(f"- execution_outcome: {run.get('execution_outcome')}")
+        sections.append(f"- evidence_source: {run.get('evidence_source')}")
+        sections.append(f"- stop_reason: {run.get('stop_reason')}")
         sections.append(f"- exit_code: {run.get('exit_code')}")
         sections.append(f"- runtime_sec: {run.get('runtime_sec')}")
         if run.get("params"):
             sections.append(f"- params: {json.dumps(run.get('params', {}), ensure_ascii=False)}")
         if run.get("reason_codes"):
             sections.append(f"- reason_codes: {json.dumps(run.get('reason_codes', []), ensure_ascii=False)}")
-        if run.get("status") == "partial":
-            sections.append("- partial_execution_note: primary command failed; fallback only validated artifacts or a reduced objective")
-        sections.append(f"- metrics: {json.dumps(run.get('metrics', {}))}")
-        # Include stdout tail for context (truncated)
+        sections.append(f"- commands_attempted: {json.dumps(run.get('commands_attempted', []), ensure_ascii=False)}")
+        sections.append(f"- metrics: {json.dumps(run.get('metrics', {}), ensure_ascii=False)}")
         stdout = run.get("stdout_tail", "")
         if stdout:
             sections.append(f"- stdout_tail (last 500 chars): {stdout[-500:]}")
+        logs = run.get("logs") or {}
+        if logs:
+            sections.append(f"- logs: {json.dumps(logs, ensure_ascii=False)}")
+
+    try:
+        raw_manifest = artifacts.read_json("execution/executor_outputs/run_manifest.json")
+        if raw_manifest and raw_manifest != manifest:
+            sections.append("\n# RAW RUN MANIFEST (lower-priority audit context)")
+            sections.append(json.dumps(raw_manifest, indent=2, ensure_ascii=False)[:3000])
+    except Exception:  # noqa: BLE001
+        pass
 
     # ── Execution failures ───────────────────────────────────────
     try:
         failures = artifacts.read_json("execution/execution_failures.json")
-        if failures.get("failures"):
+        failure_rows = _failure_rows_for_report(failures)
+        if failure_rows:
             sections.append("\n# EXECUTION FAILURES")
-            sections.append(json.dumps(failures, indent=2, ensure_ascii=False)[:2000])
+            sections.append(json.dumps(failure_rows, indent=2, ensure_ascii=False)[:2000])
     except Exception:  # noqa: BLE001
         pass
 
@@ -171,7 +324,7 @@ def _build_report_prompt(ctx: dict, artifacts) -> str:
     sections.append("\n# CLAIM VERDICTS")
     sections.append(json.dumps(verdict, indent=2, ensure_ascii=False)[:4000])
 
-    # ── Structured metrics + alignment ───────────────────────────
+    # ── Structured metrics ───────────────────────────────────────
     try:
         metrics = artifacts.read_json("results/metrics.json")
         sections.append("\n# STRUCTURED METRICS")
@@ -180,9 +333,10 @@ def _build_report_prompt(ctx: dict, artifacts) -> str:
         pass
 
     try:
-        alignment = artifacts.read_json("execution/codex_outputs/claim_alignment.json")
-        sections.append("\n# CLAIM ALIGNMENT")
-        sections.append(json.dumps(alignment, indent=2, ensure_ascii=False)[:3000])
+        activity = artifacts.path("execution/executor_outputs/executor_activity.jsonl")
+        if activity.exists():
+            sections.append("\n# EXECUTOR ACTIVITY")
+            sections.append(activity.read_text(encoding="utf-8", errors="ignore")[:3000])
     except Exception:  # noqa: BLE001
         pass
 
@@ -190,6 +344,72 @@ def _build_report_prompt(ctx: dict, artifacts) -> str:
     eval_verdict = artifacts.read_json("results/evaluability_verdict.json")
     sections.append("\n# EVALUABILITY VERDICT")
     sections.append(json.dumps(eval_verdict, indent=2, ensure_ascii=False)[:2000])
+
+    # ── Reproducibility Score (0-100) ───────────────────────────
+    try:
+        score = artifacts.read_json("results/reproducibility_score.json")
+        sections.append("\n# REPRODUCIBILITY SCORE (0-100)")
+        sections.append(json.dumps(score, indent=2, ensure_ascii=False)[:4000])
+    except Exception:  # noqa: BLE001
+        pass
+
+    # ── Visual elements from PDF ────────────────────────────────
+    try:
+        ve = artifacts.read_json("fingerprint/visual_elements.json")
+        if ve.get("elements"):
+            sections.append("\n# VISUAL ELEMENTS FROM PAPER")
+            sections.append(json.dumps(ve, indent=2, ensure_ascii=False)[:3000])
+    except Exception:  # noqa: BLE001
+        pass
+
+    try:
+        visual_alignment = artifacts.read_json("results/visual_to_repo_alignment.json")
+        if visual_alignment.get("alignments"):
+            sections.append("\n# VISUAL TO REPO ALIGNMENT")
+            sections.append(json.dumps(visual_alignment, indent=2, ensure_ascii=False)[:3000])
+    except Exception:  # noqa: BLE001
+        pass
+
+    # ── Reproduced figures ──────────────────────────────────────
+    try:
+        figs = artifacts.read_json("results/reproduced_figures.json")
+        if figs.get("figures"):
+            sections.append("\n# REPRODUCED FIGURES")
+            for fig in figs["figures"]:
+                if _is_reportable_reproduced_figure(fig):
+                    metadata = {
+                        "element_id": fig.get("element_id"),
+                        "visual_anchor": fig.get("visual_anchor"),
+                        "image_path": _report_image_path(fig.get("image_path", "")),
+                        "comparison_notes": fig.get("comparison_notes"),
+                        "match_level": fig.get("match_level", "EXACT"),
+                        "matched_scope": fig.get("matched_scope", {}),
+                        "coverage_note": fig.get("coverage_note", ""),
+                        "evidence_sources": fig.get("evidence_sources", [])[:8],
+                        "reason_codes": fig.get("reason_codes", []),
+                    }
+                    sections.append(
+                        f"- {metadata['element_id']}: "
+                        f"![{metadata.get('comparison_notes', '')}]({metadata['image_path']}) "
+                        f"{json.dumps(metadata, ensure_ascii=False)}"
+                    )
+        reportable = [fig for fig in figs.get("figures", []) if isinstance(fig, dict) and _is_reportable_reproduced_figure(fig)]
+        partial_related_count = sum(
+            1 for fig in reportable
+            if str(fig.get("match_level") or "EXACT").upper() in {"PARTIAL", "RELATED", "NO_EVIDENCE"}
+        )
+        skipped_count = len(figs.get("skipped_targets", []))
+        if partial_related_count or skipped_count:
+            summary_parts = []
+            if partial_related_count:
+                summary_parts.append(f"{partial_related_count} reproduced visuals have only partial/related Phase2 evidence")
+            if skipped_count:
+                summary_parts.append(f"{skipped_count} result-related visual targets lacked executable phase2 evidence and were skipped")
+            sections.append(
+                "\n# VISUAL EVIDENCE COVERAGE\n" + "; ".join(summary_parts) + "."
+            )
+    except Exception:  # noqa: BLE001
+        pass
 
     # ── Context ──────────────────────────────────────────────────
     sections.append(f"\n# RUN CONTEXT")
@@ -213,35 +433,10 @@ class AuditReportAgent(BaseAgent):
             self.log("PROGRESS", f"LLM unavailable ({llm_err}), generating fallback report")
             report_text = self._fallback_report(ctx)
 
-        # ── Post-process: PictureToWords ─────────────────────────
+        # ── Write report directly (no PictureToWords stripping on output) ──
         draft_path = self.artifacts.path("results/report.draft.md")
         draft_path.write_text(report_text, encoding="utf-8")
-
-        picture_script = Path.cwd() / "PictureToWords.py"
-        if picture_script.exists():
-            cmd = [
-                sys.executable,
-                str(picture_script),
-                "--input",
-                str(draft_path),
-                "--output",
-                str(self.artifacts.path("results/report.md")),
-            ]
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-            self.artifacts.append_text(
-                "execution/run.log",
-                f"\n$ {' '.join(cmd)}\n{proc.stdout}\n{proc.stderr}\n",
-            )
-            if proc.returncode != 0:
-                self.artifacts.write_text(
-                    "results/report.md",
-                    draft_path.read_text(encoding="utf-8"),
-                )
-        else:
-            self.artifacts.write_text(
-                "results/report.md",
-                draft_path.read_text(encoding="utf-8"),
-            )
+        self.artifacts.write_text("results/report.md", report_text)
 
         return {"report": "results/report.md"}
 
@@ -250,8 +445,18 @@ class AuditReportAgent(BaseAgent):
         verdict = self.artifacts.read_json("results/verdict.json")
         eval_verdict = self.artifacts.read_json("results/evaluability_verdict.json")
         metrics = self.artifacts.read_json("results/metrics.json")
-        claims_doc = self.artifacts.read_json("fingerprint/claims_ir.json")
-        manifest = self.artifacts.read_json("execution/codex_outputs/run_manifest.json")
+        claims_doc = load_effective_claims_ir(self.artifacts)
+        manifest = load_effective_run_manifest(self.artifacts)
+        reproduced_figures = self.artifacts.read_json("results/reproduced_figures.json")
+        try:
+            visual_alignment = self.artifacts.read_json("results/visual_to_repo_alignment.json")
+        except Exception:  # noqa: BLE001
+            visual_alignment = {}
+        alignment_by_id = {
+            str(row.get("element_id")): row
+            for row in visual_alignment.get("alignments", [])
+            if isinstance(row, dict) and row.get("element_id")
+        }
 
         lines = [
             "# Reproducibility Audit Report",
@@ -266,18 +471,64 @@ class AuditReportAgent(BaseAgent):
             "",
             "*Note: LLM was unavailable. This is a simplified deterministic report.*",
             "",
-            "## Claim Verdicts",
+            "## Reproduced Figures",
             "",
         ]
+
+        figures = [
+            fig for fig in reproduced_figures.get("figures", [])
+            if _is_reportable_reproduced_figure(fig)
+        ]
+        if figures:
+            for fig in figures:
+                image_path = _report_image_path(fig.get("image_path", ""))
+                caption = fig.get("comparison_notes") or fig.get("element_id") or "reproduced figure"
+                match_level = str(fig.get("match_level") or "EXACT").upper()
+                lines.append(f"![{caption}]({image_path})")
+                lines.append("")
+                element_id = str(fig.get("element_id") or "")
+                alignment = alignment_by_id.get(element_id, {})
+                alignment_note = ""
+                if alignment:
+                    status = alignment.get("status", "NO_MATCH")
+                    reasons = alignment.get("mismatch_reasons") or []
+                    reason = f" ({reasons[0]})" if reasons else ""
+                    alignment_note = f" visual alignment={status}{reason}."
+                coverage_note = str(fig.get("coverage_note") or "").strip()
+                coverage_text = f" {coverage_note}" if coverage_note else ""
+                lines.append(f"- {element_id}: match_level={match_level}; {caption}.{coverage_text}{alignment_note}")
+                lines.append("")
+        else:
+            lines.extend(["No figures reproduced.", ""])
+        partial_related_count = sum(
+            1 for fig in figures
+            if str(fig.get("match_level") or "EXACT").upper() in {"PARTIAL", "RELATED", "NO_EVIDENCE"}
+        )
+        skipped_count = len(reproduced_figures.get("skipped_targets", []))
+        if partial_related_count or skipped_count:
+            parts = []
+            if partial_related_count:
+                parts.append(f"{partial_related_count} visuals have only partial/related Phase2 evidence")
+            if skipped_count:
+                parts.append(f"{skipped_count} result-related visual targets lacked executable phase2 evidence and were skipped")
+            lines.append("; ".join(parts) + ".")
+            lines.append("")
+
+        lines.extend([
+            "## Claim Verdicts",
+            "",
+        ])
 
         for cv in verdict.get("claim_verdicts", []):
             claim = next(
                 (c for c in claims_doc.get("claims", []) if c.get("claim_id") == cv.get("claim_id")),
                 {},
             )
+            claim_id = cv.get("claim_id")
             lines.append(
-                f"- **{cv.get('claim_id')}** [{cv.get('status')}]: "
-                f"{claim.get('predicate', 'N/A')} — {cv.get('detail', '')}"
+                f"- **{_claim_title(claim, claim_id)}** "
+                f"(`{_claim_meta(claim, claim_id)}`) [{cv.get('status')}]: "
+                f"{cv.get('detail', '')}"
             )
             if cv.get("compared_value") is not None:
                 lines.append(
@@ -287,16 +538,23 @@ class AuditReportAgent(BaseAgent):
 
         lines.extend([
             "",
-            "## Execution Steps",
+            "## Execution Runs",
             "",
         ])
         for run in manifest.get("runs", []):
+            run_id = str(run.get("run_id") or "")
             lines.append(
-                f"- **{run.get('run_id')}** [{run.get('status', 'unknown')}]: "
-                f"command=`{run.get('command', '')}` exit_code={run.get('exit_code')}"
+                f"- **{run_id}** [{run.get('status', 'unknown')}]: "
+                f"exit_code={run.get('exit_code')}, "
+                f"fidelity={run.get('fidelity')}, "
+                f"outcome={run.get('execution_outcome')}, "
+                f"evidence={run.get('evidence_source')}, "
+                f"stop_reason={run.get('stop_reason')}"
             )
-            if run.get("status") == "partial":
-                lines.append("  - primary command failed; fallback only validated artifacts or a reduced objective")
+            if run.get("command"):
+                lines.append(f"  - Primary command: `{run.get('command')}`")
+            if run.get("commands_attempted"):
+                lines.append(f"  - Commands attempted: {json.dumps(run.get('commands_attempted', []), ensure_ascii=False)}")
             if run.get("params"):
                 lines.append(f"  - params: {json.dumps(run.get('params', {}), ensure_ascii=False)}")
 

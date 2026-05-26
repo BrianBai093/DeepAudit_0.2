@@ -71,7 +71,9 @@ class ExtractFingerprintGuideAgent(BaseAgent):
 
         for i, m in enumerate(TABLE_BLOCK_RE.finditer(text)):
             block = m.group(0)
-            context_window = text[max(0, m.start() - 220) : m.start()]
+            context_before = text[max(0, m.start() - 1500) : m.start()]
+            context_after = text[m.end() : min(len(text), m.end() + 800)]
+            context_window = context_before
             caption_m = list(TABLE_CAPTION_RE.finditer(context_window))
             caption = caption_m[-1].group(0).strip() if caption_m else ""
             unit_text = _normalize_ws((caption + "\n" + block).strip()) if caption else _normalize_ws(block)
@@ -80,6 +82,9 @@ class ExtractFingerprintGuideAgent(BaseAgent):
                     "unit_id": f"t_{i}",
                     "type": "table_block",
                     "text": unit_text,
+                    "caption": _normalize_ws(caption),
+                    "context_before": _normalize_ws(context_before),
+                    "context_after": _normalize_ws(context_after),
                     "origin_indices": table_sentence_indices,
                 }
             )

@@ -1,22 +1,29 @@
 from __future__ import annotations
 
-from collections import Counter
 import re
+from collections import Counter
 from typing import Any
 
 from p2c.agents.base import BaseAgent
+from p2c.agents.phase3.claim_inputs import load_effective_claims_ir
+from p2c.agents.phase3.execution_summary_evidence import PHASE2_PACKAGE_PATH, load_effective_run_manifest
 from p2c.schemas import (
-    ClaimAlignmentDoc,
     ClaimEvidence,
     EvaluabilityDoc,
     EvaluabilityEntry,
     MetricRecord,
     ParsedEvidence,
+    RunManifestDoc,
 )
 
-SYSTEM_PROMPT = "You align claims with metric records and evaluability signals. Output JSON only."
+SYSTEM_PROMPT = """\
+You align claims with metric records and execution runs. Output JSON only.
+Respect claim scope qualifiers before numeric proximity: algorithm (BP/FA/DFA/DRTP/PEPITA),
+dataset (MNIST/CIFAR10/CIFAR100), and architecture (fully connected/FC vs convolutional/conv)
+must match the metric provenance when those qualifiers are present.
+"""
 USER_PROMPT_TEMPLATE = (
-    "Input: fingerprint/claims_ir.json + execution/codex_outputs/claim_alignment.json + results/metrics.json. "
+    "Input: results/effective_claims_ir.json + phase2_execution_package-derived metrics + results/metrics.json. "
     "Output: results/parsed_evidence.json and results/evaluability.json"
 )
 
@@ -25,194 +32,162 @@ class AlignEvidenceAgent(BaseAgent):
     def __init__(self, *args, **kwargs):
         super().__init__(name="align_evidence", *args, **kwargs)
 
-    # ------------------------------------------------------------------
-    # Public
-    # ------------------------------------------------------------------
-
     def execute(self, ctx: dict) -> dict:
         self.safe_chat_text(SYSTEM_PROMPT, USER_PROMPT_TEMPLATE)
 
-        claims_doc = self.artifacts.read_json("fingerprint/claims_ir.json")
+        claims_doc = load_effective_claims_ir(self.artifacts)
         metrics_doc = self.artifacts.read_json("results/metrics.json")
-        alignment_payload = self.artifacts.read_json("execution/codex_outputs/claim_alignment.json")
-        alignment = ClaimAlignmentDoc(**alignment_payload)
+        manifest_payload = load_effective_run_manifest(self.artifacts)
+        manifest = RunManifestDoc(**manifest_payload)
 
-        records = [MetricRecord(**r) for r in metrics_doc.get("records", [])]
-        claims = claims_doc.get("claims", [])
-        experiments = claims_doc.get("experiments", [])
+        records = [MetricRecord(**row) for row in metrics_doc.get("records", [])]
+        claims = [row for row in claims_doc.get("claims", []) if isinstance(row, dict)]
+        experiments = {
+            str(exp.get("experiment_id") or ""): exp
+            for exp in claims_doc.get("experiments", [])
+            if isinstance(exp, dict) and exp.get("experiment_id")
+        }
+        runs = list(manifest.runs)
 
-        align_map = {row.claim_id: row for row in alignment.claims}
-
-        # Build experiment coverage map for richer missing_reason messages
-        exp_coverage: dict[str, str] = {}  # experiment_id → repo_coverage
-        exp_names: dict[str, str] = {}  # experiment_id → name
-        for exp in experiments:
-            eid = exp.get("experiment_id", "")
-            exp_coverage[eid] = exp.get("repo_coverage", "not_found")
-            exp_names[eid] = exp.get("name", eid)
-
-        # Detect ambiguous metric names: >1 result claim sharing the same metric
         metric_claim_count: Counter[str] = Counter()
         for claim in claims:
-            if claim.get("type") == "result" and claim.get("metric"):
-                metric_claim_count[claim["metric"]] += 1
+            metric = str(claim.get("metric") or "").strip().lower()
+            if claim.get("type") == "result" and metric:
+                metric_claim_count[metric] += 1
 
         evidence_rows: list[ClaimEvidence] = []
-        eval_rows: list[EvaluabilityEntry] = []
+        evaluability_rows: list[EvaluabilityEntry] = []
 
         for claim in claims:
-            cid = claim.get("claim_id", "")
-            metric_name = (claim.get("metric") or "").lower().strip()
-            conditions = claim.get("conditions", {})
-            target = claim.get("target")
-
+            candidate_runs = self._candidate_runs_for_claim(claim, runs)
             matched = self._match_records(
                 claim=claim,
-                metric_name=metric_name,
-                target=target,
-                conditions=conditions,
+                candidate_runs=candidate_runs,
                 records=records,
-                is_ambiguous=metric_claim_count.get(metric_name, 0) > 1,
+                ambiguous_metric=metric_claim_count.get(str(claim.get("metric") or "").lower(), 0) > 1,
             )
 
             if matched:
-                evidence_rows.append(ClaimEvidence(claim_id=cid, matched_records=matched, missing_reason=None))
-            else:
-                evidence_rows.append(
-                    ClaimEvidence(
-                        claim_id=cid,
-                        matched_records=[],
-                        missing_reason=(
-                            "Configuration claim requires direct code/config evidence; execution success alone does not verify the paper configuration."
-                            if claim.get("type") == "config"
-                            else self._missing_reason(
-                                metric_name, records, conditions,
-                                exp_coverage=exp_coverage, exp_names=exp_names,
-                            )
-                        ),
-                    )
-                )
-
-            # Evaluability: use Phase 2 alignment as a hint, but override
-            # based on actual match quality.
-            aligned = align_map.get(cid)
-            if matched:
-                eval_rows.append(
+                evidence_rows.append(ClaimEvidence(claim_id=claim["claim_id"], matched_records=matched, missing_reason=None))
+                evaluability_rows.append(
                     EvaluabilityEntry(
-                        claim_id=cid,
+                        claim_id=claim["claim_id"],
                         evaluable="yes",
-                        source=(aligned.source if aligned else []) or ["results/metrics.json"],
+                        source=sorted({record.source for record in matched}),
                         reason=None,
                     )
                 )
-            elif claim.get("type") == "config":
-                eval_rows.append(
-                    EvaluabilityEntry(
-                        claim_id=cid,
-                        evaluable="no",
-                        source=(aligned.source if aligned else []) or ["codex_local_execution"],
-                        reason="Configuration claim requires direct code/config evidence; execution metrics alone do not verify the paper setup.",
-                    )
+                continue
+
+            missing_reason = self._missing_reason(claim, candidate_runs, experiments)
+            evidence_rows.append(
+                ClaimEvidence(
+                    claim_id=claim["claim_id"],
+                    matched_records=[],
+                    missing_reason=missing_reason,
                 )
-            elif aligned is not None:
-                # Phase 2 said partial/yes but we couldn't match — downgrade
-                eval_rows.append(
-                    EvaluabilityEntry(
-                        claim_id=cid,
-                        evaluable="no" if aligned.evaluable == "no" else "partial",
-                        source=aligned.source,
-                        reason=aligned.reason or "metric exists but cannot be aligned to this specific claim",
-                    )
+            )
+            evaluability_rows.append(
+                EvaluabilityEntry(
+                    claim_id=claim["claim_id"],
+                    evaluable=self._evaluable_status(claim, candidate_runs, missing_reason),
+                    source=self._candidate_sources(candidate_runs),
+                    reason=missing_reason,
                 )
-            else:
-                eval_rows.append(
-                    EvaluabilityEntry(
-                        claim_id=cid,
-                        evaluable="no",
-                        source=[],
-                        reason="missing_claim_alignment",
-                    )
-                )
+            )
 
         parsed = ParsedEvidence(claim_evidence=evidence_rows, reason_codes=[])
-        evaluability = EvaluabilityDoc(entries=eval_rows, reason_codes=[])
+        evaluability = EvaluabilityDoc(entries=evaluability_rows, reason_codes=[])
         self.artifacts.write_json("results/parsed_evidence.json", parsed.model_dump())
         self.artifacts.write_json("results/evaluability.json", evaluability.model_dump())
-        return {
-            "parsed_evidence": parsed.model_dump(),
-            "evaluability": evaluability.model_dump(),
-        }
-
-    # ------------------------------------------------------------------
-    # Matching logic
-    # ------------------------------------------------------------------
+        return {"parsed_evidence": parsed.model_dump(), "evaluability": evaluability.model_dump()}
 
     @staticmethod
+    def _candidate_runs_for_claim(claim: dict[str, Any], runs: list[Any]) -> list[Any]:
+        conditions = claim.get("conditions", {}) if isinstance(claim.get("conditions"), dict) else {}
+        experiment_id = str(conditions.get("experiment_id") or "").strip()
+        selected = []
+        for run in runs:
+            if experiment_id and str(run.experiment_id or "") == experiment_id:
+                selected.append(run)
+        return selected
+
+    @classmethod
     def _match_records(
+        cls,
         *,
         claim: dict[str, Any],
-        metric_name: str,
-        target: float | None,
-        conditions: dict[str, Any],
+        candidate_runs: list[Any],
         records: list[MetricRecord],
-        is_ambiguous: bool,
+        ambiguous_metric: bool,
     ) -> list[MetricRecord]:
-        """Match metric records to a claim, considering experiment context.
-
-        When multiple claims share the same metric name (ambiguous), we use
-        target proximity to pick the best-matching record rather than
-        returning all records with that name — which would cause every
-        claim to compare against the same max value.
-        """
+        metric_name = str(claim.get("metric") or "").strip().lower()
         if not metric_name:
             return []
 
-        for candidate in AlignEvidenceAgent._metric_candidates_for_claim(claim):
-            exact = [r for r in records if r.metric_name.lower() == candidate]
-            if exact:
-                if candidate != metric_name:
-                    return exact
-                break
-
-        # Step 1: find all records matching by metric name
-        name_matched = [r for r in records if r.metric_name.lower() == metric_name]
-        prefixed = [
-            r for r in records
-            if r.metric_name.lower().endswith(f"_{metric_name}")
-            or r.metric_name.lower().startswith(f"{metric_name}_")
+        candidate_sources = set(cls._candidate_sources(candidate_runs))
+        candidate_experiment_ids = {
+            str(getattr(run, "experiment_id", "") or getattr(run, "run_id", "") or "")
+            for run in candidate_runs
+        }
+        candidates = cls._metric_candidates_for_claim(claim)
+        matched_all = [
+            record for record in records
+            if cls._metric_matches(record.metric_name, candidates)
+            and (
+                not candidate_sources
+                or record.source in candidate_sources
+                or str(record.experiment_id or "") in candidate_experiment_ids
+            )
         ]
+        matched = cls._scope_filtered_records(claim, matched_all, candidate_runs)
+        if matched:
+            if ambiguous_metric and claim.get("target") is not None:
+                target = float(claim["target"])
+                valued = cls._highest_fidelity_records([record for record in matched if record.value is not None])
+                if valued:
+                    valued.sort(key=lambda record: abs(float(record.value) - target))
+                    best = valued[0]
+                    band = max(0.02, 0.10 * abs(target))
+                    return [record for record in valued if abs(float(record.value) - target) <= band] or [best]
+            return matched
 
-        if not name_matched and prefixed:
-            name_matched = prefixed
-
-        if not name_matched:
+        if candidate_sources:
             return []
 
-        # Step 2: if only one claim uses this metric, return all matches (no ambiguity)
-        if not is_ambiguous:
-            return name_matched
+        fallback_all = [record for record in records if cls._metric_matches(record.metric_name, candidates)]
+        fallback = cls._scope_filtered_records(claim, fallback_all, candidate_runs)
+        if ambiguous_metric and len({record.source for record in fallback}) > 1:
+            return []
+        return fallback
 
-        # Step 3: ambiguous case — multiple claims want the same metric name.
-        # Use target proximity to select the best-matching record(s).
-        variant_matches = name_matched + [r for r in prefixed if r not in name_matched]
-        if target is not None:
-            valued = [(r, abs((r.value or 0.0) - target)) for r in variant_matches if r.value is not None]
-            if valued:
-                valued.sort(key=lambda x: x[1])
-                best_dist = valued[0][1]
-                # Reject if even the closest record is far from the target.
-                # Use a relative+absolute gate: must be within 10% of target
-                # or 0.05 absolute, whichever is larger.
-                max_acceptable = max(0.05, 0.10 * abs(target))
-                if best_dist > max_acceptable:
-                    return []  # no record is close enough
-                # Return records within a reasonable band of the closest match
-                band = max(0.02, best_dist * 2.0)
-                return [r for r, d in valued if d <= band]
-
-        # No target or no valued records — can't disambiguate, return nothing
-        # to force INCONCLUSIVE rather than a wrong NOT_SUPPORTED
-        return []
+    @staticmethod
+    def _candidate_sources(candidate_runs: list[Any]) -> list[str]:
+        sources: list[str] = []
+        for run in candidate_runs:
+            package_source = f"{PHASE2_PACKAGE_PATH}:{run.run_id}"
+            if package_source not in sources:
+                sources.append(package_source)
+            effective_source = f"results/effective_run_manifest.json:{run.run_id}"
+            if effective_source not in sources:
+                sources.append(effective_source)
+            manifest_source = f"execution/executor_outputs/run_manifest.json:{run.run_id}"
+            if manifest_source not in sources:
+                sources.append(manifest_source)
+            experiment_id = str(getattr(run, "experiment_id", "") or "").strip()
+            if experiment_id:
+                for summary_name in (
+                    "EXECUTION_SUMMARY_FINAL.md",
+                    "EXECUTION_SUMMARY.md",
+                ):
+                    summary_source = f"execution/executor_outputs/{summary_name}:{experiment_id}"
+                    if summary_source not in sources:
+                        sources.append(summary_source)
+            logs = getattr(run, "logs", None)
+            stdout_path = getattr(logs, "stdout", None) if logs is not None else None
+            if stdout_path and stdout_path not in sources:
+                sources.append(stdout_path)
+        return sources
 
     @staticmethod
     def _metric_candidates_for_claim(claim: dict[str, Any]) -> list[str]:
@@ -243,43 +218,212 @@ class AlignEvidenceAgent(BaseAgent):
         return candidates
 
     @staticmethod
-    def _missing_reason(
-        metric_name: str,
+    def _metric_matches(record_metric: str, candidates: list[str]) -> bool:
+        metric = str(record_metric or "").lower().strip()
+        if not metric:
+            return False
+        for candidate in candidates:
+            cand = str(candidate or "").lower().strip()
+            if not cand:
+                continue
+            if metric == cand or metric.endswith(f"_{cand}") or metric.startswith(f"{cand}_"):
+                return True
+            tokens = [tok for tok in re.split(r"[^a-z0-9]+", metric) if tok]
+            if cand in tokens:
+                return True
+        return False
+
+    @classmethod
+    def _scope_filtered_records(
+        cls,
+        claim: dict[str, Any],
         records: list[MetricRecord],
-        conditions: dict[str, Any],
-        *,
-        exp_coverage: dict[str, str] | None = None,
-        exp_names: dict[str, str] | None = None,
-    ) -> str:
-        """Generate a human-readable reason why matching failed."""
-        available = {r.metric_name.lower() for r in records if r.value is not None}
-        table_anchor = conditions.get("table_anchor", "")
-        experiment_id = conditions.get("experiment_id", "")
+        candidate_runs: list[Any],
+    ) -> list[MetricRecord]:
+        profile = cls._claim_scope_profile(claim)
+        if not any(profile.values()):
+            return cls._prefer_test_records(records, claim)
 
-        # Check if we know the experiment is not in the repo
-        exp_status = ""
-        if experiment_id and exp_coverage:
-            coverage = exp_coverage.get(experiment_id, "")
-            name = (exp_names or {}).get(experiment_id, experiment_id)
-            if coverage == "not_found":
-                exp_status = f" Experiment '{name}' is not implemented in the repository."
-            elif coverage == "partial":
-                exp_status = f" Experiment '{name}' is only partially implemented in the repository."
-
-        if metric_name and metric_name in available:
-            ctx = f" ({table_anchor})" if table_anchor else ""
-            if exp_status and "not implemented" in exp_status.lower():
-                return (
-                    f"Metric '{metric_name}' was collected but could not be aligned "
-                    f"to this specific claim{ctx}. Phase 1 coverage marked the experiment as "
-                    f"not_found, but repository execution produced same-named metrics, so this "
-                    f"should be treated as an alignment gap rather than confirmed missing implementation."
+        run_text_by_id = {
+            str(getattr(run, "run_id", "") or ""): cls._normalize_scope_text(
+                " ".join(
+                    str(value or "")
+                    for value in (
+                        getattr(run, "run_id", None),
+                        getattr(run, "experiment_id", None),
+                        getattr(run, "experiment_name", None),
+                        getattr(run, "dataset", None),
+                        getattr(run, "command", None),
+                        " ".join(getattr(run, "commands_attempted", []) or []),
+                    )
                 )
-            return (
-                f"Metric '{metric_name}' was collected but could not be aligned "
-                f"to this specific claim{ctx}.{exp_status}"
             )
-        elif metric_name:
-            return f"No metric records matching '{metric_name}'.{exp_status}"
-        else:
-            return f"Claim has no metric name specified.{exp_status}"
+            for run in candidate_runs
+        }
+        filtered = [
+            record for record in records
+            if cls._record_satisfies_scope(record, profile, run_text_by_id)
+        ]
+        return cls._prefer_test_records(filtered, claim)
+
+    @classmethod
+    def _record_satisfies_scope(
+        cls,
+        record: MetricRecord,
+        profile: dict[str, set[str]],
+        run_text_by_id: dict[str, set[str]],
+    ) -> bool:
+        metric_tokens = cls._normalize_scope_text(record.metric_name)
+        run_tokens = run_text_by_id.get(str(record.run_id or ""), set())
+        combined = metric_tokens | run_tokens
+
+        algorithms = profile.get("algorithms", set())
+        if algorithms and not any(cls._algorithm_matches(algorithm, metric_tokens) for algorithm in algorithms):
+            return False
+
+        datasets = profile.get("datasets", set())
+        if datasets and not datasets <= metric_tokens:
+            return False
+
+        architectures = profile.get("architectures", set())
+        if "conv" in architectures and not ({"conv", "convolutional"} & combined):
+            return False
+        if "fc" in architectures and {"conv", "convolutional"} & combined:
+            return False
+
+        return True
+
+    @staticmethod
+    def _algorithm_matches(algorithm: str, tokens: set[str]) -> bool:
+        aliases = {
+            "bp": {"bp"},
+            "fa": {"fa"},
+            "dfa": {"dfa"},
+            "drtp": {"drtp"},
+            "pepita": {"pepita", "erin"},
+        }
+        return bool(aliases.get(algorithm, {algorithm}) & tokens)
+
+    @classmethod
+    def _claim_scope_profile(cls, claim: dict[str, Any]) -> dict[str, set[str]]:
+        conditions = claim.get("conditions", {}) if isinstance(claim.get("conditions"), dict) else {}
+        text = " ".join(
+            str(value or "")
+            for value in (
+                claim.get("predicate"),
+                conditions.get("scope"),
+                conditions.get("dataset"),
+                conditions.get("table_anchor"),
+            )
+        ).lower()
+        tokens = cls._normalize_scope_text(text)
+        algorithms: set[str] = set()
+        for name in ("dfa", "drtp", "pepita", "bp", "fa"):
+            if name in tokens:
+                algorithms.add(name)
+        if "erin" in tokens:
+            algorithms.add("pepita")
+
+        datasets: set[str] = set()
+        for dataset in ("mnist", "cifar10", "cifar100"):
+            if dataset in tokens:
+                datasets.add(dataset)
+
+        architectures: set[str] = set()
+        if {"fc", "fully", "connected"} & tokens or "fully_connected" in text:
+            architectures.add("fc")
+        if {"conv", "convolutional"} & tokens:
+            architectures.add("conv")
+
+        return {"algorithms": algorithms, "datasets": datasets, "architectures": architectures}
+
+    @staticmethod
+    def _normalize_scope_text(text: Any) -> set[str]:
+        normalized = str(text or "").lower()
+        normalized = normalized.replace("cifar-10", "cifar10").replace("cifar 10", "cifar10")
+        normalized = normalized.replace("cifar-100", "cifar100").replace("cifar 100", "cifar100")
+        normalized = normalized.replace("fully-connected", "fully connected").replace("fully_connected", "fully connected")
+        tokens = {tok for tok in re.split(r"[^a-z0-9]+", normalized) if tok}
+        for token in list(tokens):
+            if "conv" in token:
+                tokens.add("conv")
+            if re.search(r"(?:^|[0-9])fc(?:$|[0-9a-z])", token):
+                tokens.add("fc")
+        return tokens
+
+    @staticmethod
+    def _prefer_test_records(records: list[MetricRecord], claim: dict[str, Any]) -> list[MetricRecord]:
+        if not records:
+            return []
+        claim_text = f"{claim.get('predicate', '')} {claim.get('conditions', {})}".lower()
+        if "train" not in claim_text:
+            non_train = [record for record in records if "train" not in record.metric_name.lower()]
+            if non_train:
+                records = non_train
+        test_records = [record for record in records if "test" in record.metric_name.lower()]
+        if test_records:
+            records = test_records
+        trend_records = [
+            record for record in records
+            if "trend" in record.metric_name.lower() or getattr(record, "fidelity", None) in {"trend", "artifact", "full"}
+        ]
+        return trend_records or records
+
+    @staticmethod
+    def _highest_fidelity_records(records: list[MetricRecord]) -> list[MetricRecord]:
+        if not records:
+            return []
+
+        def rank(record: MetricRecord) -> int:
+            outcome = str(getattr(record, "execution_outcome", None) or "")
+            fidelity = str(getattr(record, "fidelity", None) or "")
+            metric_name = str(getattr(record, "metric_name", "") or "").lower()
+            if "_full_" in metric_name or metric_name.startswith("full_") or metric_name.endswith("_full"):
+                return 5
+            if "_artifact_" in metric_name or metric_name.startswith("artifact_") or metric_name.endswith("_artifact"):
+                return 4
+            if "_trend_" in metric_name or metric_name.startswith("trend_") or metric_name.endswith("_trend"):
+                return 3
+            if "_smoke_" in metric_name or metric_name.startswith("smoke_") or metric_name.endswith("_smoke"):
+                return 2
+            if outcome == "FULLY_REPRODUCED" or fidelity == "full":
+                return 4
+            if fidelity == "artifact":
+                return 3
+            if outcome == "TREND_SUPPORTED" or fidelity == "trend":
+                return 2
+            if outcome == "EXECUTABLE" or fidelity == "smoke":
+                return 1
+            return 0
+
+        best = max(rank(record) for record in records)
+        return [record for record in records if rank(record) == best]
+
+    @staticmethod
+    def _missing_reason(claim: dict[str, Any], candidate_runs: list[Any], experiments: dict[str, dict[str, Any]]) -> str:
+        if claim.get("type") == "config":
+            return "Configuration claim requires direct code/config evidence; execution metrics alone do not verify the paper setup."
+
+        conditions = claim.get("conditions", {}) if isinstance(claim.get("conditions"), dict) else {}
+        experiment_id = str(conditions.get("experiment_id") or "").strip()
+        metric = str(claim.get("metric") or "").strip()
+
+        if experiment_id and not candidate_runs:
+            experiment = experiments.get(experiment_id, {})
+            name = experiment.get("name") or experiment_id
+            return f"No recorded run for experiment `{name}`."
+
+        if candidate_runs and metric:
+            return f"Experiment run exists but metric `{metric}` could not be aligned for this claim."
+
+        return "No aligned metric record found."
+
+    @staticmethod
+    def _evaluable_status(claim: dict[str, Any], candidate_runs: list[Any], missing_reason: str) -> str:
+        if claim.get("type") == "config":
+            return "no"
+        if candidate_runs:
+            return "partial"
+        if "No recorded run" in missing_reason:
+            return "no"
+        return "partial"

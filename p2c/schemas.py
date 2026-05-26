@@ -92,7 +92,16 @@ class AtomicCriterion(BaseModel):
     fact: str
     scope: str
     facet: Literal["metric_result", "execution_param"] = "execution_param"
-    source_type: Literal["table_metric", "text_metric", "text_statement"] = "text_statement"
+    source_type: Literal[
+        "table_metric",
+        "text_metric",
+        "text_statement",
+        "visual_metric",
+        "llm_table_metric",
+        "llm_table_param",
+        "visual_table_metric",
+        "visual_table_param",
+    ] = "text_statement"
     metric_name: str | None = None
     metric_value: float | None = None
     metric_unit: str | None = None
@@ -148,9 +157,8 @@ class Experiment(BaseModel):
     description: str = ""
     dataset: str | None = None
     table_anchor: str | None = None
-    claim_ids: list[str] = Field(default_factory=list)
-    repo_coverage: Literal["implemented", "partial", "not_found"] = "not_found"
-    repo_entrypoint: str | None = None
+    primary_metrics: list[str] = Field(default_factory=list)
+    is_primary: bool = False
     notes: str | None = None
 
 
@@ -287,36 +295,59 @@ class RepoState(BaseModel):
     reason_codes: list[str] = Field(default_factory=list)
 
 
-class CodexRun(BaseModel):
+class ExecutionLogRefs(BaseModel):
+    stdout: str | None = None
+    stderr: str | None = None
+    narrative: str | None = None
+    activity: str | None = None
+
+
+ExecutionRunStatus = Literal["ok", "partial", "failed", "skipped"]
+ExecutionFidelity = Literal["artifact", "smoke", "trend", "full"]
+ExecutionOutcome = Literal["EXECUTABLE", "TREND_SUPPORTED", "FULLY_REPRODUCED"]
+ExecutionEvidenceSource = Literal["fresh_run", "checkpoint_eval", "existing_logs", "existing_results", "mixed"]
+ExecutionStopReason = Literal[
+    "checkpoint_eval",
+    "existing_artifact",
+    "budget_bound",
+    "early_stop_evidence",
+    "full_run_complete",
+    "repo_missing_path",
+    "runtime_failure",
+    "guardrail_blocked",
+    "skipped_nonessential",
+]
+
+
+class ExecutionRun(BaseModel):
     run_id: str
+    experiment_id: str | None = None
+    experiment_name: str | None = None
+    dataset: str | None = None
     command: str
+    commands_attempted: list[str] = Field(default_factory=list)
     params: dict[str, Any] = Field(default_factory=dict)
     cwd: str
     exit_code: int
-    status: str
+    status: ExecutionRunStatus
+    fidelity: ExecutionFidelity | None = None
+    execution_outcome: ExecutionOutcome | None = None
+    evidence_source: ExecutionEvidenceSource | None = None
+    override_args: list[str] = Field(default_factory=list)
+    observed_signals: list[str] = Field(default_factory=list)
+    stop_reason: ExecutionStopReason | None = None
+    notes: str | None = None
     runtime_sec: float | None = None
     stdout_tail: str | None = None
     stderr_tail: str | None = None
     artifacts: list[str] = Field(default_factory=list)
     metrics: dict[str, Any] = Field(default_factory=dict)
+    logs: ExecutionLogRefs = Field(default_factory=ExecutionLogRefs)
     reason_codes: list[str] = Field(default_factory=list)
 
 
 class RunManifestDoc(BaseModel):
-    runs: list[CodexRun] = Field(default_factory=list)
-    reason_codes: list[str] = Field(default_factory=list)
-
-
-class ClaimAlignmentItem(BaseModel):
-    claim_id: str
-    required_metrics: list[str] = Field(default_factory=list)
-    source: list[str] = Field(default_factory=list)
-    evaluable: Literal["yes", "no", "partial"] = "partial"
-    reason: str | None = None
-
-
-class ClaimAlignmentDoc(BaseModel):
-    claims: list[ClaimAlignmentItem] = Field(default_factory=list)
+    runs: list[ExecutionRun] = Field(default_factory=list)
     reason_codes: list[str] = Field(default_factory=list)
 
 
@@ -340,13 +371,13 @@ class ExecutionSummaryDoc(BaseModel):
     reason_codes: list[str] = Field(default_factory=list)
 
 
-class CodexFailureDoc(BaseModel):
+class ExecutorFailureDoc(BaseModel):
     stage: Literal["precheck", "main", "repair", "postcheck"] = "postcheck"
     last_command: str
     exit_code: int
     stdout_tail: str = ""
     stderr_tail: str = ""
-    codex_exec_log_tail: str = ""
+    executor_exec_log_tail: str = ""
     pip_log_tail: str = ""
     capability_snapshot: dict[str, Any] = Field(default_factory=dict)
     dependency_bootstrap_trace: list[str] = Field(default_factory=list)
@@ -359,8 +390,40 @@ class MetricRecord(BaseModel):
     unit: str | None = None
     source: str
     claim_id: str | None = None
+    run_id: str | None = None
+    experiment_id: str | None = None
+    fidelity: ExecutionFidelity | None = None
+    execution_outcome: ExecutionOutcome | None = None
+    evidence_source: ExecutionEvidenceSource | None = None
     parsed: bool = True
     reason_codes: list[str] = Field(default_factory=list)
+
+
+class ExecutorResultRun(BaseModel):
+    experiment_id: str
+    experiment_name: str | None = None
+    dataset: str | None = None
+    command: str = ""
+    commands_attempted: list[str] = Field(default_factory=list)
+    cwd: str = "."
+    exit_code: int = 1
+    status: ExecutionRunStatus = "failed"
+    fidelity: ExecutionFidelity | None = None
+    execution_outcome: ExecutionOutcome | None = None
+    evidence_source: ExecutionEvidenceSource | None = None
+    override_args: list[str] = Field(default_factory=list)
+    observed_signals: list[str] = Field(default_factory=list)
+    stop_reason: ExecutionStopReason | None = None
+    notes: str | None = None
+    runtime_sec: float | None = None
+    artifacts: list[str] = Field(default_factory=list)
+    metrics: dict[str, Any] = Field(default_factory=dict)
+    logs: ExecutionLogRefs = Field(default_factory=ExecutionLogRefs)
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+class ExecutorResultsDoc(BaseModel):
+    runs: list[ExecutorResultRun] = Field(default_factory=list)
 
 
 class MetricsDoc(BaseModel):
@@ -432,6 +495,177 @@ class TaskCompileOutput(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Visual extraction schemas (Phase 1 PDF → figures/tables)
+# ---------------------------------------------------------------------------
+
+
+class VisualElement(BaseModel):
+    """A figure or table extracted from the paper PDF via vision API."""
+
+    element_id: str                                # e.g. "fig_1", "table_3"
+    element_type: Literal["figure", "table"]
+    page: int
+    caption: str = ""
+    chart_type: str | None = None                  # "bar", "line", "scatter", "heatmap", "table", "diagram"
+    axis_labels: dict[str, str] = Field(default_factory=dict)
+    legend_entries: list[str] = Field(default_factory=list)
+    data_series: list[dict[str, Any]] = Field(default_factory=list)
+    visual_anchor: str = ""                        # "Figure 1", "Table 3"
+    bbox: dict[str, float] = Field(default_factory=dict)  # normalized x0/y0/x1/y1 page coordinates
+    raw_page_image: str | None = None               # run-root-relative page image path
+    crop_path: str | None = None                    # run-root-relative cropped element image path
+    x_axis_range: list[float] | None = None
+    y_axis_range: list[float] | None = None
+    series_semantics: list[dict[str, Any]] = Field(default_factory=list)
+    model_names: list[str] = Field(default_factory=list)
+    sampling_strategy: str | None = None
+    numeric_confidence: float | None = None
+    associated_claim_ids: list[str] = Field(default_factory=list)
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+class VisualElementsDoc(BaseModel):
+    """All visual elements extracted from the paper PDF."""
+
+    elements: list[VisualElement] = Field(default_factory=list)
+    page_count: int = 0
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+class VisualTarget(BaseModel):
+    """Object-level reconstruction target derived from a paper figure or table."""
+
+    element_id: str
+    visual_anchor: str = ""
+    element_type: Literal["figure", "table"]
+    chart_type: str | None = None
+    caption: str = ""
+    page: int | None = None
+    reference_image_path: str | None = None
+    axis_labels: dict[str, str] = Field(default_factory=dict)
+    legend_entries: list[str] = Field(default_factory=list)
+    series_names: list[str] = Field(default_factory=list)
+    metric_names: list[str] = Field(default_factory=list)
+    model_names: list[str] = Field(default_factory=list)
+    sampling_strategy: str | None = None
+    semantic_summary: str = ""
+    reconstruction_instructions: list[str] = Field(default_factory=list)
+    associated_claim_ids: list[str] = Field(default_factory=list)
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+class VisualTargetsDoc(BaseModel):
+    visual_targets: list[VisualTarget] = Field(default_factory=list)
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+class ReproducedFigure(BaseModel):
+    """A figure reproduced from execution results in Phase 3."""
+
+    element_id: str
+    matplotlib_code: str = ""
+    image_path: str = ""                           # relative path to saved PNG
+    comparison_notes: str = ""
+    visual_anchor: str = ""
+    reference_image_path: str | None = None
+    reproduced_image_path: str | None = None
+    evidence_sources: list[str] = Field(default_factory=list)
+    reproduction_status: Literal["REPRODUCED", "SKIPPED", "FAILED"] = "REPRODUCED"
+    plot_spec: dict[str, Any] = Field(default_factory=dict)
+    code_path: str | None = None
+    llm_decision_summary: str = ""
+    match_level: Literal["EXACT", "PARTIAL", "RELATED", "NO_EVIDENCE"] = "EXACT"
+    matched_scope: dict[str, Any] = Field(default_factory=dict)
+    coverage_note: str = ""
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+class SkippedReproducedTarget(BaseModel):
+    """A paper visual target that was intentionally not reproduced."""
+
+    element_id: str
+    visual_anchor: str = ""
+    skip_reason: str = ""
+    evidence_sources: list[str] = Field(default_factory=list)
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+class ReproducedFiguresDoc(BaseModel):
+    figures: list[ReproducedFigure] = Field(default_factory=list)
+    skipped_targets: list[SkippedReproducedTarget] = Field(default_factory=list)
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+class VisualRepoAlignmentItem(BaseModel):
+    """Strict mapping from a paper visual element to a repo artifact or NO_MATCH."""
+
+    element_id: str
+    status: Literal["MATCH", "NO_MATCH"] = "NO_MATCH"
+    repo_artifact_path: str | None = None
+    artifact_type: str | None = None
+    confidence: float = 0.0
+    matched_model_names: list[str] = Field(default_factory=list)
+    matched_sampling_strategy: str | None = None
+    matched_metric_names: list[str] = Field(default_factory=list)
+    mismatch_reasons: list[str] = Field(default_factory=list)
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+class VisualRepoAlignmentDoc(BaseModel):
+    alignments: list[VisualRepoAlignmentItem] = Field(default_factory=list)
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Reproducibility scoring schemas (Phase 3)
+# ---------------------------------------------------------------------------
+
+
+class DimensionScore(BaseModel):
+    """Single dimension score (0-100)."""
+
+    dimension: Literal["environment", "data_availability", "execution_success", "claim_match"]
+    score: int = Field(ge=0, le=100, default=0)
+    weight: float = 0.25
+    weighted_score: float = 0.0
+    evidence: list[str] = Field(default_factory=list)
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+class GapDiagnosis(BaseModel):
+    """Classified reproduction failure."""
+
+    gap_id: str
+    category: Literal[
+        "DATA_MISSING",
+        "PREPROCESS_UNSPECIFIED",
+        "CHECKPOINT_MISSING",
+        "ENVIRONMENT_UNDERDEFINED",
+        "ENTRYPOINT_UNCLEAR",
+        "NONDETERMINISM",
+        "COMPUTE_INFEASIBLE",
+        "RESULT_MISMATCH",
+    ]
+    claim_ids: list[str] = Field(default_factory=list)
+    description: str = ""
+    severity: Literal["critical", "major", "minor"] = "major"
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+class ReproducibilityScore(BaseModel):
+    """Complete reproducibility assessment with 0-100 weighted score."""
+
+    total_score: float = 0.0
+    raw_total_score: float | None = None
+    calibration_notes: list[str] = Field(default_factory=list)
+    dimensions: list[DimensionScore] = Field(default_factory=list)
+    ecr: bool = False                              # Executable-Claim Reproducible
+    ecr_reason: str = ""
+    gaps: list[GapDiagnosis] = Field(default_factory=list)
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
 # Phase 2 local execution schemas
 # ---------------------------------------------------------------------------
 
@@ -482,7 +716,7 @@ class ExpectedResult(BaseModel):
 
 
 class ExecutionPlan(BaseModel):
-    """Output of the PlannerAgent — drives ToolAgent + CodexExecutor."""
+    """Deprecated plan schema retained only for artifact compatibility."""
 
     plan_id: str
     plan_version: int = 1
@@ -495,8 +729,22 @@ class ExecutionPlan(BaseModel):
     expected_results: list[ExpectedResult] = Field(default_factory=list)
     compatibility_issues: list[CompatibilityIssue] = Field(default_factory=list)
     env_name: str
-    codex_autonomous_fallback: bool = True
+    executor_autonomous_fallback: bool = True
     total_budget_sec: int = 10800  # default 3h; override via --budget_minutes
+    reason_codes: list[str] = Field(default_factory=list)
+    notes: str | None = None
+
+
+class ExecutorEnvSpec(BaseModel):
+    """Deterministic environment spec derived only from repository artifacts."""
+
+    env_name: str
+    python_version: str = "3.10"
+    native_environment_file: str | None = None
+    conda_dependencies: list[CondaDependency] = Field(default_factory=list)
+    pip_dependencies: list[str] = Field(default_factory=list)
+    system_packages: list[str] = Field(default_factory=list)
+    pre_install_commands: list[str] = Field(default_factory=list)
     reason_codes: list[str] = Field(default_factory=list)
     notes: str | None = None
 
@@ -555,14 +803,13 @@ class Phase2State(BaseModel):
     """Orchestrator bookkeeping — persisted as phase2_state.json."""
 
     status: Literal[
-        "planning", "env_setup", "executing", "replanning", "autonomous", "success", "failed"
-    ] = "planning"
+        "env_setup", "executing", "repairing", "success", "failed"
+    ] = "env_setup"
     attempt: int = 0
     max_attempts: int = 3
     total_budget_sec: int = 10800  # default 3h
     elapsed_sec: float = 0.0
-    plan: ExecutionPlan | None = None
+    env_spec: ExecutorEnvSpec | None = None
     env_result: EnvSetupResult | None = None
     failures: list[ExecutionFailure] = Field(default_factory=list)
     final_manifest: RunManifestDoc | None = None
-    final_alignment: ClaimAlignmentDoc | None = None

@@ -6,15 +6,23 @@ import re
 
 from p2c.agents.base import BaseAgent
 from p2c.agents.phase1.fingerprint_prompt_templates import ATOMIC_SYSTEM_PROMPT, ATOMIC_USER_PROMPT_TEMPLATE
+from p2c.agents.phase1.table_llm import (
+    TABLE_CRITERIA_SCHEMA,
+    TABLE_CRITERIA_SYSTEM_PROMPT,
+    build_table_criteria_user_prompt,
+    normalize_table_criteria,
+    rows_from_llm_table_response,
+)
 
 FACT_SCOPE_RE = re.compile(r"<fact>(.*?)</fact>.*?<scope>(.*?)</scope>", flags=re.I | re.S)
 PERCENT_RE = re.compile(r"(\d+(?:\.\d+)?)\s*%")
 DECIMAL_RE = re.compile(r"\b(0\.\d+|1\.0+)\b")
 NUMBER_RE = re.compile(r"\d+(?:\.\d+)?")
 TR_RE = re.compile(r"<tr>(.*?)</tr>", flags=re.I | re.S)
-TD_RE = re.compile(r"<t[dh]>(.*?)</t[dh]>", flags=re.I | re.S)
+CELL_RE = re.compile(r"<t[dh]\b([^>]*)>(.*?)</t[dh]>", flags=re.I | re.S)
 TAG_RE = re.compile(r"<[^>]+>")
 TABLE_ID_RE = re.compile(r"\btable\s+([ivxlcdm\d]+)", flags=re.I)
+COLSPAN_RE = re.compile(r"\bcolspan\s*=\s*[\"']?(\d+)", flags=re.I)
 
 FACET_KEYWORDS = {
     "metric_result": [
@@ -39,12 +47,37 @@ class ExtractFingerprintAtomicAgent(BaseAgent):
         text = text.replace("&nbsp;", " ")
         return re.sub(r"\s+", " ", text).strip()
 
+    @classmethod
+    def _parse_table_rows(cls, text: str) -> list[list[str]]:
+        parsed_rows: list[list[str]] = []
+        for row in TR_RE.findall(text):
+            cells: list[str] = []
+            for attrs, body in CELL_RE.findall(row):
+                colspan_m = COLSPAN_RE.search(attrs or "")
+                colspan = int(colspan_m.group(1)) if colspan_m else 1
+                cell = cls._clean_cell(body)
+                cells.extend([cell] * max(1, colspan))
+            if cells:
+                parsed_rows.append(cells)
+        return parsed_rows
+
     @staticmethod
     def _extract_table_anchor(text: str) -> str | None:
         m = TABLE_ID_RE.search(text)
         if not m:
             return None
         return f"Table {m.group(1)}"
+
+    @staticmethod
+    def _infer_table_anchor(unit: dict) -> str | None:
+        anchor = ExtractFingerprintAtomicAgent._extract_table_anchor(str(unit.get("text") or ""))
+        if anchor:
+            return anchor
+        unit_id = str(unit.get("unit_id") or "")
+        m = re.fullmatch(r"t_(\d+)", unit_id)
+        if m:
+            return f"Table {int(m.group(1)) + 1}"
+        return None
 
     @staticmethod
     def _parse_llm_list(text: str) -> list[dict]:
@@ -95,6 +128,50 @@ class ExtractFingerprintAtomicAgent(BaseAgent):
         ]:
             if name in lower:
                 return name
+        return None
+
+    @staticmethod
+    def _value_from_cell(value_raw: str, metric_name: str) -> tuple[float | None, str | None]:
+        mean_std = re.search(r"(\d+(?:\.\d+)?)\s*(?:±|\+/-|\\pm)\s*(\d+(?:\.\d+)?)\s*%?", value_raw)
+        if mean_std:
+            value = float(mean_std.group(1))
+            bounded_percent = metric_name in {"accuracy", "f1", "auc", "precision", "recall", "bleu", "rouge"}
+            return value, "%" if bounded_percent and value > 1.0 else "value"
+        value, unit_name = ExtractFingerprintAtomicAgent._extract_metric_value(value_raw)
+        if value is not None:
+            return value, unit_name
+        raw_num = NUMBER_RE.search(value_raw)
+        if not raw_num:
+            return None, None
+        value = float(raw_num.group(0))
+        bounded_percent = metric_name in {"accuracy", "f1", "auc", "precision", "recall", "bleu", "rouge"}
+        return value, "%" if bounded_percent and value > 1.0 else "value"
+
+    @staticmethod
+    def _is_numeric_metric_cell(text: str) -> bool:
+        return bool(NUMBER_RE.search(text or ""))
+
+    @staticmethod
+    def _infer_architecture(labels: list[str], context: str) -> str | None:
+        joined = " ".join(labels).lower()
+        if "fully connected" in joined or "fully-connected" in joined:
+            return "fully connected models"
+        if "convolutional" in joined or "conv" in joined:
+            return "convolutional models"
+        joined = context.lower()
+        if "fully connected" in joined or "fully-connected" in joined:
+            return "fully connected models"
+        if "convolutional" in joined or "conv" in joined:
+            return "convolutional models"
+        return None
+
+    @staticmethod
+    def _infer_dataset(labels: list[str]) -> str | None:
+        joined = " ".join(labels).lower().replace("cifar-10", "cifar10").replace("cifar 10", "cifar10")
+        joined = joined.replace("cifar-100", "cifar100").replace("cifar 100", "cifar100")
+        for dataset in ("cifar100", "cifar10", "mnist"):
+            if dataset in joined:
+                return dataset.upper() if dataset.startswith("cifar") else "MNIST"
         return None
 
     @staticmethod
@@ -199,12 +276,7 @@ class ExtractFingerprintAtomicAgent(BaseAgent):
 
     def _expand_table_unit(self, unit: dict) -> tuple[list[dict], list[dict]]:
         text = str(unit.get("text") or "")
-        rows = TR_RE.findall(text)
-        parsed_rows: list[list[str]] = []
-        for row in rows:
-            cells = [self._clean_cell(c) for c in TD_RE.findall(row)]
-            if cells:
-                parsed_rows.append(cells)
+        parsed_rows = self._parse_table_rows(text)
 
         if not parsed_rows:
             return [], [
@@ -237,6 +309,18 @@ class ExtractFingerprintAtomicAgent(BaseAgent):
                 m = self._extract_metric_name(cell)
                 if m and cell.lower().strip() not in COUNT_COLUMNS:
                     header_metric_cols[col_idx] = m
+
+        caption_metric = self._extract_metric_name(text)
+        if caption_metric and not header_metric_cols and not is_clf_report:
+            caption_rows, caption_rej = self._expand_caption_metric_matrix(
+                unit=unit,
+                parsed_rows=parsed_rows,
+                metric_name=caption_metric,
+                table_anchor=table_anchor,
+                context=text,
+            )
+            if caption_rows:
+                return caption_rows, caption_rej
 
         for i, row in enumerate(parsed_rows):
             # Skip the header row itself
@@ -391,6 +475,83 @@ class ExtractFingerprintAtomicAgent(BaseAgent):
 
         return out, rej
 
+    def _expand_caption_metric_matrix(
+        self,
+        *,
+        unit: dict,
+        parsed_rows: list[list[str]],
+        metric_name: str,
+        table_anchor: str | None,
+        context: str,
+    ) -> tuple[list[dict], list[dict]]:
+        """Extract numeric matrix tables whose metric is named in the caption."""
+        out: list[dict] = []
+        rej: list[dict] = []
+        header_rows: list[list[str]] = []
+
+        for row in parsed_rows:
+            has_row_label = bool(row and row[0].strip())
+            has_numeric_values = any(self._is_numeric_metric_cell(cell) for cell in row[1:])
+            if has_row_label and has_numeric_values:
+                entity = row[0].strip()
+                for col in range(1, len(row)):
+                    value_raw = row[col].strip()
+                    if not value_raw:
+                        continue
+                    value, unit_name = self._value_from_cell(value_raw, metric_name)
+                    if value is None:
+                        continue
+                    if not self._is_plausible_metric_value(value, metric_name):
+                        rej.append(
+                            {
+                                "unit_id": unit.get("unit_id"),
+                                "raw": f"{entity} {metric_name} = {value}",
+                                "reason_codes": ["IMPLAUSIBLE_METRIC_VALUE"],
+                            }
+                        )
+                        continue
+
+                    labels = [
+                        header[col].strip()
+                        for header in header_rows
+                        if col < len(header) and header[col].strip()
+                    ]
+                    dataset = self._infer_dataset(labels)
+                    architecture = self._infer_architecture(labels, context)
+                    scope_parts = [entity]
+                    if architecture:
+                        scope_parts.append(architecture)
+                    if dataset:
+                        scope_parts.append(dataset)
+                    if table_anchor:
+                        scope_parts.append(f"from {table_anchor} in paper")
+                    else:
+                        scope_parts.append("from table in paper")
+
+                    fact = f"{entity} {metric_name} = {value_raw if unit_name == '%' else value}"
+                    out.append(
+                        {
+                            "criterion": f"<fact>{fact}</fact> <scope>{', '.join(scope_parts)}</scope>",
+                            "fact": fact,
+                            "scope": ", ".join(scope_parts),
+                            "facet": "metric_result",
+                            "source_type": "table_metric",
+                            "metric_name": metric_name,
+                            "metric_value": value,
+                            "metric_unit": unit_name,
+                            "entity": entity,
+                            "comparator": None,
+                            "dataset_scope": dataset,
+                            "table_anchor": table_anchor,
+                            "input_unit_id": unit.get("unit_id"),
+                            "reason_codes": ["TABLE_EXPANDED", "CAPTION_METRIC_MATRIX"],
+                        }
+                    )
+                continue
+            header_rows.append(row)
+
+        return out, rej
+
     def _extract_clf_report_row(
         self,
         *,
@@ -486,6 +647,85 @@ class ExtractFingerprintAtomicAgent(BaseAgent):
                 "reason_codes": ["TABLE_EXPANDED", "CLF_REPORT"],
             })
 
+    def _visual_table_index(self) -> dict[str, dict]:
+        try:
+            ve_doc = self.artifacts.read_json("fingerprint/visual_elements.json")
+        except Exception:  # noqa: BLE001
+            return {}
+        out: dict[str, dict] = {}
+        for elem in ve_doc.get("elements", []):
+            if not isinstance(elem, dict) or elem.get("element_type") != "table":
+                continue
+            for key in (elem.get("visual_anchor"), elem.get("element_id")):
+                normalized = str(key or "").strip().lower()
+                if normalized:
+                    out[normalized] = elem
+        return out
+
+    def _visual_for_table_unit(self, unit: dict, visual_index: dict[str, dict]) -> dict | None:
+        anchor = self._infer_table_anchor(unit)
+        if anchor:
+            elem = visual_index.get(anchor.lower())
+            if elem:
+                return elem
+        unit_id = str(unit.get("unit_id") or "")
+        m = re.fullmatch(r"t_(\d+)", unit_id)
+        if not m:
+            return None
+        candidates = [
+            f"table_{int(m.group(1)) + 1}",
+            f"Table {int(m.group(1)) + 1}",
+        ]
+        for candidate in candidates:
+            elem = visual_index.get(candidate.lower())
+            if elem:
+                return elem
+        return None
+
+    def _expand_table_unit_with_llm(
+        self,
+        unit: dict,
+        *,
+        visual_index: dict[str, dict],
+    ) -> tuple[list[dict], list[dict], str | None]:
+        table_anchor = self._infer_table_anchor(unit)
+        visual_elem = self._visual_for_table_unit(unit, visual_index)
+        if visual_elem and not table_anchor:
+            table_anchor = str(visual_elem.get("visual_anchor") or visual_elem.get("element_id") or "").strip() or None
+
+        user = build_table_criteria_user_prompt(
+            table_anchor=table_anchor,
+            caption=str(unit.get("caption") or ""),
+            table_html=str(unit.get("text") or ""),
+            context_before=str(unit.get("context_before") or ""),
+            context_after=str(unit.get("context_after") or ""),
+            visual_element=visual_elem,
+        )
+        data, err = self.safe_chat_json(
+            schema=TABLE_CRITERIA_SCHEMA,
+            system=TABLE_CRITERIA_SYSTEM_PROMPT,
+            user=user,
+        )
+        rows = rows_from_llm_table_response(data)
+        criteria = normalize_table_criteria(
+            rows,
+            default_anchor=table_anchor,
+            input_unit_id=str(unit.get("unit_id") or ""),
+            source_prefix="llm_table",
+            default_reason_code="LLM_TABLE_EXTRACTED",
+            visual_data=_visual_data_from_element(visual_elem) if visual_elem else None,
+        )
+        rejected: list[dict] = []
+        if not criteria:
+            rejected.append(
+                {
+                    "unit_id": unit.get("unit_id"),
+                    "raw": str(unit.get("text") or "")[:2000],
+                    "reason_codes": ["LLM_TABLE_EXTRACTION_EMPTY" if not err else "LLM_TABLE_UNAVAILABLE"],
+                }
+            )
+        return criteria, rejected, err
+
     def execute(self, ctx: dict) -> dict:
         guide = self.artifacts.read_json("fingerprint/guide_sentences.json")
         units = [u for u in guide.get("units", []) if isinstance(u, dict)]
@@ -523,14 +763,22 @@ class ExtractFingerprintAtomicAgent(BaseAgent):
             return {"atomic_criteria": payload}
 
         llm_budget = int(os.getenv("P2C_ATOMIC_LLM_SENTENCE_BUDGET", "8"))
+        table_llm_budget = int(os.getenv("P2C_ATOMIC_LLM_TABLE_BUDGET", "20"))
         llm_calls = 0
+        table_llm_calls = 0
         llm_enabled = True
+        table_llm_enabled = True
+        visual_index = self._visual_table_index()
 
         accepted: list[dict] = []
         rejected: list[dict] = []
         reason_codes: list[str] = []
 
-        self.log("PROGRESS", f"atomic stage processing {len(selected_units)} units (llm_budget={llm_budget})")
+        self.log(
+            "PROGRESS",
+            f"atomic stage processing {len(selected_units)} units "
+            f"(llm_budget={llm_budget}, table_llm_budget={table_llm_budget})",
+        )
 
         for idx, unit in enumerate(selected_units, start=1):
             if idx == 1 or idx % 25 == 0 or idx == len(selected_units):
@@ -542,6 +790,27 @@ class ExtractFingerprintAtomicAgent(BaseAgent):
 
             if unit_type == "table_block":
                 rows, rej = self._expand_table_unit(unit)
+                if not rows and table_llm_enabled and table_llm_calls < table_llm_budget:
+                    table_llm_calls += 1
+                    reason_codes.append("LLM_TABLE_FALLBACK_USED")
+                    llm_rows, llm_rej, llm_err = self._expand_table_unit_with_llm(
+                        unit,
+                        visual_index=visual_index,
+                    )
+                    if llm_err:
+                        reason_codes.append("LLM_TABLE_UNAVAILABLE")
+                        table_llm_enabled = False
+                    rows = llm_rows
+                    rej.extend(llm_rej)
+                elif not rows and table_llm_calls >= table_llm_budget:
+                    reason_codes.append("LLM_TABLE_BUDGET_EXCEEDED")
+                    rej.append(
+                        {
+                            "unit_id": unit_id,
+                            "raw": text[:2000],
+                            "reason_codes": ["LLM_TABLE_BUDGET_EXCEEDED"],
+                        }
+                    )
                 accepted.extend(rows)
                 rejected.extend(rej)
                 continue
@@ -653,3 +922,30 @@ class ExtractFingerprintAtomicAgent(BaseAgent):
         self.artifacts.write_json("fingerprint/atomic_criteria.json", payload)
         self.artifacts.write_json("fingerprint/atomic_rejected.json", rejected_payload)
         return {"atomic_criteria": payload}
+
+
+def _visual_data_from_element(elem: dict | None) -> dict:
+    if not isinstance(elem, dict):
+        return {}
+    out = {
+        "element_id": elem.get("element_id"),
+        "chart_type": elem.get("chart_type"),
+        "axis_labels": elem.get("axis_labels", {}),
+        "legend_entries": elem.get("legend_entries", []),
+        "data_series": elem.get("data_series", []),
+    }
+    for key in (
+        "bbox",
+        "raw_page_image",
+        "crop_path",
+        "x_axis_range",
+        "y_axis_range",
+        "series_semantics",
+        "model_names",
+        "sampling_strategy",
+        "numeric_confidence",
+    ):
+        value = elem.get(key)
+        if value not in (None, [], {}):
+            out[key] = value
+    return out

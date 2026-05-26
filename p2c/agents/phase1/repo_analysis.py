@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from p2c.agents.base import BaseAgent
+from p2c.env_detection import iter_conda_environment_files
 from p2c.schemas import DependencyProfile, Entrypoint, RepoAnalysis
 
 try:  # pragma: no cover - Python 3.11+
@@ -51,7 +52,7 @@ _SOURCE_PRIORITY = {
     "manifest_explicit": 500,
     "code_cli": 400,
     "notebook_explicit": 350,
-    "readme_verified": 300,
+    "readme_verified": 550,
     "wrapper_target": 200,
     "unspecified": 0,
 }
@@ -174,6 +175,16 @@ class SystemRepoAnalyzer:
         parent = Path(rel).parent.as_posix()
         name = Path(rel).name.lower()
         return parent in {"", "."} and name.startswith(("run", "start", "launch"))
+
+    @staticmethod
+    def _is_readme_verified_candidate(candidate: Entrypoint) -> bool:
+        evidence = str(candidate.evidence or "").lower()
+        reason_codes = {str(code) for code in candidate.reason_codes}
+        return (
+            "README_WORKFLOW_PRIMARY" in reason_codes
+            or "README_VERIFIED_COMMAND" in reason_codes
+            or "readme verified" in evidence
+        )
 
     def _shell_candidate_command(self, rel_path: str, *, cwd: str, runtime: str) -> str:
         if runtime == "python":
@@ -452,14 +463,15 @@ class SystemRepoAnalyzer:
                 profiles.append(profile)
                 seen.add(profile.profile_id)
 
-        for env_file in self._iter_roots("environment.yml"):
+        for env_file in iter_conda_environment_files(self.repo_dir, exclude_dirs=_EXCLUDE_DIRS):
             cwd = _safe_rel(env_file.parent, self.repo_dir) or "."
+            rel = _safe_rel(env_file, self.repo_dir)
             profile = DependencyProfile(
-                profile_id=f"conda:{cwd}",
+                profile_id=f"conda:{rel}",
                 ecosystem="conda",
                 manager="conda",
                 cwd=cwd,
-                manifest_paths=[_safe_rel(env_file, self.repo_dir)],
+                manifest_paths=[rel],
                 install_command=None,
                 auto_bootstrap_supported=False,
                 reason_codes=["DEPENDENCY_PROFILE_UNSUPPORTED"],
@@ -826,8 +838,35 @@ class SystemRepoAnalyzer:
             if not readme.exists():
                 continue
             text = readme.read_text(encoding="utf-8", errors="ignore")
-            for line in text.splitlines():
+            logical_lines: list[str] = []
+            pending = ""
+            in_code_fence = False
+            for raw_line in text.splitlines():
+                line = raw_line.rstrip()
                 stripped = line.strip()
+                if stripped.startswith("```"):
+                    in_code_fence = not in_code_fence
+                    if pending:
+                        logical_lines.append(pending.strip())
+                        pending = ""
+                    continue
+                if not stripped:
+                    if pending:
+                        logical_lines.append(pending.strip())
+                        pending = ""
+                    continue
+                candidate = stripped
+                if pending:
+                    candidate = f"{pending} {candidate}"
+                if candidate.endswith("\\"):
+                    pending = candidate[:-1].strip()
+                    continue
+                logical_lines.append(candidate.strip())
+                pending = ""
+            if pending:
+                logical_lines.append(pending.strip())
+
+            for stripped in logical_lines:
                 for pattern in line_patterns:
                     m = re.match(pattern, stripped)
                     if m:
@@ -897,6 +936,7 @@ class SystemRepoAnalyzer:
                 for idx, candidate in enumerate(candidates):
                     if candidate.path == readme_shell.path and candidate.runtime == readme_shell.runtime:
                         merged_reason_codes = list(candidate.reason_codes) + list(readme_shell.reason_codes)
+                        merged_reason_codes.append("README_VERIFIED_COMMAND")
                         candidates[idx] = candidate.model_copy(
                             update={
                                 "command": readme_shell.command,
@@ -916,6 +956,7 @@ class SystemRepoAnalyzer:
             for idx, candidate in enumerate(candidates):
                 if candidate.command == command:
                     merged_reason_codes = list(candidate.reason_codes)
+                    merged_reason_codes.append("README_VERIFIED_COMMAND")
                     candidates[idx] = candidate.model_copy(
                         update={
                             "confidence": min(1.0, candidate.confidence + 0.03),
@@ -928,10 +969,10 @@ class SystemRepoAnalyzer:
             if matched:
                 continue
             if command.startswith("python"):
-                m = re.match(r"python(?:3)?\s+([^\s]+\.py)", command)
+                m = re.match(r"(python(?:3)?)\s+([^\s]+\.py)(?:\s+.*)?$", command)
                 if not m:
                     continue
-                rel = m.group(1)
+                rel = m.group(2)
                 path = self.repo_dir / rel
                 if not path.exists():
                     continue
@@ -940,13 +981,13 @@ class SystemRepoAnalyzer:
                     self._make_entrypoint(
                         entrypoint_id=f"readme-python:{rel}",
                         path=rel,
-                        command=f"python {rel}",
-                        cwd=profile.cwd if profile else ".",
+                        command=command,
+                        cwd=".",
                         runtime="python",
                         dependency_profile_id=profile.profile_id if profile else None,
-                        confidence=0.68,
+                        confidence=0.91,
                         evidence="README verified python command",
-                        reason_codes=["ENTRYPOINT_CWD_INFERRED"] if profile and profile.cwd != "." else [],
+                        reason_codes=["README_VERIFIED_COMMAND"],
                         path_resolution_mode="repo_root",
                     )
                 )
@@ -958,12 +999,12 @@ class SystemRepoAnalyzer:
         path_hint = f"{candidate.path} {candidate.command}".lower()
         if "README_WORKFLOW_PRIMARY" in candidate.reason_codes:
             source_kind = "readme_workflow_primary"
+        elif self._is_readme_verified_candidate(candidate):
+            source_kind = "readme_verified"
         elif "console script" in evidence or "package.json script" in evidence or "main" in evidence:
             source_kind = "manifest_explicit"
         elif "notebook" in evidence:
             source_kind = "notebook_explicit"
-        elif "readme verified" in evidence:
-            source_kind = "readme_verified"
         elif "derived from shell wrapper" in evidence or "makefile target" in evidence or "shell script" in evidence:
             source_kind = "wrapper_target"
         elif "cli" in evidence:

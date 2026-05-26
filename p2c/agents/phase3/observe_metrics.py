@@ -1,14 +1,59 @@
 from __future__ import annotations
 
 from p2c.agents.base import BaseAgent
+from p2c.agents.phase3.execution_summary_evidence import (
+    PHASE2_PACKAGE_PATH,
+    load_effective_run_manifest,
+    load_phase2_execution_package,
+)
 from p2c.agents.phase2.result_extraction import (
     extract_metric_records_from_stdout,
     is_static_inspection_command,
 )
 from p2c.schemas import MetricContract, MetricRecord, MetricsDoc, RunManifestDoc
 
-SYSTEM_PROMPT = "You parse metrics from run manifest; do not fabricate and return strict JSON only."
-USER_PROMPT_TEMPLATE = "Input: execution/codex_outputs/run_manifest.json. Output: results/metrics.json"
+SYSTEM_PROMPT = "You parse metrics from canonical Phase 2 execution evidence; do not fabricate and return strict JSON only."
+USER_PROMPT_TEMPLATE = "Input: phase2_execution_package.json. Output: results/metrics.json"
+
+_GENERIC_SCALAR_METRICS = {
+    "accuracy",
+    "auc",
+    "bleu",
+    "f1",
+    "loss",
+    "mae",
+    "mse",
+    "perplexity",
+    "pr_auc",
+    "precision",
+    "recall",
+    "rmse",
+    "roc_auc",
+    "rouge",
+}
+
+_BOUNDED_METRICS = {
+    "accuracy",
+    "acc",
+    "auc",
+    "bleu",
+    "f1",
+    "precision",
+    "pr_auc",
+    "recall",
+    "roc_auc",
+    "rouge",
+    "true positive rate",
+    "false positive rate",
+}
+
+
+def _is_bounded_metric(metric_name: str | None) -> bool:
+    lowered = str(metric_name or "").lower()
+    if lowered in _BOUNDED_METRICS:
+        return True
+    tokens = {tok for tok in lowered.replace("-", "_").split("_") if tok}
+    return bool(tokens & _BOUNDED_METRICS)
 
 
 class ObserveMetricsAgent(BaseAgent):
@@ -16,7 +61,7 @@ class ObserveMetricsAgent(BaseAgent):
         super().__init__(name="observe_metrics", *args, **kwargs)
 
     @staticmethod
-    def _to_float(value) -> float | None:
+    def _to_float(value, metric_name: str | None = None) -> float | None:
         if value is None:
             return None
         if isinstance(value, bool):
@@ -29,7 +74,7 @@ class ObserveMetricsAgent(BaseAgent):
                 v = float(s)
             except ValueError:
                 return None
-        if v > 1.0:
+        if _is_bounded_metric(metric_name) and v > 1.0:
             v = v / 100.0
         return v
 
@@ -50,9 +95,6 @@ class ObserveMetricsAgent(BaseAgent):
     def execute(self, ctx: dict) -> dict:
         self.safe_chat_text(SYSTEM_PROMPT, USER_PROMPT_TEMPLATE)
 
-        manifest_payload = self.artifacts.read_json("execution/codex_outputs/run_manifest.json")
-        manifest = RunManifestDoc(**manifest_payload)
-
         contract_payload = self.artifacts.read_json("task/metric_contract.json")
         contract = MetricContract(**contract_payload) if contract_payload else MetricContract()
         required = {str(x).lower() for x in contract.required_metrics if str(x).strip()}
@@ -60,13 +102,26 @@ class ObserveMetricsAgent(BaseAgent):
         records: list[MetricRecord] = []
         seen: set[tuple[str, float | None, str]] = set()
 
-        def append_record(metric_name: str, value, source: str, reason_codes: list[str] | None = None) -> None:
+        def append_record(
+            metric_name: str,
+            value,
+            source: str,
+            reason_codes: list[str] | None = None,
+            *,
+            run=None,
+            run_id: str | None = None,
+            experiment_id: str | None = None,
+            fidelity=None,
+            execution_outcome=None,
+            evidence_source=None,
+            unit: str | None = None,
+        ) -> None:
             lowered = str(metric_name).lower()
             if lowered.endswith("_all"):
                 return
             if not self._is_relevant_metric(lowered, required):
                 return
-            parsed_value = self._to_float(value)
+            parsed_value = self._to_float(value, lowered)
             key = (lowered, parsed_value, source)
             if key in seen:
                 return
@@ -75,44 +130,133 @@ class ObserveMetricsAgent(BaseAgent):
                 MetricRecord(
                     metric_name=lowered,
                     value=parsed_value,
-                    unit="ratio" if parsed_value is not None else None,
+                    unit=unit or ("ratio" if parsed_value is not None else None),
                     source=source,
+                    run_id=getattr(run, "run_id", None) if run is not None else run_id,
+                    experiment_id=getattr(run, "experiment_id", None) if run is not None else experiment_id,
+                    fidelity=getattr(run, "fidelity", None) if run is not None else fidelity,
+                    execution_outcome=getattr(run, "execution_outcome", None) if run is not None else execution_outcome,
+                    evidence_source=getattr(run, "evidence_source", None) if run is not None else evidence_source,
                     parsed=parsed_value is not None,
                     reason_codes=reason_codes or ([] if parsed_value is not None else ["VALUE_PARSE_FAILED"]),
                 )
             )
 
+        package = load_phase2_execution_package(self.artifacts)
+        if package:
+            for experiment in package.get("experiments", []):
+                if not isinstance(experiment, dict):
+                    continue
+                experiment_id = str(experiment.get("experiment_id") or "").strip() or None
+                for attempt in experiment.get("attempts", []):
+                    if not isinstance(attempt, dict):
+                        continue
+                    attempt_id = str(attempt.get("attempt_id") or experiment_id or "").strip()
+                    source = f"{PHASE2_PACKAGE_PATH}:{attempt_id or 'unknown_attempt'}"
+                    for metric in attempt.get("metrics", []):
+                        if not isinstance(metric, dict):
+                            continue
+                        metric_name = str(metric.get("metric_name") or "").strip()
+                        if not metric_name:
+                            continue
+                        value = metric.get("value_ratio")
+                        if value is None:
+                            value = metric.get("value")
+                        append_record(
+                            metric_name=metric_name,
+                            value=value,
+                            source=source,
+                            reason_codes=["PHASE2_PACKAGE_METRIC"],
+                            run_id=attempt_id or None,
+                            experiment_id=experiment_id,
+                            fidelity=attempt.get("fidelity") or metric.get("fidelity"),
+                            execution_outcome=attempt.get("execution_outcome"),
+                            evidence_source=attempt.get("evidence_source"),
+                            unit=metric.get("unit"),
+                        )
+
+            if not records:
+                records.append(
+                    MetricRecord(
+                        metric_name="unknown",
+                        value=None,
+                        unit=None,
+                        source=PHASE2_PACKAGE_PATH,
+                        parsed=False,
+                        reason_codes=["NO_METRIC_MATCH"],
+                    )
+                )
+            metrics = MetricsDoc(records=records, reason_codes=["PHASE2_PACKAGE_METRICS_SOURCE"])
+            self.artifacts.write_json("results/metrics.json", metrics.model_dump())
+            return {"metrics": metrics.model_dump()}
+
+        manifest_payload = load_effective_run_manifest(self.artifacts)
+        manifest = RunManifestDoc(**manifest_payload)
+        summary_evidence = self.artifacts.read_json("results/execution_summary_evidence.json")
+
         for run in manifest.runs:
             if is_static_inspection_command(run.command):
                 continue
 
-            for name, raw in run.metrics.items():
-                append_record(
-                    metric_name=str(name),
-                    value=raw,
-                    source=f"execution/codex_outputs/run_manifest.json:{run.run_id}",
-                )
-
-            stdout_log = self.artifacts.path(f"execution/codex_outputs/step_{run.run_id}_stdout.log")
+            stdout_log_ref = run.logs.stdout if getattr(run, "logs", None) else None
+            stdout_log_is_session = bool(stdout_log_ref and str(stdout_log_ref).endswith("/session_stdout.log"))
+            stdout_log = None
+            if stdout_log_ref and not stdout_log_is_session:
+                stdout_log = self.artifacts.path(stdout_log_ref) if not str(stdout_log_ref).startswith("/") else None
+                if str(stdout_log_ref).startswith("/"):
+                    from pathlib import Path
+                    stdout_log = Path(stdout_log_ref)
             stdout_text = ""
-            if stdout_log.exists():
+            if stdout_log and stdout_log.exists():
                 stdout_text = stdout_log.read_text(encoding="utf-8", errors="ignore")
             elif run.stdout_tail:
                 stdout_text = run.stdout_tail
-            if not stdout_text:
-                continue
-            for record in extract_metric_records_from_stdout(
-                stdout_text,
-                contract=contract,
-                source=f"execution/codex_outputs/step_{run.run_id}_stdout.log",
-                command=run.command,
-            ):
+            stdout_records = []
+            if stdout_text:
+                stdout_records = extract_metric_records_from_stdout(
+                    stdout_text,
+                    contract=contract,
+                    source=stdout_log_ref or f"results/effective_run_manifest.json:{run.run_id}",
+                    command=run.command,
+                )
+            for record in stdout_records:
                 append_record(
                     metric_name=record["metric_name"],
                     value=record["value"],
                     source=record["source"],
                     reason_codes=record.get("reason_codes", []),
+                    run=run,
                 )
+
+            observed_stdout_names = {str(r.get("metric_name") or "").lower() for r in stdout_records}
+            for name, raw in run.metrics.items():
+                if not self._allow_manifest_metric(str(name), observed_stdout_names):
+                    continue
+                append_record(
+                    metric_name=str(name),
+                    value=raw,
+                    source=f"results/effective_run_manifest.json:{run.run_id}",
+                    run=run,
+                )
+
+        summary_path = summary_evidence.get("summary_path") if isinstance(summary_evidence, dict) else None
+        if summary_path:
+            for run in summary_evidence.get("summary_runs", []):
+                if not isinstance(run, dict):
+                    continue
+                exp_id = str(run.get("experiment_id") or run.get("run_id") or "").strip()
+                for name, raw in (run.get("metrics") or {}).items():
+                    append_record(
+                        metric_name=str(name),
+                        value=raw,
+                        source=f"{summary_path}:{exp_id}",
+                        reason_codes=["SUMMARY_PRIORITY_EVIDENCE"],
+                        run_id=str(run.get("run_id") or exp_id),
+                        experiment_id=exp_id or None,
+                        fidelity=run.get("fidelity"),
+                        execution_outcome=run.get("execution_outcome"),
+                        evidence_source=run.get("evidence_source"),
+                    )
 
         if not records:
             records.append(
@@ -120,7 +264,7 @@ class ObserveMetricsAgent(BaseAgent):
                     metric_name="unknown",
                     value=None,
                     unit=None,
-                    source="execution/codex_outputs/run_manifest.json",
+                    source="results/effective_run_manifest.json",
                     parsed=False,
                     reason_codes=["NO_METRIC_MATCH"],
                 )
@@ -129,3 +273,14 @@ class ObserveMetricsAgent(BaseAgent):
         metrics = MetricsDoc(records=records, reason_codes=[])
         self.artifacts.write_json("results/metrics.json", metrics.model_dump())
         return {"metrics": metrics.model_dump()}
+
+    @staticmethod
+    def _allow_manifest_metric(metric_name: str, observed_stdout_names: set[str]) -> bool:
+        lowered = metric_name.lower()
+        if lowered.endswith("_all"):
+            return False
+        if lowered in observed_stdout_names:
+            return False
+        if observed_stdout_names and lowered in _GENERIC_SCALAR_METRICS:
+            return False
+        return True

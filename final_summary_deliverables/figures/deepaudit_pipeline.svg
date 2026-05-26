@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="520" viewBox="0 0 1120 520" role="img" aria-labelledby="title desc">
+  <title id="title">DeepAudit pipeline</title>
+  <desc id="desc">A three-stage pipeline from paper, PDF, and repository inputs to structured reproducibility artifacts, verdicts, reports, and figures.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#2f4b7c" />
+    </marker>
+    <style>
+      .title { font: 700 26px Arial, Helvetica, sans-serif; fill: #1f2937; }
+      .subtitle { font: 14px Arial, Helvetica, sans-serif; fill: #4b5563; }
+      .box-title { font: 700 16px Arial, Helvetica, sans-serif; fill: #111827; }
+      .box-text { font: 13px Arial, Helvetica, sans-serif; fill: #374151; }
+      .small { font: 12px Arial, Helvetica, sans-serif; fill: #4b5563; }
+      .box { fill: #ffffff; stroke: #9ca3af; stroke-width: 1.5; rx: 10; }
+      .phase { fill: #eef5ff; stroke: #4c78a8; stroke-width: 2; rx: 12; }
+      .evidence { fill: #f1f8f5; stroke: #54a24b; stroke-width: 2; rx: 12; }
+      .guard { fill: #fff7ed; stroke: #f58518; stroke-width: 1.8; rx: 10; }
+      .output { fill: #f8f5ff; stroke: #7c3aed; stroke-width: 2; rx: 12; }
+      .arrow { stroke: #2f4b7c; stroke-width: 2.2; fill: none; marker-end: url(#arrow); }
+      .dash { stroke: #6b7280; stroke-width: 1.5; stroke-dasharray: 5 5; fill: none; marker-end: url(#arrow); }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1120" height="520" fill="#ffffff"/>
+  <text x="560" y="42" text-anchor="middle" class="title">DeepAudit: LLM-Agent Pipeline for ML Repository Reproducibility Auditing</text>
+  <text x="560" y="66" text-anchor="middle" class="subtitle">Structured paper understanding, autonomous execution, and evidence-grounded verdict assignment</text>
+
+  <rect x="35" y="108" width="185" height="185" class="box"/>
+  <text x="127" y="135" text-anchor="middle" class="box-title">Inputs</text>
+  <text x="58" y="168" class="box-text">Paper Markdown</text>
+  <text x="58" y="194" class="box-text">Optional PDF</text>
+  <text x="58" y="220" class="box-text">Local code repo</text>
+  <text x="58" y="246" class="box-text">Run ID + budget</text>
+  <text x="58" y="272" class="small">No manual experiment labels</text>
+
+  <rect x="270" y="88" width="230" height="225" class="phase"/>
+  <text x="385" y="118" text-anchor="middle" class="box-title">Phase 1</text>
+  <text x="385" y="140" text-anchor="middle" class="box-title">Paper + Repo Understanding</text>
+  <text x="294" y="174" class="box-text">Claim extraction</text>
+  <text x="294" y="198" class="box-text">Visual/table extraction</text>
+  <text x="294" y="222" class="box-text">Repo dependency scan</text>
+  <text x="294" y="246" class="box-text">Entrypoint discovery</text>
+  <text x="294" y="270" class="box-text">Task + metric contracts</text>
+
+  <rect x="545" y="88" width="230" height="225" class="phase"/>
+  <text x="660" y="118" text-anchor="middle" class="box-title">Phase 2</text>
+  <text x="660" y="140" text-anchor="middle" class="box-title">Environment + Execution</text>
+  <text x="569" y="174" class="box-text">Conda/pip environment setup</text>
+  <text x="569" y="198" class="box-text">Autonomous executor agent</text>
+  <text x="569" y="222" class="box-text">Smoke/trend/full attempts</text>
+  <text x="569" y="246" class="box-text">Raw stdout/stderr capture</text>
+  <text x="569" y="270" class="box-text">Standard Phase2 package</text>
+
+  <rect x="820" y="88" width="250" height="225" class="phase"/>
+  <text x="945" y="118" text-anchor="middle" class="box-title">Phase 3</text>
+  <text x="945" y="140" text-anchor="middle" class="box-title">Evidence Alignment + Reporting</text>
+  <text x="844" y="174" class="box-text">Execution-log evidence scan</text>
+  <text x="844" y="198" class="box-text">Metric recovery + alignment</text>
+  <text x="844" y="222" class="box-text">Claim-level verdicts</text>
+  <text x="844" y="246" class="box-text">Figure/table reproduction</text>
+  <text x="844" y="270" class="box-text">Scores + audit report</text>
+
+  <path d="M220 200 L270 200" class="arrow"/>
+  <path d="M500 200 L545 200" class="arrow"/>
+  <path d="M775 200 L820 200" class="arrow"/>
+
+  <rect x="270" y="350" width="230" height="95" class="evidence"/>
+  <text x="385" y="378" text-anchor="middle" class="box-title">Phase 1 Artifacts</text>
+  <text x="294" y="408" class="small">claims_ir.json, task_spec.json</text>
+  <text x="294" y="430" class="small">metric_contract.json, visual_targets.json</text>
+
+  <rect x="545" y="350" width="230" height="95" class="guard"/>
+  <text x="660" y="378" text-anchor="middle" class="box-title">Execution Guardrails</text>
+  <text x="569" y="408" class="small">run_manifest.json, logs, metrics</text>
+  <text x="569" y="430" class="small">repo_mutation_guard.json</text>
+
+  <rect x="820" y="350" width="250" height="95" class="output"/>
+  <text x="945" y="378" text-anchor="middle" class="box-title">Final Outputs</text>
+  <text x="844" y="408" class="small">verdict.json, reproducibility_score.json</text>
+  <text x="844" y="430" class="small">report.md, reproduced_figures.json</text>
+
+  <path d="M385 313 L385 350" class="dash"/>
+  <path d="M660 313 L660 350" class="dash"/>
+  <path d="M945 313 L945 350" class="dash"/>
+
+  <rect x="35" y="350" width="185" height="95" class="box"/>
+  <text x="127" y="378" text-anchor="middle" class="box-title">Evidence Levels</text>
+  <text x="58" y="408" class="small">Exact claim support</text>
+  <text x="58" y="430" class="small">Experiment-level evidence tiers</text>
+
+  <path d="M820 398 L775 398" class="dash"/>
+  <path d="M545 398 L500 398" class="dash"/>
+  <path d="M270 398 L220 398" class="dash"/>
+</svg>

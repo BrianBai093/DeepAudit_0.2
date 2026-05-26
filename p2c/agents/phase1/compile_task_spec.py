@@ -120,24 +120,59 @@ class CompileTaskSpecAgent(BaseAgent):
         return items
 
     @staticmethod
-    def _select_entrypoints(candidates: list[Entrypoint], primary_id: str) -> list[Entrypoint]:
+    def _is_readme_candidate(candidate: Entrypoint) -> bool:
+        evidence = str(candidate.evidence or "").lower()
+        reason_codes = {str(code) for code in candidate.reason_codes}
+        return (
+            "README_WORKFLOW_PRIMARY" in reason_codes
+            or "README_VERIFIED_COMMAND" in reason_codes
+            or "readme verified" in evidence
+        )
+
+    @staticmethod
+    def _is_compat_task_entrypoint(candidate: Entrypoint) -> bool:
+        path = str(candidate.path or "").lower()
+        command = str(candidate.command or "").lower()
+        if path.endswith(".ipynb"):
+            return False
+        if "jupyter nbconvert" in command and "--execute" in command:
+            return False
+        return candidate.runtime in {"python", "shell", "make"}
+
+    @classmethod
+    def _select_entrypoints(cls, candidates: list[Entrypoint], primary_id: str) -> list[Entrypoint]:
         selected: list[Entrypoint] = []
         seen: set[str] = set()
 
         def add(candidate: Entrypoint) -> None:
+            if not cls._is_compat_task_entrypoint(candidate):
+                return
             candidate_id = str(candidate.entrypoint_id or candidate.path)
             if candidate_id in seen:
                 return
             seen.add(candidate_id)
             selected.append(candidate)
 
+        primary_candidate: Entrypoint | None = None
         if primary_id:
             for candidate in candidates:
                 if str(candidate.entrypoint_id or "") == primary_id:
-                    add(candidate)
+                    primary_candidate = candidate
                     break
 
-        primary_wrapper = selected[0].path if selected and "README_WORKFLOW_PRIMARY" in selected[0].reason_codes else None
+        readme_candidates = [candidate for candidate in candidates if cls._is_readme_candidate(candidate)]
+        if primary_candidate and cls._is_readme_candidate(primary_candidate):
+            add(primary_candidate)
+        for candidate in readme_candidates:
+            add(candidate)
+        if primary_candidate is not None:
+            add(primary_candidate)
+
+        primary_wrapper = None
+        for candidate in selected:
+            if "README_WORKFLOW_PRIMARY" in candidate.reason_codes:
+                primary_wrapper = candidate.path
+                break
         for candidate in candidates:
             if "README_WORKFLOW_PRIMARY" in candidate.reason_codes:
                 add(candidate)
@@ -147,7 +182,7 @@ class CompileTaskSpecAgent(BaseAgent):
                     add(candidate)
 
         for candidate in candidates:
-            if candidate.runtime in {"python", "shell", "make"}:
+            if cls._is_compat_task_entrypoint(candidate):
                 add(candidate)
             if len(selected) >= 12:
                 break
@@ -234,8 +269,13 @@ class CompileTaskSpecAgent(BaseAgent):
         candidates = [Entrypoint(**row) if isinstance(row, dict) else row for row in repo_analysis.entrypoint_candidates]
         primary_id = str(repo_analysis.primary_entrypoint_id or "")
         selected = self._select_entrypoints(candidates, primary_id)
+        excluded_compat_candidates = [
+            candidate for candidate in candidates if not self._is_compat_task_entrypoint(candidate)
+        ]
 
         reason_codes = list(repo_analysis.reason_codes)
+        if excluded_compat_candidates:
+            reason_codes.append("TASK_SPEC_NON_SCRIPT_ENTRYPOINTS_EXCLUDED")
         if selected:
             reason_codes.append("ENTRYPOINT_SELECTED_PRIMARY")
             if len(selected) > 1:
