@@ -105,6 +105,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--budget_minutes", type=int, default=30)
     parser.add_argument("--max_self_heal_iters", type=int, default=6)
     parser.add_argument("--paper_pdf", default=None, help="Paper PDF for visual extraction (optional)")
+    parser.add_argument(
+        "--phase2_force_env_repair",
+        action="store_true",
+        help="For phase 2, skip native conda env creation and enter the env repair branch directly.",
+    )
     args = parser.parse_args()
     if not args.paper_md:
         if args.phase == 1 and args.paper_pdf:
@@ -129,6 +134,7 @@ def main() -> None:
         "budget_minutes": args.budget_minutes,
         "max_self_heal_iters": args.max_self_heal_iters,
         "paper_pdf": str(Path(args.paper_pdf)) if args.paper_pdf else None,
+        "phase2_force_env_repair": bool(args.phase2_force_env_repair),
     }
 
     log_global(artifacts, "START", "0/3", f"phase={args.phase} run_id={args.run_id}")

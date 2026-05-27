@@ -8,10 +8,14 @@ import time
 from typing import Any
 
 from p2c.agents.base import BaseAgent
+from p2c.agents.phase2.code_compat_agent import CodeCompatAgent
+from p2c.agents.phase2.env_repair_agent import EnvRepairAgent
 from p2c.agents.phase2.executor_agent import ExecutorAgent
 from p2c.agents.phase2.tool_agent import ToolAgent
 from p2c.schemas import (
+    CodeCompatResult,
     CondaDependency,
+    EnvRepairResult,
     EnvSetupResult,
     ExecutionFailure,
     Phase2State,
@@ -27,10 +31,14 @@ class Phase2Orchestrator(BaseAgent):
         *,
         tool_agent: ToolAgent,
         executor_agent: ExecutorAgent,
+        env_repair_agent: EnvRepairAgent | None = None,
+        code_compat_agent: CodeCompatAgent | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(name="phase2_orchestrator", **kwargs)
         self.tool_agent = tool_agent
+        self.env_repair_agent = env_repair_agent
+        self.code_compat_agent = code_compat_agent
         self.executor_agent = executor_agent
 
     def execute(self, ctx: dict[str, Any]) -> dict[str, Any]:
@@ -43,11 +51,12 @@ class Phase2Orchestrator(BaseAgent):
             env_spec = self.tool_agent.build_env_spec(ctx)
             state.env_spec = env_spec
             ctx["_p2_env_spec"] = env_spec
+            force_env_repair = bool(ctx.get("phase2_force_env_repair"))
             self._persist_state(state, started)
 
             while state.attempt < state.max_attempts:
                 state.attempt += 1
-                state.status = "env_setup" if state.attempt == 1 else "repairing"
+                state.status = "repairing" if force_env_repair or state.attempt > 1 else "env_setup"
                 self._persist_state(state, started)
                 remaining = budget_sec - state.elapsed_sec
                 if remaining <= 60:
@@ -56,23 +65,37 @@ class Phase2Orchestrator(BaseAgent):
 
                 if state.attempt > 1:
                     self.tool_agent.cleanup()
+                    if self.env_repair_agent is not None:
+                        self.env_repair_agent.cleanup()
 
-                env_result_dict = self.tool_agent.run(ctx)
-                env_result = env_result_dict.get("env_result")
-                state.env_result = env_result
-                self._persist_state(state, started)
-
-                env_failure = self._env_setup_failure(env_result, state.attempt)
-                if env_failure is not None:
-                    state.failures.append(env_failure)
-                    state.status = "failed"
-                    codes = ",".join(env_failure.reason_codes) or "unknown"
-                    self.log("PROGRESS", f"environment setup failed ({codes}); skipping executor")
+                if force_env_repair:
+                    if not self._run_repair_branch(ctx, state, started):
+                        break
+                else:
+                    env_result_dict = self.tool_agent.run(ctx)
+                    env_result = self._coerce_env_setup_result(env_result_dict.get("env_result"))
+                    state.env_result = env_result
                     self._persist_state(state, started)
-                    break
+
+                    env_failure = self._env_setup_failure(env_result, state.attempt)
+                    if env_failure is not None:
+                        state.failures.append(env_failure)
+                        if self._should_run_repair_branch(env_result, env_spec):
+                            ctx["_p2_env_failure"] = env_result
+                            state.status = "repairing"
+                            self._persist_state(state, started)
+                            if not self._run_repair_branch(ctx, state, started):
+                                break
+                        else:
+                            state.status = "failed"
+                            codes = ",".join(env_failure.reason_codes) or "unknown"
+                            self.log("PROGRESS", f"environment setup failed ({codes}); skipping executor")
+                            self._persist_state(state, started)
+                            break
+                    else:
+                        ctx["_p2_env_mgr"] = self.tool_agent.env_manager
 
                 state.status = "executing"
-                ctx["_p2_env_mgr"] = self.tool_agent.env_manager
                 ctx["_p2_remaining_sec"] = max(120, remaining - (time.time() - started - state.elapsed_sec))
                 ctx["_p2_attempt"] = state.attempt
                 self._persist_state(state, started)
@@ -99,7 +122,7 @@ class Phase2Orchestrator(BaseAgent):
 
                 if state.attempt >= state.max_attempts:
                     break
-                if not self._patch_env(failure, self.tool_agent.env_manager):
+                if not self._patch_env(failure, ctx.get("_p2_env_mgr")):
                     break
 
             if state.status != "success":
@@ -110,13 +133,79 @@ class Phase2Orchestrator(BaseAgent):
             self._persist_state(state, started)
             if not os.getenv("P2C_KEEP_CONDA_ENV"):
                 self.tool_agent.cleanup()
+                if self.env_repair_agent is not None:
+                    self.env_repair_agent.cleanup()
 
         return state.model_dump()
 
+    def _run_repair_branch(self, ctx: dict[str, Any], state: Phase2State, started: float) -> bool:
+        if self.env_repair_agent is None or self.code_compat_agent is None:
+            failure = ExecutionFailure(
+                attempt=state.attempt,
+                stage="env_setup",
+                overall_error="environment repair branch is not configured",
+                is_dependency_issue=True,
+                reason_codes=["ENV_REPAIR_AGENT_MISSING"],
+            )
+            state.failures.append(failure)
+            state.status = "failed"
+            self._persist_state(state, started)
+            return False
+
+        repair_result_dict = self.env_repair_agent.run(ctx)
+        repair_result = self._coerce_env_repair_result(repair_result_dict.get("env_repair_result"))
+        state.env_repair_result = repair_result
+        self._persist_state(state, started)
+        if not isinstance(repair_result, EnvRepairResult) or repair_result.status != "success":
+            failure = ExecutionFailure(
+                attempt=state.attempt,
+                stage="env_setup",
+                overall_error="environment repair failed",
+                is_dependency_issue=True,
+                reason_codes=(repair_result.reason_codes if isinstance(repair_result, EnvRepairResult) else ["ENV_REPAIR_FAILED"]),
+            )
+            state.failures.append(failure)
+            state.status = "failed"
+            self._persist_state(state, started)
+            return False
+
+        env_mgr = self.env_repair_agent.env_manager or repair_result_dict.get("env_manager")
+        if env_mgr is None:
+            failure = ExecutionFailure(
+                attempt=state.attempt,
+                stage="env_setup",
+                overall_error="environment repair succeeded without an environment manager",
+                is_dependency_issue=True,
+                reason_codes=["ENV_REPAIR_MANAGER_MISSING"],
+            )
+            state.failures.append(failure)
+            state.status = "failed"
+            self._persist_state(state, started)
+            return False
+
+        ctx["_p2_env_mgr"] = env_mgr
+        ctx["_p2_env_repair_result"] = repair_result
+        compat_result_dict = self.code_compat_agent.run(ctx)
+        compat_result = self._coerce_code_compat_result(compat_result_dict.get("code_compat_result"))
+        state.code_compat_result = compat_result
+        self._persist_state(state, started)
+        if not isinstance(compat_result, CodeCompatResult) or compat_result.status != "success":
+            failure = ExecutionFailure(
+                attempt=state.attempt,
+                stage="execution",
+                overall_error="code compatibility validation failed",
+                is_dependency_issue=False,
+                reason_codes=(compat_result.reason_codes if isinstance(compat_result, CodeCompatResult) else ["CODE_COMPAT_FAILED"]),
+            )
+            state.failures.append(failure)
+            state.status = "failed"
+            self._persist_state(state, started)
+            return False
+        return True
+
     @staticmethod
     def _env_setup_failure(env_result: Any, attempt: int) -> ExecutionFailure | None:
-        if isinstance(env_result, dict):
-            env_result = EnvSetupResult(**env_result)
+        env_result = Phase2Orchestrator._coerce_env_setup_result(env_result)
         if not isinstance(env_result, EnvSetupResult):
             return ExecutionFailure(
                 attempt=attempt,
@@ -130,6 +219,7 @@ class Phase2Orchestrator(BaseAgent):
         hard_failure_codes = {
             "ENV_CREATE_FAILED",
             "NATIVE_CONDA_ENV_CREATE_FAILED",
+            "NATIVE_CONDA_ENV_CREATE_TIMEOUT",
         }
         matched_codes = [code for code in reason_codes if code in hard_failure_codes]
         if not matched_codes:
@@ -145,6 +235,8 @@ class Phase2Orchestrator(BaseAgent):
         )
 
     def _patch_env(self, failure: ExecutionFailure, env_mgr: Any) -> bool:
+        if env_mgr is None:
+            return False
         patched_any = False
         for sf in failure.step_failures:
             code = sf.failure_code or ""
@@ -172,6 +264,40 @@ class Phase2Orchestrator(BaseAgent):
                     ])
                     patched_any = True
         return patched_any
+
+    @staticmethod
+    def _should_run_repair_branch(env_result: EnvSetupResult | None, env_spec: Any) -> bool:
+        if not isinstance(env_result, EnvSetupResult):
+            return False
+        if not getattr(env_spec, "native_environment_file", None):
+            return False
+        return bool(
+            {"NATIVE_CONDA_ENV_CREATE_FAILED", "NATIVE_CONDA_ENV_CREATE_TIMEOUT"}.intersection(env_result.reason_codes)
+        )
+
+    @staticmethod
+    def _coerce_env_setup_result(raw: Any) -> EnvSetupResult | None:
+        if isinstance(raw, EnvSetupResult):
+            return raw
+        if isinstance(raw, dict):
+            return EnvSetupResult(**raw)
+        return None
+
+    @staticmethod
+    def _coerce_env_repair_result(raw: Any) -> EnvRepairResult | None:
+        if isinstance(raw, EnvRepairResult):
+            return raw
+        if isinstance(raw, dict):
+            return EnvRepairResult(**raw)
+        return None
+
+    @staticmethod
+    def _coerce_code_compat_result(raw: Any) -> CodeCompatResult | None:
+        if isinstance(raw, CodeCompatResult):
+            return raw
+        if isinstance(raw, dict):
+            return CodeCompatResult(**raw)
+        return None
 
     @staticmethod
     def _extract_missing_package(text: str) -> str | None:

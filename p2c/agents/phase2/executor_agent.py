@@ -508,7 +508,7 @@ class ExecutorAgent(BaseAgent):
             observed_commands=live_sink.observed_bash_commands,
         )
         self._backfill_activity_from_runs(runs)
-        manifest_reason_codes = ["EXECUTOR_AGENT_RUN"]
+        manifest_reason_codes = ["EXECUTOR_AGENT_RUN", *self._phase2_repair_reason_codes()]
         if artifact_mutations:
             manifest_reason_codes.append("REPO_RUNTIME_ARTIFACT_MUTATION_RECORDED")
         manifest = build_run_manifest(runs, reason_codes=manifest_reason_codes)
@@ -1499,6 +1499,30 @@ class ExecutorAgent(BaseAgent):
             )
         return normalized_runs
 
+    def _phase2_repair_reason_codes(self) -> list[str]:
+        reason_codes: list[str] = []
+        env_repair = self.artifacts.read_json("execution/env_repair/env_repair_result.json")
+        if isinstance(env_repair, dict) and env_repair.get("status") == "success":
+            reason_codes.append("ENV_REPAIR_APPLIED")
+        code_compat = self.artifacts.read_json("execution/code_compat/code_compat_result.json")
+        if isinstance(code_compat, dict) and code_compat.get("status") == "success":
+            code_codes = [str(code) for code in code_compat.get("reason_codes", [])]
+            if "CODE_COMPAT_PATCH_APPLIED" in code_codes:
+                reason_codes.extend(["CODE_COMPAT_PATCH_APPLIED", "PATCHED_REPRODUCTION"])
+            elif "CODE_COMPAT_NO_PATCH_NEEDED" in code_codes:
+                reason_codes.append("CODE_COMPAT_NO_PATCH_NEEDED")
+        return list(dict.fromkeys(reason_codes))
+
+    def _has_non_placeholder_json(self, rel_path: str) -> bool:
+        path = self.artifacts.path(rel_path)
+        if not path.exists() or path.stat().st_size == 0:
+            return False
+        payload = self.artifacts.read_json(rel_path)
+        if not isinstance(payload, dict):
+            return False
+        reason_codes = [str(code) for code in payload.get("reason_codes", [])]
+        return "INITIALIZED_PLACEHOLDER" not in reason_codes
+
     @staticmethod
     def _load_raw_executor_result_runs(result_path: Path) -> list[dict[str, Any]]:
         """Read executor_results.json without collapsing duplicate experiment ids."""
@@ -1599,6 +1623,14 @@ class ExecutorAgent(BaseAgent):
         }
         if self.artifacts.path(_REPO_MUTATION_GUARD_REL_PATH).exists():
             source_files["repo_mutation_guard"] = _REPO_MUTATION_GUARD_REL_PATH
+        if self._has_non_placeholder_json("execution/env_repair/env_repair_result.json"):
+            source_files["env_repair_result"] = "execution/env_repair/env_repair_result.json"
+        if self._has_non_placeholder_json("execution/code_compat/code_compat_result.json"):
+            source_files["code_compat_result"] = "execution/code_compat/code_compat_result.json"
+            code_compat = self.artifacts.read_json("execution/code_compat/code_compat_result.json")
+            patch_path = code_compat.get("patch_path") if isinstance(code_compat, dict) else None
+            if patch_path and self.artifacts.path(str(patch_path)).exists():
+                source_files["code_compat_patch"] = str(patch_path)
 
         observed_command_set = {_normalize_shell_command(command) for command in observed_commands if command}
         used_attempt_ids: set[str] = set()
@@ -1832,7 +1864,7 @@ class ExecutorAgent(BaseAgent):
             "source_files": source_files,
             "experiments": list(package_experiments.values()),
             "raw_manifest_reason_codes": list(raw_manifest.get("reason_codes", [])) if isinstance(raw_manifest, dict) else [],
-            "reason_codes": ["PHASE2_EXECUTION_PACKAGE_BUILT"],
+            "reason_codes": ["PHASE2_EXECUTION_PACKAGE_BUILT", *self._phase2_repair_reason_codes()],
         }
 
     @staticmethod

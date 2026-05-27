@@ -765,6 +765,39 @@ class EnvSetupResult(BaseModel):
     reason_codes: list[str] = Field(default_factory=list)
 
 
+class EnvRepairResult(BaseModel):
+    """Output of the EnvRepairAgent — repaired native conda env readiness."""
+
+    status: Literal["success", "failed", "skipped"] = "failed"
+    selected_strategy: str | None = None
+    python_version: str = ""
+    backend: str = ""
+    env_name: str = ""
+    env_path: str = ""
+    commands: list[str] = Field(default_factory=list)
+    failed_candidates: list[dict[str, Any]] = Field(default_factory=list)
+    validation_passed: bool = False
+    repaired_environment_file: str | None = None
+    pip_freeze_path: str | None = None
+    conda_list_path: str | None = None
+    notes: str | None = None
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+class CodeCompatResult(BaseModel):
+    """Output of the CodeCompatAgent — source compatibility patch status."""
+
+    status: Literal["success", "failed", "skipped"] = "skipped"
+    changed_files: list[str] = Field(default_factory=list)
+    patch_path: str | None = None
+    validation_command: str = ""
+    validation_passed: bool = False
+    stdout_tail: str = ""
+    stderr_tail: str = ""
+    notes: str | None = None
+    reason_codes: list[str] = Field(default_factory=list)
+
+
 class StepFailure(BaseModel):
     """Failure record for a single execution step."""
 
@@ -811,5 +844,7 @@ class Phase2State(BaseModel):
     elapsed_sec: float = 0.0
     env_spec: ExecutorEnvSpec | None = None
     env_result: EnvSetupResult | None = None
+    env_repair_result: EnvRepairResult | None = None
+    code_compat_result: CodeCompatResult | None = None
     failures: list[ExecutionFailure] = Field(default_factory=list)
     final_manifest: RunManifestDoc | None = None

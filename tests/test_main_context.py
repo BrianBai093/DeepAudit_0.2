@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import json
+import sys
 
 from p2c.io_artifacts import ArtifactManager
-from p2c.main import ensure_phase_prereq, serializable_context
+from p2c.main import ensure_phase_prereq, parse_args, serializable_context
 
 
 class NonSerializableRuntimeObject:
@@ -50,3 +51,28 @@ def test_phase3_prereq_accepts_phase2_execution_package(tmp_path) -> None:
     )
 
     ensure_phase_prereq(3, artifacts)
+
+
+def test_parse_args_accepts_phase2_force_env_repair(monkeypatch) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "p2c",
+            "--phase",
+            "2",
+            "--paper_md",
+            "paper.md",
+            "--paper_md_out",
+            "paper_out.md",
+            "--repo_dir",
+            "Target/code",
+            "--run_id",
+            "run",
+            "--phase2_force_env_repair",
+        ],
+    )
+
+    args = parse_args()
+
+    assert args.phase2_force_env_repair is True

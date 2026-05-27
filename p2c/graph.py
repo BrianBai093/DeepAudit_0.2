@@ -13,6 +13,8 @@ from p2c.agents.phase1.extract_fingerprint_guide import ExtractFingerprintGuideA
 from p2c.agents.phase1.extract_visual_elements import ExtractVisualElementsAgent
 from p2c.agents.phase1.ingest_paper import IngestPaperAgent
 from p2c.agents.phase1.repo_analysis import RepoAnalysisAgent
+from p2c.agents.phase2.code_compat_agent import CodeCompatAgent
+from p2c.agents.phase2.env_repair_agent import EnvRepairAgent
 from p2c.agents.phase2.executor_agent import ExecutorAgent
 from p2c.agents.phase2.orchestrator import Phase2Orchestrator
 from p2c.agents.phase2.tool_agent import ToolAgent
@@ -26,7 +28,7 @@ from p2c.agents.phase3.score_and_diagnose import ScoreAndDiagnoseAgent
 from p2c.agents.phase3.verify_claims import VerifyClaimsAgent
 from p2c.agents.phase3.visual_to_repo_alignment import VisualToRepoAlignmentAgent
 
-_STEP_TOTAL = 21
+_STEP_TOTAL = 23
 
 
 def run_phase_1(ctx: dict[str, Any], agents: dict[str, Any]) -> None:
@@ -109,17 +111,23 @@ def build_agents(llm, artifacts) -> dict[str, Any]:
 
     # Phase 2 — environment setup + autonomous executor
     tool_agent = ToolAgent(llm=llm, artifacts=artifacts, step_index=10, step_total=_STEP_TOTAL)
-    executor_agent = ExecutorAgent(llm=llm, artifacts=artifacts, step_index=11, step_total=_STEP_TOTAL)
+    env_repair_agent = EnvRepairAgent(llm=llm, artifacts=artifacts, step_index=11, step_total=_STEP_TOTAL)
+    code_compat_agent = CodeCompatAgent(llm=llm, artifacts=artifacts, step_index=12, step_total=_STEP_TOTAL)
+    executor_agent = ExecutorAgent(llm=llm, artifacts=artifacts, step_index=13, step_total=_STEP_TOTAL)
     orchestrator = Phase2Orchestrator(
         tool_agent=tool_agent,
+        env_repair_agent=env_repair_agent,
+        code_compat_agent=code_compat_agent,
         executor_agent=executor_agent,
         llm=llm,
         artifacts=artifacts,
-        step_index=12,
+        step_index=14,
         step_total=_STEP_TOTAL,
     )
     phase2 = {
         "tool_agent": tool_agent,
+        "env_repair_agent": env_repair_agent,
+        "code_compat_agent": code_compat_agent,
         "executor_agent": executor_agent,
         "phase2_orchestrator": orchestrator,
     }
@@ -127,20 +135,20 @@ def build_agents(llm, artifacts) -> dict[str, Any]:
     # Phase 3
     phase3 = {
         "execution_summary_evidence": ExecutionSummaryEvidenceAgent(
-            llm=llm, artifacts=artifacts, step_index=13, step_total=_STEP_TOTAL,
+            llm=llm, artifacts=artifacts, step_index=15, step_total=_STEP_TOTAL,
         ),
-        "observe_metrics": ObserveMetricsAgent(llm=llm, artifacts=artifacts, step_index=14, step_total=_STEP_TOTAL),
-        "align_evidence": AlignEvidenceAgent(llm=llm, artifacts=artifacts, step_index=15, step_total=_STEP_TOTAL),
-        "verify_claims": VerifyClaimsAgent(llm=llm, artifacts=artifacts, step_index=16, step_total=_STEP_TOTAL),
-        "score_and_diagnose": ScoreAndDiagnoseAgent(llm=llm, artifacts=artifacts, step_index=17, step_total=_STEP_TOTAL),
+        "observe_metrics": ObserveMetricsAgent(llm=llm, artifacts=artifacts, step_index=16, step_total=_STEP_TOTAL),
+        "align_evidence": AlignEvidenceAgent(llm=llm, artifacts=artifacts, step_index=17, step_total=_STEP_TOTAL),
+        "verify_claims": VerifyClaimsAgent(llm=llm, artifacts=artifacts, step_index=18, step_total=_STEP_TOTAL),
+        "score_and_diagnose": ScoreAndDiagnoseAgent(llm=llm, artifacts=artifacts, step_index=19, step_total=_STEP_TOTAL),
         "visual_to_repo_alignment": VisualToRepoAlignmentAgent(
-            llm=llm, artifacts=artifacts, step_index=18, step_total=_STEP_TOTAL,
+            llm=llm, artifacts=artifacts, step_index=20, step_total=_STEP_TOTAL,
         ),
         "execution_log_evidence": ExecutionLogEvidenceAgent(
-            llm=llm, artifacts=artifacts, step_index=19, step_total=_STEP_TOTAL,
+            llm=llm, artifacts=artifacts, step_index=21, step_total=_STEP_TOTAL,
         ),
-        "reproduce_figures": ReproduceFiguresAgent(llm=llm, artifacts=artifacts, step_index=20, step_total=_STEP_TOTAL),
-        "audit_report": AuditReportAgent(llm=llm, artifacts=artifacts, step_index=21, step_total=_STEP_TOTAL),
+        "reproduce_figures": ReproduceFiguresAgent(llm=llm, artifacts=artifacts, step_index=22, step_total=_STEP_TOTAL),
+        "audit_report": AuditReportAgent(llm=llm, artifacts=artifacts, step_index=23, step_total=_STEP_TOTAL),
     }
 
     return {**phase1, **phase2, **phase3}

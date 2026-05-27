@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -73,7 +74,14 @@ class ToolAgent(BaseAgent):
         self.log("PROGRESS", "creating environment...")
         if native_environment_file is not None:
             self.log("PROGRESS", f"using native conda environment file: {native_environment_file}")
-            create_out = self._env_mgr.create_from_environment_file(native_environment_file)
+            try:
+                create_out = self._env_mgr.create_from_environment_file(native_environment_file)
+            except subprocess.TimeoutExpired as exc:
+                create_out = {
+                    "ok": False,
+                    "log": f"native conda environment create timed out after {exc.timeout}s",
+                }
+                result.reason_codes.append("NATIVE_CONDA_ENV_CREATE_TIMEOUT")
             result.install_commands.append(f"conda env create -f {native_environment_file} (ok={create_out['ok']})")
             if create_out["ok"]:
                 result.reason_codes.append("NATIVE_CONDA_ENV_CREATED")
@@ -649,6 +657,7 @@ class ToolAgent(BaseAgent):
         imports: list[str] = []
         known_map = {
             "torch": "torch", "torchvision": "torchvision",
+            "pytorch": "torch", "torchaudio": "torchaudio",
             "tensorflow": "tensorflow", "keras": "keras",
             "scikit-learn": "sklearn", "opencv-python": "cv2",
             "opencv-python-headless": "cv2", "pillow": "PIL",
@@ -657,7 +666,7 @@ class ToolAgent(BaseAgent):
             "jax": "jax", "numpy": "numpy",
             "scipy": "scipy", "matplotlib": "matplotlib",
         }
-        non_import_packages = {"jaxlib"}
+        non_import_packages = {"cpuonly", "jaxlib"}
         for dep in env_spec.conda_dependencies[:20]:
             name = dep.package.strip().lower()
             if name in non_import_packages:

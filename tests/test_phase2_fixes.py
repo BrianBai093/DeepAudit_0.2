@@ -312,6 +312,20 @@ def test_tool_agent_converts_pixi_pyproject_to_conda_forge_env_spec(tmp_path: Pa
     assert ToolAgent._derive_key_imports(env_spec)[:3] == ["jax", "numpy", "scipy"]
 
 
+def test_tool_agent_maps_conda_pytorch_and_skips_cpuonly_import_validation() -> None:
+    env_spec = ExecutorEnvSpec(
+        env_name="torch_env",
+        python_version="3.10",
+        conda_dependencies=[
+            {"package": "pytorch", "channel": "pytorch"},
+            {"package": "torchvision", "channel": "pytorch"},
+            {"package": "cpuonly", "channel": "pytorch"},
+        ],
+    )
+
+    assert ToolAgent._derive_key_imports(env_spec) == ["torch", "torchvision"]
+
+
 def test_phase2_orchestrator_stops_after_native_env_create_failure(tmp_path: Path) -> None:
     artifacts = make_artifacts(tmp_path, "native_env_fail")
 
