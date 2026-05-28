@@ -202,7 +202,7 @@ class CodeCompatAgent(BaseAgent):
         changed_files = self._changed_files(repo_dir, baseline)
         patch_rel = self._write_diff_from_snapshot(repo_dir, baseline_text, changed_files)
         payload = self.artifacts.read_json("execution/code_compat/code_compat_result.json")
-        notes = payload.get("notes") if isinstance(payload, dict) else None
+        notes = self._coerce_text(payload.get("notes")) if isinstance(payload, dict) else None
         sdk_codes = [
             str(code)
             for code in (payload.get("reason_codes", []) if isinstance(payload, dict) else [])
@@ -396,7 +396,23 @@ class CodeCompatAgent(BaseAgent):
         )
         if err or not data:
             return "", err, ["CODE_COMPAT_LLM_UNAVAILABLE"]
-        return str(data.get("patch") or ""), data.get("notes"), [str(code) for code in data.get("reason_codes", [])]
+        return (
+            str(data.get("patch") or ""),
+            self._coerce_text(data.get("notes")),
+            [str(code) for code in data.get("reason_codes", [])],
+        )
+
+    @staticmethod
+    def _coerce_text(value: Any) -> str | None:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            return value
+        if isinstance(value, list):
+            return "\n".join(str(item) for item in value if str(item).strip())
+        if isinstance(value, dict):
+            return json.dumps(value, ensure_ascii=False, sort_keys=True)
+        return str(value)
 
     @staticmethod
     def _repo_context(repo_dir: Path) -> str:

@@ -185,6 +185,16 @@ class Phase2Orchestrator(BaseAgent):
 
         ctx["_p2_env_mgr"] = env_mgr
         ctx["_p2_env_repair_result"] = repair_result
+        if ctx.get("phase2_force_env_repair"):
+            state.code_compat_result = CodeCompatResult(
+                status="skipped",
+                validation_passed=False,
+                notes="Skipped because --phase2_force_env_repair trusts the repaired environment and proceeds directly to executor.",
+                reason_codes=["CODE_COMPAT_SKIPPED_FORCE_ENV_REPAIR"],
+            )
+            self._persist_state(state, started)
+            return True
+
         compat_result_dict = self.code_compat_agent.run(ctx)
         compat_result = self._coerce_code_compat_result(compat_result_dict.get("code_compat_result"))
         state.code_compat_result = compat_result

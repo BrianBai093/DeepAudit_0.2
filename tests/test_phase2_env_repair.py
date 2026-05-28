@@ -202,7 +202,10 @@ def test_force_env_repair_skips_tool_agent_install(tmp_path: Path) -> None:
     assert result["status"] == "success"
     assert tool.run_called is False
     assert repair.called is True
+    assert compat.called is False
     assert executor.called is True
+    assert result["code_compat_result"]["status"] == "skipped"
+    assert "CODE_COMPAT_SKIPPED_FORCE_ENV_REPAIR" in result["code_compat_result"]["reason_codes"]
 
 
 def test_force_env_repair_without_native_env_file_fails_cleanly(tmp_path: Path) -> None:
@@ -314,6 +317,99 @@ def test_env_repair_uses_claude_sdk_session_when_available(tmp_path: Path, monke
     assert result["env_manager"].backend == "venv"
 
 
+def test_force_env_repair_skips_sdk_host_validation(tmp_path: Path, monkeypatch) -> None:
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    (repo_dir / "environment.yml").write_text(
+        "name: old\ndependencies:\n  - python=3.7\n  - pytorch=1.5\n",
+        encoding="utf-8",
+    )
+    artifacts = make_artifacts(tmp_path, "repair_sdk_force")
+    agent = EnvRepairAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
+
+    class FakeManager:
+        backend = "venv"
+
+        def validate(self, key_imports):
+            raise AssertionError("force repair should not run host validation")
+
+        def env_path_actual(self):
+            return "/tmp/p2c_venv_sdk_force_repair"
+
+        def freeze(self):
+            return "torch==2.0.0\n"
+
+        def cleanup(self):
+            raise AssertionError("force repair should keep the repaired environment")
+
+    def fake_session(**kwargs):
+        artifacts.write_json(
+            "execution/env_repair/repaired_environment_spec.json",
+            {
+                "env_name": "sdk_force_repair",
+                "python_version": "3.10",
+                "conda_dependencies": [{"package": "pytorch", "channel": "pytorch"}],
+                "reason_codes": ["ENV_REPAIR_DERIVED_SPEC"],
+            },
+        )
+        artifacts.write_json(
+            "execution/env_repair/env_repair_result.json",
+            {
+                "status": "success",
+                "selected_strategy": "claude_cpu_py310",
+                "python_version": "3.10",
+                "backend": "venv",
+                "env_name": "sdk_force_repair",
+                "env_path": "/tmp/p2c_venv_sdk_force_repair",
+                "validation_passed": True,
+                "reason_codes": ["ENV_REPAIR_APPLIED"],
+            },
+        )
+        return SimpleNamespace(returncode=0, stdout="ok", stderr="", narrative="")
+
+    monkeypatch.setattr(EnvRepairAgent, "_should_use_claude_sdk", staticmethod(lambda: True))
+    monkeypatch.setattr(EnvRepairAgent, "_manager_from_repair_result", staticmethod(lambda result, fallback: FakeManager()))
+    monkeypatch.setattr("p2c.agents.phase2.env_repair_agent.run_claude_code_session", fake_session)
+
+    result = agent.execute(
+        {
+            "repo_dir": str(repo_dir),
+            "phase2_force_env_repair": True,
+            "_p2_env_spec": ExecutorEnvSpec(
+                env_name="sdk_force_repair",
+                python_version="3.7",
+                native_environment_file="environment.yml",
+            ),
+        }
+    )
+
+    repair_result = result["env_repair_result"]
+    assert repair_result.status == "success"
+    assert repair_result.validation_passed is False
+    assert "ENV_REPAIR_HOST_VALIDATION_SKIPPED" in repair_result.reason_codes
+    assert result["env_manager"].backend == "venv"
+
+
+def test_env_repair_normalizes_sdk_payload_notes_list() -> None:
+    payload = {
+        "status": "SUCCESS",
+        "notes": ["created venv", "validated imports"],
+        "reason_codes": ["ENV_REPAIR_APPLIED", 123],
+        "commands": ["python -m venv env", 42],
+        "failed_candidates": ["solver timeout", {"notes": ["bad torch pin"]}],
+    }
+
+    normalized = EnvRepairAgent._normalize_env_repair_payload(payload)
+    result = EnvRepairResult(**normalized)
+
+    assert result.status == "success"
+    assert result.notes == "created venv\nvalidated imports"
+    assert result.reason_codes == ["ENV_REPAIR_APPLIED", "123"]
+    assert result.commands == ["python -m venv env", "42"]
+    assert result.failed_candidates[0]["summary"] == "solver timeout"
+    assert result.failed_candidates[1]["notes"] == "bad torch pin"
+
+
 def test_code_compat_patch_modifies_repo_and_writes_diff(tmp_path: Path, monkeypatch) -> None:
     repo_dir = tmp_path / "repo"
     repo_dir.mkdir()
@@ -345,6 +441,7 @@ def test_code_compat_patch_modifies_repo_and_writes_diff(tmp_path: Path, monkeyp
         return patch_text, "updated legacy API", ["CODE_COMPAT_LLM_PATCH"]
 
     monkeypatch.setattr(CodeCompatAgent, "_request_patch", fake_request_patch)
+    monkeypatch.setattr(CodeCompatAgent, "_should_use_claude_sdk", staticmethod(lambda: False))
     agent = CodeCompatAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
 
     result = agent.execute(
@@ -396,7 +493,7 @@ def test_code_compat_uses_claude_sdk_session_when_available(tmp_path: Path, monk
                 "status": "success",
                 "changed_files": ["legacy.py"],
                 "validation_passed": True,
-                "notes": "patched legacy import compatibility",
+                "notes": ["patched legacy import compatibility", "validation passed"],
                 "reason_codes": ["CODE_COMPAT_CLAUDE_SDK"],
             },
         )
@@ -418,6 +515,7 @@ def test_code_compat_uses_claude_sdk_session_when_available(tmp_path: Path, monk
     assert compat_result.status == "success"
     assert "CODE_COMPAT_CLAUDE_SDK" in compat_result.reason_codes
     assert "PATCHED_REPRODUCTION" in compat_result.reason_codes
+    assert compat_result.notes == "patched legacy import compatibility\nvalidation passed"
     assert target.read_text(encoding="utf-8") == "VALUE = 'new'\n"
     assert artifacts.path("execution/code_compat/code_compat_patch.diff").read_text(encoding="utf-8").startswith("--- a/legacy.py")
 

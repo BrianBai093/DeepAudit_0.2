@@ -211,7 +211,7 @@ class EnvRepairAgent(BaseAgent):
             self._persist(result)
             return {"env_repair_result": result}
 
-        result = EnvRepairResult(**payload)
+        result = EnvRepairResult(**self._normalize_env_repair_payload(payload))
         result.reason_codes = self._dedupe_reason_codes([
             "ENV_REPAIR_CLAUDE_SDK",
             *result.reason_codes,
@@ -223,21 +223,30 @@ class EnvRepairAgent(BaseAgent):
         manager = self._manager_from_repair_result(result, env_spec)
         self._env_mgr = manager
         repaired_spec = self._load_repaired_env_spec(env_spec)
-        key_imports = ToolAgent._derive_key_imports(repaired_spec)
-        validation_passed = manager.validate(key_imports)
-        if not validation_passed:
-            result.status = "failed"
+        force_mode = "ENV_REPAIR_FORCE_MODE" in failure_codes
+        if force_mode:
             result.validation_passed = False
             result.reason_codes = self._dedupe_reason_codes([
                 *result.reason_codes,
-                "ENV_REPAIR_SDK_VALIDATION_FAILED",
+                "ENV_REPAIR_FORCE_MODE",
+                "ENV_REPAIR_HOST_VALIDATION_SKIPPED",
             ])
-            self._persist(result)
-            manager.cleanup()
-            self._env_mgr = None
-            return {"env_repair_result": result}
+        else:
+            key_imports = ToolAgent._derive_key_imports(repaired_spec)
+            validation_passed = manager.validate(key_imports)
+            if not validation_passed:
+                result.status = "failed"
+                result.validation_passed = False
+                result.reason_codes = self._dedupe_reason_codes([
+                    *result.reason_codes,
+                    "ENV_REPAIR_SDK_VALIDATION_FAILED",
+                ])
+                self._persist(result)
+                manager.cleanup()
+                self._env_mgr = None
+                return {"env_repair_result": result}
 
-        result.validation_passed = True
+            result.validation_passed = True
         result.env_name = result.env_name or env_spec.env_name
         result.env_path = result.env_path or manager.env_path_actual()
         result.backend = result.backend or manager.backend
@@ -367,6 +376,42 @@ class EnvRepairAgent(BaseAgent):
     @staticmethod
     def _dedupe_reason_codes(codes: list[str]) -> list[str]:
         return list(dict.fromkeys(str(code) for code in codes if str(code).strip()))
+
+    @classmethod
+    def _normalize_env_repair_payload(cls, payload: dict[str, Any]) -> dict[str, Any]:
+        """Coerce SDK-authored JSON into the strict EnvRepairResult schema."""
+        data = dict(payload or {})
+        if "status" in data:
+            data["status"] = str(data["status"]).strip().lower()
+        data["notes"] = cls._coerce_text(data.get("notes"))
+        if "reason_codes" in data:
+            data["reason_codes"] = [str(code) for code in data.get("reason_codes") or [] if str(code).strip()]
+        if "commands" in data:
+            data["commands"] = [str(command) for command in data.get("commands") or []]
+        if "failed_candidates" in data:
+            candidates: list[dict[str, Any]] = []
+            for item in data.get("failed_candidates") or []:
+                if isinstance(item, dict):
+                    candidate = dict(item)
+                    if "notes" in candidate:
+                        candidate["notes"] = cls._coerce_text(candidate.get("notes"))
+                    candidates.append(candidate)
+                else:
+                    candidates.append({"summary": cls._coerce_text(item)})
+            data["failed_candidates"] = candidates
+        return data
+
+    @staticmethod
+    def _coerce_text(value: Any) -> str | None:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            return value
+        if isinstance(value, list):
+            return "\n".join(str(item) for item in value if str(item).strip())
+        if isinstance(value, dict):
+            return json.dumps(value, ensure_ascii=False, sort_keys=True)
+        return str(value)
 
     def _load_repaired_env_spec(self, fallback: ExecutorEnvSpec) -> ExecutorEnvSpec:
         payload = self.artifacts.read_json("execution/env_repair/repaired_environment_spec.json")
