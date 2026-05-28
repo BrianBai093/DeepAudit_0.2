@@ -42,7 +42,7 @@ Phase 2 主要读取这些 Phase 1 产物：
 
 ## Repo 如何执行
 
-环境准备通过后，`Phase2Orchestrator` 把 `CondaEnvManager` 放入 `ctx["_p2_env_mgr"]`，然后启动 `ExecutorAgent`。如果 native env repair 被触发，`EnvRepairAgent` 会先把 native yml 解析成 bounded repair candidates，例如放宽 build strings、固定 Python minor、分层安装、CPU PyTorch fallback、conda-forge fallback；`CodeCompatAgent` 再在修复后的环境里做 import-only validation，必要时请求 LLM 生成最小兼容 patch 并直接修改目标 repo。
+环境准备通过后，`Phase2Orchestrator` 把 `CondaEnvManager` 放入 `ctx["_p2_env_mgr"]`，然后启动 `ExecutorAgent`。如果 native env repair 被触发，`EnvRepairAgent` 会优先启动 Claude Code Agent SDK session，由 Claude session 读取 native yml、README 和依赖文件，执行 bounded repair candidates，例如放宽 build strings、固定 Python minor、分层安装、CPU PyTorch fallback、conda-forge fallback，并写出 repaired env artifacts。`CodeCompatAgent` 也优先启动 Claude Code Agent SDK session，在修复后的环境里做 import-only validation，必要时直接修改目标 repo 的最小兼容 patch。若 `claude-agent-sdk` 不可用，两个 agent 会退回到宿主侧的旧 bounded/fallback 实现。
 
 `ExecutorAgent` 不直接运行固定命令，而是启动一次 Claude Code Agent SDK session，让 executor 根据 repo README、dependency files、repo analysis 和 experiment JSON 自主选择命令。prompt 中强制约束：
 
@@ -67,7 +67,9 @@ executor session 的宿主侧会持续写：
 - `execution/executor_outputs/executor_activity.jsonl`
 - `execution/executor_outputs/executor_runtime.json`
 - `execution/env_repair/env_repair_result.json`（仅 native env 修复分支）
+- `execution/env_repair/sdk_session_stdout.log` / `sdk_session_stderr.log` / `sdk_session_narrative.log`（仅 Claude SDK 修复分支）
 - `execution/code_compat/code_compat_result.json`（仅 native env 修复分支）
+- `execution/code_compat/sdk_session_stdout.log` / `sdk_session_stderr.log` / `sdk_session_narrative.log`（仅 Claude SDK 代码兼容分支）
 - `execution/code_compat/code_compat_patch.diff`（仅发生代码兼容修改）
 
 executor 被要求为每个 experiment 写：

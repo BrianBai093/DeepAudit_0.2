@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import difflib
 import hashlib
+import json
 import os
 from pathlib import Path
 import re
@@ -11,6 +13,11 @@ import subprocess
 from typing import Any
 
 from p2c.agents.base import BaseAgent
+from p2c.agents.phase2.claude_code_session import (
+    claude_code_sdk_available,
+    run_claude_code_session,
+)
+from p2c.agents.phase2.executor_agent import ExecutorAgent
 from p2c.agents.phase2.tool_agent import ToolAgent
 from p2c.schemas import CodeCompatResult, EnvRepairResult, ExecutorEnvSpec
 
@@ -42,6 +49,7 @@ class CodeCompatAgent(BaseAgent):
         env_spec = self._load_repaired_env_spec(ctx)
         validation_command = self._build_validation_command(repo_dir, env_spec)
         baseline = self._capture_repo_state(repo_dir)
+        baseline_text = self._capture_repo_text_snapshot(repo_dir)
         first_validation = env_mgr.run_in_env(validation_command, cwd=str(repo_dir), timeout_sec=120)
         if first_validation.returncode == 0:
             result = CodeCompatResult(
@@ -56,6 +64,19 @@ class CodeCompatAgent(BaseAgent):
             )
             self._persist(result)
             return {"code_compat_result": result}
+
+        sdk_result = self._run_claude_sdk_compat(
+            repo_dir=repo_dir,
+            env_mgr=env_mgr,
+            env_spec=env_spec,
+            validation_command=validation_command,
+            stdout=first_validation.stdout,
+            stderr=first_validation.stderr,
+            baseline=baseline,
+            baseline_text=baseline_text,
+        )
+        if sdk_result is not None:
+            return {"code_compat_result": sdk_result}
 
         max_iters = max(1, int(os.getenv("P2C_CODE_COMPAT_MAX_PATCHES", "2")))
         current_stdout = first_validation.stdout
@@ -131,6 +152,101 @@ class CodeCompatAgent(BaseAgent):
         self._persist(result)
         return {"code_compat_result": result}
 
+    def _run_claude_sdk_compat(
+        self,
+        *,
+        repo_dir: Path,
+        env_mgr: Any,
+        env_spec: ExecutorEnvSpec,
+        validation_command: str,
+        stdout: str,
+        stderr: str,
+        baseline: dict[str, str],
+        baseline_text: dict[str, str],
+    ) -> CodeCompatResult | None:
+        if not self._should_use_claude_sdk():
+            return None
+
+        runtime_spec = ExecutorAgent._build_runtime_spec(env_mgr)
+        managed_validation_command = self._managed_validation_command(validation_command, runtime_spec.python_command)
+        prompt = self._build_sdk_compat_prompt(
+            repo_dir=repo_dir,
+            env_spec=env_spec,
+            validation_command=validation_command,
+            managed_validation_command=managed_validation_command,
+            stdout=stdout,
+            stderr=stderr,
+        )
+        self.artifacts.write_text("execution/code_compat/sdk_code_compat_prompt.txt", prompt)
+        session = run_claude_code_session(
+            prompt=prompt,
+            cwd=repo_dir,
+            system_prompt=self._sdk_compat_system_prompt(runtime_spec.python_command),
+            artifacts=self.artifacts,
+            log_prefix="execution/code_compat",
+            timeout_sec=max(300, int(os.getenv("P2C_CODE_COMPAT_SDK_TIMEOUT_SEC", "900"))),
+            max_turns=max(8, int(os.getenv("P2C_CODE_COMPAT_SDK_MAX_TURNS", "24"))),
+            allowed_tools=["Bash", "Read", "Glob", "Grep", "Edit", "MultiEdit", "Write"],
+        )
+        self.artifacts.write_json(
+            "execution/code_compat/sdk_session_result.json",
+            {
+                "returncode": session.returncode,
+                "stdout_tail": session.stdout[-4000:],
+                "stderr_tail": session.stderr[-4000:],
+                "reason_codes": ["CODE_COMPAT_CLAUDE_SDK_SESSION"],
+            },
+        )
+
+        validation = env_mgr.run_in_env(validation_command, cwd=str(repo_dir), timeout_sec=120)
+        changed_files = self._changed_files(repo_dir, baseline)
+        patch_rel = self._write_diff_from_snapshot(repo_dir, baseline_text, changed_files)
+        payload = self.artifacts.read_json("execution/code_compat/code_compat_result.json")
+        notes = payload.get("notes") if isinstance(payload, dict) else None
+        sdk_codes = [
+            str(code)
+            for code in (payload.get("reason_codes", []) if isinstance(payload, dict) else [])
+            if str(code).strip() and str(code) != "INITIALIZED_PLACEHOLDER"
+        ]
+
+        if validation.returncode == 0:
+            reason_codes = ["CODE_COMPAT_CLAUDE_SDK"]
+            if changed_files:
+                reason_codes.extend(["CODE_COMPAT_PATCH_APPLIED", "PATCHED_REPRODUCTION"])
+            else:
+                reason_codes.append("CODE_COMPAT_NO_PATCH_NEEDED")
+            result = CodeCompatResult(
+                status="success",
+                changed_files=changed_files,
+                patch_path=patch_rel if changed_files else None,
+                validation_command=validation_command,
+                validation_passed=True,
+                stdout_tail=validation.stdout[-2000:],
+                stderr_tail=validation.stderr[-2000:],
+                notes=notes,
+                reason_codes=self._dedupe_reason_codes([*reason_codes, *sdk_codes]),
+            )
+            self._persist(result)
+            return result
+
+        result = CodeCompatResult(
+            status="failed",
+            changed_files=changed_files,
+            patch_path=patch_rel if changed_files else None,
+            validation_command=validation_command,
+            validation_passed=False,
+            stdout_tail=validation.stdout[-2000:],
+            stderr_tail=validation.stderr[-2000:],
+            notes=notes or "Claude Code SDK compatibility session did not make import validation pass.",
+            reason_codes=self._dedupe_reason_codes([
+                "CODE_COMPAT_CLAUDE_SDK",
+                "CODE_COMPAT_FAILED",
+                *sdk_codes,
+            ]),
+        )
+        self._persist(result)
+        return result
+
     @staticmethod
     def _coerce_env_repair_result(raw: Any) -> EnvRepairResult | None:
         if isinstance(raw, EnvRepairResult):
@@ -139,9 +255,19 @@ class CodeCompatAgent(BaseAgent):
             return EnvRepairResult(**raw)
         return None
 
+    @staticmethod
+    def _should_use_claude_sdk() -> bool:
+        if os.getenv("P2C_DISABLE_CLAUDE_REPAIR_SDK", "0") == "1":
+            return False
+        return claude_code_sdk_available()
+
+    @staticmethod
+    def _dedupe_reason_codes(codes: list[str]) -> list[str]:
+        return list(dict.fromkeys(str(code) for code in codes if str(code).strip()))
+
     def _load_repaired_env_spec(self, ctx: dict[str, Any]) -> ExecutorEnvSpec:
         payload = self.artifacts.read_json("execution/env_repair/repaired_environment_spec.json")
-        if payload:
+        if payload.get("env_name"):
             return ExecutorEnvSpec(**payload)
         raw = ctx.get("_p2_env_spec") or {}
         return raw if isinstance(raw, ExecutorEnvSpec) else ExecutorEnvSpec(**raw)
@@ -160,6 +286,60 @@ class CodeCompatAgent(BaseAgent):
         ]
         script = "\n".join(script_lines)
         return f"python -c {shlex.quote(script)}"
+
+    @staticmethod
+    def _managed_validation_command(validation_command: str, python_command: str) -> str:
+        if validation_command.startswith("python "):
+            return f"{python_command} {validation_command[len('python '):]}"
+        return validation_command
+
+    def _build_sdk_compat_prompt(
+        self,
+        *,
+        repo_dir: Path,
+        env_spec: ExecutorEnvSpec,
+        validation_command: str,
+        managed_validation_command: str,
+        stdout: str,
+        stderr: str,
+    ) -> str:
+        result_path = self.artifacts.path("execution/code_compat/code_compat_result.json").resolve()
+        patch_path = self.artifacts.path("execution/code_compat/code_compat_patch.diff").resolve()
+        return (
+            "Patch this repository for source compatibility with the repaired environment.\n"
+            f"Repository root: {repo_dir}\n"
+            f"Repaired env spec:\n```json\n{json.dumps(env_spec.model_dump(), ensure_ascii=False, indent=2)[:8000]}\n```\n\n"
+            "## Import Validation\n"
+            f"Host validation command form: `{validation_command}`\n"
+            f"Run this exact managed command after every patch attempt: `{managed_validation_command}`\n"
+            f"Initial stdout:\n```\n{stdout[-3000:]}\n```\n\n"
+            f"Initial stderr:\n```\n{stderr[-6000:]}\n```\n\n"
+            "## Task\n"
+            "Use Claude Code tools to inspect and minimally edit repository source files until the managed import validation passes. "
+            "You own the compatibility repair attempt.\n\n"
+            "## Patch Policy\n"
+            "1. Only make compatibility edits required for imports to pass under the repaired environment.\n"
+            "2. Do not change tests, generated files, lock files, checkpoints, data, or audit artifacts.\n"
+            "3. Do not add broad rewrites or behavior changes. Prefer small API compatibility fixes.\n"
+            "4. Examples of acceptable edits: removed numpy aliases, sklearn module moves, torch CPU map_location, TensorFlow compat.v1 imports.\n"
+            "5. After edits, rerun the managed validation command above.\n\n"
+            "## Required Output Files\n"
+            f"1. `{result_path}`: JSON matching CodeCompatResult fields.\n"
+            f"2. `{patch_path}`: best-effort unified diff of compatibility edits if you can produce one. "
+            "The host will also regenerate this diff from its pre-patch snapshot.\n\n"
+            "For success, write status=`success`, validation_passed=true, changed_files, notes, "
+            "and reason_codes containing `CODE_COMPAT_CLAUDE_SDK`. Include `CODE_COMPAT_PATCH_APPLIED` "
+            "and `PATCHED_REPRODUCTION` when source files were changed."
+        )
+
+    @staticmethod
+    def _sdk_compat_system_prompt(python_command: str) -> str:
+        return (
+            "You are CodeCompatAgent inside a reproducibility audit pipeline. "
+            "You may modify the target repository source code only to make it compatible with the repaired environment. "
+            f"All Python validation commands must use this managed Python command: `{python_command}`. "
+            "Keep edits minimal and record the patch provenance."
+        )
 
     @staticmethod
     def _local_import_candidates(repo_dir: Path) -> list[str]:
@@ -267,6 +447,55 @@ class CodeCompatAgent(BaseAgent):
             except OSError:
                 continue
         return state
+
+    @staticmethod
+    def _capture_repo_text_snapshot(repo_dir: Path) -> dict[str, str]:
+        snapshot: dict[str, str] = {}
+        allowed_suffixes = {".cfg", ".ini", ".json", ".md", ".py", ".toml", ".txt", ".yaml", ".yml"}
+        for path in repo_dir.rglob("*"):
+            if not path.is_file() or ".git" in path.parts or "__pycache__" in path.parts:
+                continue
+            if path.suffix.lower() not in allowed_suffixes:
+                continue
+            try:
+                if path.stat().st_size > 2_000_000:
+                    continue
+                snapshot[path.relative_to(repo_dir).as_posix()] = path.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                continue
+        return snapshot
+
+    def _write_diff_from_snapshot(
+        self,
+        repo_dir: Path,
+        baseline_text: dict[str, str],
+        changed_files: list[str],
+    ) -> str | None:
+        diff_parts: list[str] = []
+        for rel in changed_files:
+            before = baseline_text.get(rel)
+            if before is None:
+                continue
+            path = repo_dir / rel
+            try:
+                after = path.read_text(encoding="utf-8", errors="ignore") if path.exists() else ""
+            except OSError:
+                continue
+            if before == after:
+                continue
+            diff_parts.extend(
+                difflib.unified_diff(
+                    before.splitlines(keepends=True),
+                    after.splitlines(keepends=True),
+                    fromfile=f"a/{rel}",
+                    tofile=f"b/{rel}",
+                )
+            )
+        if not diff_parts:
+            return None
+        rel_path = "execution/code_compat/code_compat_patch.diff"
+        self.artifacts.write_text(rel_path, "".join(diff_parts))
+        return rel_path
 
     @staticmethod
     def _changed_files(repo_dir: Path, baseline: dict[str, str]) -> list[str]:

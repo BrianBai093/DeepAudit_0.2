@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -15,6 +16,10 @@ except Exception:  # pragma: no cover - optional dependency
     yaml = None
 
 from p2c.agents.base import BaseAgent
+from p2c.agents.phase2.claude_code_session import (
+    claude_code_sdk_available,
+    run_claude_code_session,
+)
 from p2c.agents.phase2.tool_agent import ToolAgent
 from p2c.runtime.conda_env import CondaEnvManager
 from p2c.schemas import (
@@ -105,6 +110,18 @@ class EnvRepairAgent(BaseAgent):
         if guidance is not None:
             self.artifacts.write_json("execution/env_repair/llm_repair_guidance.json", guidance)
 
+        sdk_result = self._run_claude_sdk_repair(
+            repo_dir=repo_dir,
+            env_spec=env_spec,
+            native_env=native_env,
+            parsed=parsed,
+            failure_codes=failure_codes,
+            failure_log=failure_log,
+            guidance=guidance,
+        )
+        if sdk_result is not None:
+            return sdk_result
+
         candidates = self._build_candidates(
             env_spec=env_spec,
             parsed=parsed,
@@ -127,6 +144,111 @@ class EnvRepairAgent(BaseAgent):
         result.reason_codes.append("ENV_REPAIR_FAILED")
         self._persist(result)
         return {"env_repair_result": result}
+
+    def _run_claude_sdk_repair(
+        self,
+        *,
+        repo_dir: Path,
+        env_spec: ExecutorEnvSpec,
+        native_env: Path,
+        parsed: dict[str, Any],
+        failure_codes: list[str],
+        failure_log: str,
+        guidance: dict[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        if not self._should_use_claude_sdk():
+            self.artifacts.append_jsonl(
+                "execution/env_repair/candidates.jsonl",
+                {
+                    "strategy": "claude_code_sdk",
+                    "status": "skipped",
+                    "payload": {
+                        "reason_codes": ["ENV_REPAIR_SDK_UNAVAILABLE"],
+                    },
+                },
+            )
+            return None
+
+        prompt = self._build_sdk_repair_prompt(
+            repo_dir=repo_dir,
+            env_spec=env_spec,
+            native_env=native_env,
+            parsed=parsed,
+            failure_codes=failure_codes,
+            failure_log=failure_log,
+            guidance=guidance,
+        )
+        self.artifacts.write_text("execution/env_repair/sdk_repair_prompt.txt", prompt)
+        session = run_claude_code_session(
+            prompt=prompt,
+            cwd=repo_dir,
+            system_prompt=self._sdk_repair_system_prompt(),
+            artifacts=self.artifacts,
+            log_prefix="execution/env_repair",
+            timeout_sec=max(900, int(os.getenv("P2C_ENV_REPAIR_SDK_TIMEOUT_SEC", "2400"))),
+            max_turns=max(10, int(os.getenv("P2C_ENV_REPAIR_SDK_MAX_TURNS", "40"))),
+            allowed_tools=["Bash", "Read", "Glob", "Grep", "Write", "Edit"],
+        )
+        self.artifacts.write_json(
+            "execution/env_repair/sdk_session_result.json",
+            {
+                "returncode": session.returncode,
+                "stdout_tail": session.stdout[-4000:],
+                "stderr_tail": session.stderr[-4000:],
+                "reason_codes": ["ENV_REPAIR_CLAUDE_SDK_SESSION"],
+            },
+        )
+
+        payload = self.artifacts.read_json("execution/env_repair/env_repair_result.json")
+        if not payload:
+            result = EnvRepairResult(
+                status="failed",
+                env_name=env_spec.env_name,
+                python_version=env_spec.python_version,
+                notes="Claude Code SDK session did not write env_repair_result.json.",
+                reason_codes=["ENV_REPAIR_CLAUDE_SDK", "ENV_REPAIR_RESULT_MISSING"],
+            )
+            self._persist(result)
+            return {"env_repair_result": result}
+
+        result = EnvRepairResult(**payload)
+        result.reason_codes = self._dedupe_reason_codes([
+            "ENV_REPAIR_CLAUDE_SDK",
+            *result.reason_codes,
+        ])
+        if result.status != "success":
+            self._persist(result)
+            return {"env_repair_result": result}
+
+        manager = self._manager_from_repair_result(result, env_spec)
+        self._env_mgr = manager
+        repaired_spec = self._load_repaired_env_spec(env_spec)
+        key_imports = ToolAgent._derive_key_imports(repaired_spec)
+        validation_passed = manager.validate(key_imports)
+        if not validation_passed:
+            result.status = "failed"
+            result.validation_passed = False
+            result.reason_codes = self._dedupe_reason_codes([
+                *result.reason_codes,
+                "ENV_REPAIR_SDK_VALIDATION_FAILED",
+            ])
+            self._persist(result)
+            manager.cleanup()
+            self._env_mgr = None
+            return {"env_repair_result": result}
+
+        result.validation_passed = True
+        result.env_name = result.env_name or env_spec.env_name
+        result.env_path = result.env_path or manager.env_path_actual()
+        result.backend = result.backend or manager.backend
+        if not result.pip_freeze_path:
+            result.pip_freeze_path = "execution/env_repair/pip_freeze.txt"
+            self.artifacts.write_text(result.pip_freeze_path, manager.freeze())
+        if not result.conda_list_path:
+            result.conda_list_path = "execution/env_repair/conda_list.txt"
+            self.artifacts.write_text(result.conda_list_path, self._conda_list(manager))
+        self._persist(result)
+        return {"env_repair_result": result, "env_manager": manager}
 
     def _try_candidate(
         self,
@@ -235,6 +357,117 @@ class EnvRepairAgent(BaseAgent):
         self._record_candidate(candidate, "failed", command_log, failed_record)
         manager.cleanup()
         return {"ok": False, "candidate": failed_record}
+
+    @staticmethod
+    def _should_use_claude_sdk() -> bool:
+        if os.getenv("P2C_DISABLE_CLAUDE_REPAIR_SDK", "0") == "1":
+            return False
+        return claude_code_sdk_available()
+
+    @staticmethod
+    def _dedupe_reason_codes(codes: list[str]) -> list[str]:
+        return list(dict.fromkeys(str(code) for code in codes if str(code).strip()))
+
+    def _load_repaired_env_spec(self, fallback: ExecutorEnvSpec) -> ExecutorEnvSpec:
+        payload = self.artifacts.read_json("execution/env_repair/repaired_environment_spec.json")
+        if payload.get("env_name"):
+            return ExecutorEnvSpec(**payload)
+        return fallback
+
+    @staticmethod
+    def _manager_from_repair_result(result: EnvRepairResult, fallback: ExecutorEnvSpec) -> CondaEnvManager:
+        env_name = result.env_name or fallback.env_name
+        python_version = result.python_version or fallback.python_version or "3.10"
+        manager = CondaEnvManager(env_name=env_name, python_version=python_version)
+        backend = (result.backend or "").lower()
+        env_path = result.env_path.strip() if result.env_path else ""
+        if backend == "venv" or (env_path and f"p2c_venv_{env_name}" in env_path):
+            manager._use_venv_fallback = True  # noqa: SLF001 - restore SDK-created runtime handle.
+            if env_path:
+                manager._venv_path = Path(env_path)  # noqa: SLF001
+        return manager
+
+    def _build_sdk_repair_prompt(
+        self,
+        *,
+        repo_dir: Path,
+        env_spec: ExecutorEnvSpec,
+        native_env: Path,
+        parsed: dict[str, Any],
+        failure_codes: list[str],
+        failure_log: str,
+        guidance: dict[str, Any] | None,
+    ) -> str:
+        artifacts_root = self.artifacts.artifacts_dir.resolve()
+        run_root = self.artifacts.run_root.resolve()
+        repaired_env_spec_path = self.artifacts.path("execution/env_repair/repaired_environment_spec.json").resolve()
+        repaired_env_yml_path = self.artifacts.path("execution/env_repair/repaired_environment.yml").resolve()
+        result_path = self.artifacts.path("execution/env_repair/env_repair_result.json").resolve()
+        candidates_path = self.artifacts.path("execution/env_repair/candidates.jsonl").resolve()
+        pip_freeze_path = self.artifacts.path("execution/env_repair/pip_freeze.txt").resolve()
+        conda_list_path = self.artifacts.path("execution/env_repair/conda_list.txt").resolve()
+        parsed_payload = {
+            "python_version": parsed.get("python_version"),
+            "conda_dependencies": [
+                dep.model_dump() if hasattr(dep, "model_dump") else dep
+                for dep in parsed.get("conda_dependencies", [])
+            ],
+            "pip_dependencies": parsed.get("pip_dependencies", []),
+        }
+        return (
+            "Repair a failed native conda/mamba environment for a paper reproduction repository.\n"
+            f"Repository root: {repo_dir}\n"
+            f"Artifacts root: {artifacts_root}\n"
+            f"Run artifact root: {run_root}\n"
+            f"Native environment file: {native_env}\n"
+            f"Required managed env name: {env_spec.env_name}\n"
+            f"Default Python version from ToolAgent: {env_spec.python_version}\n"
+            "If you need a venv fallback, use exactly this path: "
+            f"/tmp/p2c_venv_{env_spec.env_name}\n\n"
+            "## Original Native Env Parse\n"
+            f"```json\n{json.dumps(parsed_payload, ensure_ascii=False, indent=2)[:12000]}\n```\n\n"
+            "## Original Failure\n"
+            f"Failure codes: {failure_codes}\n"
+            f"Failure log tail:\n```\n{failure_log[-6000:]}\n```\n\n"
+            "## Optional Planning Guidance\n"
+            f"```json\n{json.dumps(guidance or {}, ensure_ascii=False, indent=2)[:6000]}\n```\n\n"
+            "## Task\n"
+            "Use Claude Code tools to inspect README/dependency files as needed, create a repaired environment, "
+            "install dependencies, and validate key imports. You own this repair attempt.\n\n"
+            "## Repair Policy\n"
+            "1. Keep attempts bounded. Do not let conda/mamba solve indefinitely.\n"
+            "2. Prefer faithful repair first: same Python minor when feasible, relaxed build strings, explicit channels.\n"
+            "3. If solver/package/CUDA conflicts persist, use Python 3.10 CPU fallback for PyTorch-family packages.\n"
+            "4. Avoid mixing pip and conda torch packages unless no conda CPU path is viable.\n"
+            "5. Do not edit repository source code in this EnvRepairAgent session.\n"
+            "6. Record every attempted candidate in JSONL.\n\n"
+            "## Required Output Files\n"
+            f"1. `{repaired_env_spec_path}`: JSON matching ExecutorEnvSpec fields.\n"
+            f"2. `{repaired_env_yml_path}`: repaired environment YAML or documented venv equivalent.\n"
+            f"3. `{result_path}`: JSON matching EnvRepairResult fields.\n"
+            f"4. `{candidates_path}`: append one JSON object per candidate attempt.\n"
+            f"5. `{pip_freeze_path}`: pip freeze for the successful repaired env, if success.\n"
+            f"6. `{conda_list_path}`: conda list or pip freeze fallback, if success.\n\n"
+            "## EnvRepairResult Success Requirements\n"
+            "- status=`success`\n"
+            "- selected_strategy is a short strategy name\n"
+            f"- env_name=`{env_spec.env_name}`\n"
+            "- backend is `mamba`, `conda`, or `venv`\n"
+            "- env_path points to the actual env path\n"
+            "- commands lists the important commands attempted\n"
+            "- validation_passed=true only after import validation succeeds\n"
+            "- reason_codes includes `ENV_REPAIR_CLAUDE_SDK` and `ENV_REPAIR_APPLIED`\n\n"
+            "If repair fails, still write env_repair_result.json with status=`failed`, failed_candidates, notes, and reason codes."
+        )
+
+    @staticmethod
+    def _sdk_repair_system_prompt() -> str:
+        return (
+            "You are EnvRepairAgent inside a reproducibility audit pipeline. "
+            "You repair failed native conda/mamba environments with bounded, auditable shell actions. "
+            "You may create/remove only the run-scoped managed environment and write only the requested artifact files. "
+            "Do not modify repository source code."
+        )
 
     def _load_repo_analysis(self) -> RepoAnalysis:
         payload = self.artifacts.read_json("task/repo_analysis.json")

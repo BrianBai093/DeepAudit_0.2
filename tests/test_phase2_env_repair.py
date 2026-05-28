@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import subprocess
+from types import SimpleNamespace
 
 from p2c.agents.phase2.code_compat_agent import CodeCompatAgent
 from p2c.agents.phase2.env_repair_agent import EnvRepairAgent
@@ -237,6 +238,82 @@ def test_force_env_repair_without_native_env_file_fails_cleanly(tmp_path: Path) 
     assert executor.called is False
 
 
+def test_env_repair_uses_claude_sdk_session_when_available(tmp_path: Path, monkeypatch) -> None:
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    (repo_dir / "environment.yml").write_text(
+        "name: old\ndependencies:\n  - python=3.7\n  - pytorch=1.5\n",
+        encoding="utf-8",
+    )
+    artifacts = make_artifacts(tmp_path, "repair_sdk")
+    agent = EnvRepairAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
+
+    class FakeManager:
+        backend = "venv"
+
+        def validate(self, key_imports):
+            return True
+
+        def env_path_actual(self):
+            return "/tmp/p2c_venv_sdk_repair"
+
+        def freeze(self):
+            return "torch==2.0.0\n"
+
+        def cleanup(self):
+            pass
+
+    def fake_session(**kwargs):
+        artifacts.write_json(
+            "execution/env_repair/repaired_environment_spec.json",
+            {
+                "env_name": "sdk_repair",
+                "python_version": "3.10",
+                "conda_dependencies": [{"package": "pytorch", "channel": "pytorch"}],
+                "reason_codes": ["ENV_REPAIR_DERIVED_SPEC"],
+            },
+        )
+        artifacts.write_json(
+            "execution/env_repair/env_repair_result.json",
+            {
+                "status": "success",
+                "selected_strategy": "claude_cpu_py310",
+                "python_version": "3.10",
+                "backend": "venv",
+                "env_name": "sdk_repair",
+                "env_path": "/tmp/p2c_venv_sdk_repair",
+                "validation_passed": True,
+                "reason_codes": ["ENV_REPAIR_APPLIED"],
+            },
+        )
+        return SimpleNamespace(returncode=0, stdout="ok", stderr="", narrative="")
+
+    monkeypatch.setattr(EnvRepairAgent, "_should_use_claude_sdk", staticmethod(lambda: True))
+    monkeypatch.setattr(EnvRepairAgent, "_manager_from_repair_result", staticmethod(lambda result, fallback: FakeManager()))
+    monkeypatch.setattr("p2c.agents.phase2.env_repair_agent.run_claude_code_session", fake_session)
+
+    result = agent.execute(
+        {
+            "repo_dir": str(repo_dir),
+            "_p2_env_spec": ExecutorEnvSpec(
+                env_name="sdk_repair",
+                python_version="3.7",
+                native_environment_file="environment.yml",
+            ),
+            "_p2_env_failure": EnvSetupResult(
+                env_name="sdk_repair",
+                python_version="3.7",
+                reason_codes=["NATIVE_CONDA_ENV_CREATE_FAILED"],
+            ),
+        }
+    )
+
+    repair_result = result["env_repair_result"]
+    assert repair_result.status == "success"
+    assert "ENV_REPAIR_CLAUDE_SDK" in repair_result.reason_codes
+    assert result["env_manager"].backend == "venv"
+
+
 def test_code_compat_patch_modifies_repo_and_writes_diff(tmp_path: Path, monkeypatch) -> None:
     repo_dir = tmp_path / "repo"
     repo_dir.mkdir()
@@ -282,6 +359,67 @@ def test_code_compat_patch_modifies_repo_and_writes_diff(tmp_path: Path, monkeyp
     assert target.read_text(encoding="utf-8") == "VALUE = 'new'\n"
     assert result["code_compat_result"].changed_files == ["legacy.py"]
     assert artifacts.path("execution/code_compat/code_compat_patch.diff").is_file()
+
+
+def test_code_compat_uses_claude_sdk_session_when_available(tmp_path: Path, monkeypatch) -> None:
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    target = repo_dir / "legacy.py"
+    target.write_text("VALUE = 'old'\n", encoding="utf-8")
+    artifacts = make_artifacts(tmp_path, "compat_sdk")
+    artifacts.write_json(
+        "execution/env_repair/repaired_environment_spec.json",
+        {"env_name": "repair_env", "python_version": "3.10", "reason_codes": []},
+    )
+
+    class FailingThenPassingEnv:
+        env_name = "repair_env"
+        _use_venv_fallback = True
+
+        def __init__(self):
+            self.calls = 0
+
+        def env_path_actual(self):
+            return "/tmp/p2c_venv_repair_env"
+
+        def run_in_env(self, command, cwd=".", timeout_sec=120):
+            self.calls += 1
+            if self.calls == 1:
+                return subprocess.CompletedProcess(command, 1, "", "ImportError: np.float is missing")
+            return subprocess.CompletedProcess(command, 0, "CODE_COMPAT_IMPORT_VALIDATION_OK", "")
+
+    def fake_session(**kwargs):
+        target.write_text("VALUE = 'new'\n", encoding="utf-8")
+        artifacts.write_json(
+            "execution/code_compat/code_compat_result.json",
+            {
+                "status": "success",
+                "changed_files": ["legacy.py"],
+                "validation_passed": True,
+                "notes": "patched legacy import compatibility",
+                "reason_codes": ["CODE_COMPAT_CLAUDE_SDK"],
+            },
+        )
+        return SimpleNamespace(returncode=0, stdout="ok", stderr="", narrative="")
+
+    monkeypatch.setattr(CodeCompatAgent, "_should_use_claude_sdk", staticmethod(lambda: True))
+    monkeypatch.setattr("p2c.agents.phase2.code_compat_agent.run_claude_code_session", fake_session)
+    agent = CodeCompatAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
+
+    result = agent.execute(
+        {
+            "repo_dir": str(repo_dir),
+            "_p2_env_mgr": FailingThenPassingEnv(),
+            "_p2_env_repair_result": EnvRepairResult(status="success", validation_passed=True),
+        }
+    )
+
+    compat_result = result["code_compat_result"]
+    assert compat_result.status == "success"
+    assert "CODE_COMPAT_CLAUDE_SDK" in compat_result.reason_codes
+    assert "PATCHED_REPRODUCTION" in compat_result.reason_codes
+    assert target.read_text(encoding="utf-8") == "VALUE = 'new'\n"
+    assert artifacts.path("execution/code_compat/code_compat_patch.diff").read_text(encoding="utf-8").startswith("--- a/legacy.py")
 
 
 def test_code_compat_failure_blocks_executor(tmp_path: Path) -> None:
