@@ -241,6 +241,95 @@ def test_force_env_repair_without_native_env_file_fails_cleanly(tmp_path: Path) 
     assert executor.called is False
 
 
+def test_force_env_repair_synthesizes_env_file_for_requirements_only_repo(tmp_path: Path, monkeypatch) -> None:
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+
+    class RequirementsToolAgent(DerivedFailToolAgent):
+        def build_env_spec(self, ctx):
+            return ExecutorEnvSpec(
+                env_name="requirements_repair",
+                python_version="3.10",
+                pip_dependencies=["tensorflow==2.4.0", "jax==0.2.8"],
+            )
+
+    artifacts = make_artifacts(tmp_path, "run")
+    repair = EnvRepairAgent(llm=None, artifacts=artifacts, step_index=1, step_total=1)
+    executor = RecordingExecutorAgent()
+    captured = {}
+
+    class FakeManager:
+        backend = "venv"
+
+        def validate(self, key_imports):
+            raise AssertionError("force repair should not run host validation")
+
+        def env_path_actual(self):
+            return "/tmp/p2c_venv_requirements_repair"
+
+        def freeze(self):
+            return "tensorflow==2.4.0\njax==0.2.8\n"
+
+        def cleanup(self):
+            pass
+
+    def fake_session(**kwargs):
+        captured["prompt"] = kwargs["prompt"]
+        artifacts.write_json(
+            "execution/env_repair/repaired_environment_spec.json",
+            {
+                "env_name": "requirements_repair",
+                "python_version": "3.10",
+                "pip_dependencies": ["tensorflow==2.4.0", "jax==0.2.8"],
+                "reason_codes": ["ENV_REPAIR_DERIVED_SPEC"],
+            },
+        )
+        artifacts.write_json(
+            "execution/env_repair/env_repair_result.json",
+            {
+                "status": "success",
+                "selected_strategy": "claude_requirements_py310",
+                "python_version": "3.10",
+                "backend": "venv",
+                "env_name": "requirements_repair",
+                "env_path": "/tmp/p2c_venv_requirements_repair",
+                "validation_passed": True,
+                "reason_codes": ["ENV_REPAIR_APPLIED"],
+            },
+        )
+        return SimpleNamespace(returncode=0, stdout="ok", stderr="", narrative="")
+
+    monkeypatch.setattr(EnvRepairAgent, "_should_use_claude_sdk", staticmethod(lambda: True))
+    monkeypatch.setattr(EnvRepairAgent, "_manager_from_repair_result", staticmethod(lambda result, fallback: FakeManager()))
+    monkeypatch.setattr("p2c.agents.phase2.env_repair_agent.run_claude_code_session", fake_session)
+
+    orchestrator = Phase2Orchestrator(
+        tool_agent=RequirementsToolAgent(),
+        env_repair_agent=repair,
+        code_compat_agent=SuccessfulCompatAgent(),
+        executor_agent=executor,
+        llm=None,
+        artifacts=artifacts,
+        step_index=1,
+        step_total=1,
+    )
+
+    result = orchestrator.execute(
+        {
+            "repo_dir": str(repo_dir),
+            "run_id": "run",
+            "budget_minutes": 5,
+            "phase2_force_env_repair": True,
+        }
+    )
+
+    assert result["status"] == "success"
+    assert executor.called is True
+    assert artifacts.path("execution/env_repair/synthetic_environment.yml").is_file()
+    assert "synthetic_environment.yml" in captured["prompt"]
+    assert "ENV_REPAIR_SYNTHETIC_ENV_FROM_SPEC" in result["env_repair_result"]["reason_codes"]
+
+
 def test_env_repair_uses_claude_sdk_session_when_available(tmp_path: Path, monkeypatch) -> None:
     repo_dir = tmp_path / "repo"
     repo_dir.mkdir()

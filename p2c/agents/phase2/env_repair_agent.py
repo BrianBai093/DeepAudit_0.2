@@ -1,4 +1,4 @@
-"""EnvRepairAgent — bounded repair path for failed native conda environments."""
+"""EnvRepairAgent — bounded repair path for failed repository environments."""
 
 from __future__ import annotations
 
@@ -47,7 +47,7 @@ class _RepairCandidate:
 
 
 class EnvRepairAgent(BaseAgent):
-    """Repair native conda env failures by converting them to bounded installs."""
+    """Repair repository env failures by converting them to bounded installs."""
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(name="env_repair_agent", *args, **kwargs)
@@ -70,6 +70,11 @@ class EnvRepairAgent(BaseAgent):
         if native_env is None:
             repo_analysis = self._load_repo_analysis()
             native_env = ToolAgent._find_native_environment_file(repo_dir, repo_analysis)
+        synthetic_reason_codes: list[str] = []
+        if native_env is None:
+            native_env = self._write_synthetic_environment_file(env_spec)
+            if native_env is not None:
+                synthetic_reason_codes.append("ENV_REPAIR_SYNTHETIC_ENV_FROM_SPEC")
         if native_env is None:
             result = EnvRepairResult(
                 status="failed",
@@ -90,6 +95,7 @@ class EnvRepairAgent(BaseAgent):
         else:
             failure_codes = ["ENV_REPAIR_FORCE_MODE"] if ctx.get("phase2_force_env_repair") else []
             failure_log = ""
+        failure_codes = self._dedupe_reason_codes([*failure_codes, *synthetic_reason_codes])
 
         parsed = self._parse_native_environment(native_env)
         self.artifacts.write_json(
@@ -131,7 +137,7 @@ class EnvRepairAgent(BaseAgent):
             status="failed",
             env_name=env_spec.env_name,
             python_version=env_spec.python_version,
-            reason_codes=["ENV_REPAIR_ATTEMPTED"],
+            reason_codes=["ENV_REPAIR_ATTEMPTED", *synthetic_reason_codes],
         )
         for candidate in candidates:
             candidate_out = self._try_candidate(repo_dir, env_spec, candidate, native_env)
@@ -212,8 +218,10 @@ class EnvRepairAgent(BaseAgent):
             return {"env_repair_result": result}
 
         result = EnvRepairResult(**self._normalize_env_repair_payload(payload))
+        synthetic_result_codes = [code for code in failure_codes if code.startswith("ENV_REPAIR_SYNTHETIC")]
         result.reason_codes = self._dedupe_reason_codes([
             "ENV_REPAIR_CLAUDE_SDK",
+            *synthetic_result_codes,
             *result.reason_codes,
         ])
         if result.status != "success":
@@ -460,16 +468,16 @@ class EnvRepairAgent(BaseAgent):
             "pip_dependencies": parsed.get("pip_dependencies", []),
         }
         return (
-            "Repair a failed native conda/mamba environment for a paper reproduction repository.\n"
+            "Repair a failed or synthesized conda/mamba environment for a paper reproduction repository.\n"
             f"Repository root: {repo_dir}\n"
             f"Artifacts root: {artifacts_root}\n"
             f"Run artifact root: {run_root}\n"
-            f"Native environment file: {native_env}\n"
+            f"Environment file: {native_env}\n"
             f"Required managed env name: {env_spec.env_name}\n"
             f"Default Python version from ToolAgent: {env_spec.python_version}\n"
             "If you need a venv fallback, use exactly this path: "
             f"/tmp/p2c_venv_{env_spec.env_name}\n\n"
-            "## Original Native Env Parse\n"
+            "## Original Env Parse\n"
             f"```json\n{json.dumps(parsed_payload, ensure_ascii=False, indent=2)[:12000]}\n```\n\n"
             "## Original Failure\n"
             f"Failure codes: {failure_codes}\n"
@@ -509,7 +517,7 @@ class EnvRepairAgent(BaseAgent):
     def _sdk_repair_system_prompt() -> str:
         return (
             "You are EnvRepairAgent inside a reproducibility audit pipeline. "
-            "You repair failed native conda/mamba environments with bounded, auditable shell actions. "
+            "You repair failed conda/mamba environments with bounded, auditable shell actions. "
             "You may create/remove only the run-scoped managed environment and write only the requested artifact files. "
             "Do not modify repository source code."
         )
@@ -526,6 +534,37 @@ class EnvRepairAgent(BaseAgent):
         if not path.is_absolute():
             path = repo_dir / path
         return path if path.is_file() else None
+
+    def _write_synthetic_environment_file(self, env_spec: ExecutorEnvSpec) -> Path | None:
+        """Create a run-scoped env file for requirements-only repositories."""
+        if not env_spec.conda_dependencies and not env_spec.pip_dependencies and not env_spec.pre_install_commands:
+            return None
+        lines = [
+            f"name: {env_spec.env_name}",
+            "channels:",
+            "  - conda-forge",
+            "  - pytorch",
+            "dependencies:",
+            f"  - python={env_spec.python_version or '3.10'}",
+            "  - pip",
+        ]
+        for dep in env_spec.conda_dependencies:
+            spec = dep.package
+            if dep.version_constraint:
+                spec += dep.version_constraint if dep.version_constraint[0] in "=<>!~" else f"={dep.version_constraint}"
+            if dep.channel:
+                spec = f"{dep.channel}::{spec}"
+            lines.append(f"  - {spec}")
+        if env_spec.pip_dependencies:
+            lines.append("  - pip:")
+            for dep in env_spec.pip_dependencies:
+                lines.append(f"      - {dep}")
+        if env_spec.pre_install_commands:
+            lines.append("# pre_install_commands:")
+            for cmd in env_spec.pre_install_commands:
+                lines.append(f"#   - {cmd}")
+        lines.append("# synthesized_from: ExecutorEnvSpec")
+        return self.artifacts.write_text("execution/env_repair/synthetic_environment.yml", "\n".join(lines) + "\n")
 
     @classmethod
     def _build_candidates(
